@@ -1,7 +1,58 @@
 # DEPLOY.md — Socle V2 Deployment Plan
 
-> **Target**: Vercel (Next.js) + Supabase (already live) + n8n.cloud (already live)
+> **Current target**: Railway (Next.js) + Supabase (already live) + n8n.cloud (already live)
 > **Est. time**: ~30 min once Telegram token is valid
+
+---
+
+## Railway deployment (active path)
+
+### Why Railway instead of Vercel
+Railway was chosen over Vercel for this deployment. The instructions below supersede the Vercel steps further down this file.
+
+### Railway settings (set these in the Railway UI)
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `web` |
+| **Build Command** | *(leave blank — nixpacks detects Next.js and runs `npm install && npm run build` automatically)* |
+| **Start Command** | *(leave blank — `railway.json` sets `next start -p $PORT`)* |
+| **Watch Paths** | *(leave blank)* |
+
+`web/railway.json` is committed and handles the start command. Do not override it in the Railway UI or it will conflict.
+
+### Required environment variables
+
+Set all of these in Railway → Service → Variables before the first deploy:
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://mkgkrfcfhtrlecfuzroz.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | (from Supabase dashboard → Project Settings → API) |
+| `SUPABASE_SERVICE_ROLE_KEY` | (from Supabase dashboard — server-only, never expose) |
+| `TELEGRAM_BOT_TOKEN` | (from @BotFather) |
+| `TELEGRAM_ANTHONY_CHAT_ID` | `8613064895` |
+| `TELEGRAM_WEBHOOK_SECRET` | run `openssl rand -hex 32` and paste result |
+| `N8N_SHARED_KEY` | `05dfee4b2ad40915ac06f734877df491de07a85b0d07002a696d129b0660118d` |
+| `NEXT_PUBLIC_APP_URL` | set to Railway's generated URL after first deploy (e.g. `https://socle-v2-production.up.railway.app`) |
+| `N8N_ENRICHMENT_WEBHOOK_URL` | *(leave blank — not needed until W7)* |
+
+### Why `$PORT` matters
+Railway assigns a random port at runtime via the `$PORT` env var. The `package.json` `start` script hardcodes `-p 8985` for local dev. `railway.json` overrides this with `next start -p $PORT` so Railway's health check can reach the app.
+
+### Post-deploy steps
+1. **Supabase auth redirect** — Supabase dashboard → Authentication → URL Configuration → add `https://<railway-url>/auth/callback` to Redirect URLs and set Site URL.
+2. **Register Telegram webhook** — `curl -X POST https://<railway-url>/api/telegram/setup -H "Content-Type: application/json" -d '{"publicUrl":"https://<railway-url>"}'`
+3. **Update n8n workflows** — change `https://legislate-onyx-crane.ngrok-free.app` → `https://<railway-url>` in workflow `2gZp3dbXCZPU3NV6` nodes: `Notify CRM - Lead`, `Log Event - Triage A`, `Log Event - Triage B`.
+4. **Set `NEXT_PUBLIC_APP_URL`** — once Railway gives you a stable URL, add it as an env var and redeploy so hot-seller Telegram alerts include the correct CRM link.
+
+### Smoke test after deploy
+```bash
+curl https://<railway-url>/api/health
+```
+Then open `https://<railway-url>/admin/test` — all critical checks should be green.
+
+---
 
 ---
 

@@ -4,6 +4,62 @@ Append-only log. Newest at top. One entry per decision.
 
 ---
 
+## 2026-04-30 — V2 Blueprint finalized: visual direction, enrichment pipeline, alpha priority
+
+This entry consolidates 11 architectural decisions made after reviewing V1 UX patterns and n8n workflow experience. All decisions supersede any prior vague or placeholder descriptions of "enrichment" or "import review."
+
+### DEC-01 — V1 visual direction: keep the feel, replace the architecture
+- **Decision**: V2 must feel like a cleaner, more reliable V1 — not a generic SaaS dashboard. Scan V1 source files for visual/UX patterns (see SPEC.md § Visual Direction). Do not copy V1 technical architecture.
+- **Prohibited V1 patterns**: `localStorage` as source of truth, browser-only import state, frontend-only enrichment loops, silent success toasts, in-memory duplicate-prone merge logic.
+- **Status**: binding.
+
+### DEC-02 — Import/enrichment pipeline: deterministic code first, OpenClaw last
+- **Decision**: The import parser is deterministic code inside Socle CRM V2 (not n8n, not OpenClaw, not primarily OpenAI). Pipeline order: Parser → Brave → 411 → Google Places → OpenClaw. Each step exits solved leads via Supabase status; only unresolved leads advance.
+- **Rationale**: Deterministic code is cheaper, faster, repeatable, and testable. OpenAI assists only on genuinely ambiguous rows. OpenClaw is for messy judgment calls that direct API lookups can't resolve.
+- **Status**: binding for enrichment pipeline design.
+
+### DEC-03 — High-confidence phone-ready leads auto-create without approval
+- **Decision**: If the parser finds a lead with a valid phone, clear owner, clear address/city, no conflict, and high confidence — auto-create the CRM records and set status to `ready_to_call` immediately. No review step. Do not send to Brave, 411, Places, or OpenClaw.
+- **Rationale**: Anthony does not want to approve every imported lead. Clean data should flow automatically.
+- **Status**: binding.
+
+### DEC-04 — Human review only for uncertain records
+- **Decision**: Send records to Import Review / Human Review only if: owner unclear, city/address unclear, phone suspicious or shared across many unrelated owners, duplicate conflict, broker/owner confusion risk, low parser confidence, conflicting search results, or OpenClaw uncertain.
+- **Status**: binding.
+
+### DEC-05 — Supabase status controls pipeline filtering; n8n never uses in-memory eligibility
+- **Decision**: n8n must always query Supabase for the next eligible batch at each stage — never filter from stale in-memory arrays. Status field drives which records enter each stage. Solved leads are excluded by status, not deleted.
+- **Pipeline statuses**: `ready_to_call` · `needs_enrichment` · `parser_needs_review` · `brave_queued` · `unresolved_after_brave` · `directory_411_queued` · `unresolved_after_411` · `places_queued` · `unresolved_after_places` · `openclaw_queued` · `needs_human_review` · `no_contact_found`
+- **Status**: binding for all enrichment n8n workflows.
+
+### DEC-06 — Every import/enrichment stage must report stage counts
+- **Decision**: Every stage reports: input_count, found_count, auto_accepted_count, pending_review_count, no_result_count, failed_count, passed_to_next_count, skipped_already_solved_count. No fake success messages.
+- **Status**: binding.
+
+### DEC-07 — OpenClaw is a judgment-call worker, not a universal enrichment replacement
+- **Decision**: Use OpenClaw only for: low-confidence leads, misleading/conflicting results, broker vs owner confusion, same phone across many owners, leads where Brave/411/Places found nothing, high-value missing-phone leads. OpenClaw findings always land as `unverified enrichment_results`. OpenClaw must never overwrite CRM records directly.
+- **Status**: binding.
+
+### DEC-08 — API search ordering: Brave → 411 → Google Places → OpenClaw
+- **Decision**: Always try direct APIs before OpenClaw. Brave for general web, 411/directory for phone lookups, Google Places for business/location matches, OpenClaw only after prior steps fail or produce conflicting results.
+- **Rationale**: APIs are cheaper and more predictable for clean lookups. OpenClaw adds value on judgment calls, not routine lookups.
+- **Status**: binding for W7 enrichment workflow design.
+
+### DEC-09 — Twilio: calls + SMS planned, deferred until alpha is stable
+- **Decision**: Twilio number forwards incoming calls to Anthony's iPhone today. Full Twilio CRM integration (communication_event, lead matching by phone, missed-call follow-ups, SMS review inbox items) is a future module — do not build until core alpha proof is stable.
+- **Status**: deferred.
+
+### DEC-10 — Alpha priority locked: email→CRM round-trip + caller loop first
+- **Decision**: Do not start OpenClaw W8, real enrichment pipeline, proposal engine, advanced scoring, duplicate merge, Twilio CRM integration, or UI polish until: (1) one real email creates/updates a CRM lead + draft + automation_event, AND (2) core caller loop (import → assign → call → hot seller → Review Inbox → automation_event) is proven end-to-end on a real URL.
+- **Status**: binding priority lock.
+
+### DEC-11 — n8n email workflows: fixed and published 2026-04-30
+- **Auto-Reply: Immeubles Quebec** (`2gZp3dbXCZPU3NV6`): `AI Email Classifier` HTTP Request node fixed — `jsonBody` now uses `JSON.parse($json.ai_body)` instead of a literal string. Test execution 95: full success. Published (activeVersionId: `48d72cf2`).
+- **AI Secretary — Email Triage to Socle Calendar** (`eLsh4aPMQfmNAOCx`): `OpenAI GPT-4o-mini` sub-node fixed — (1) credentials added (`openAiApi: newCredential('OpenAI')`), (2) `responsesApiEnabled: false` to prevent Responses API path crash, (3) JSON schema instruction embedded in agent `text` parameter (agent v3.1 does not apply `systemMessage` at runtime). Test execution 101: full success. Published (activeVersionId: `26c96685`).
+- **Status**: both workflows live and published.
+
+---
+
 ## 2026-04-30 — OpenClaw integration surface verified; POST /research/owner does not exist
 
 - **Finding**: OpenClaw is a self-hosted CLI gateway (`npm install -g openclaw`), not an HTTP research API. It runs a local process on port **18789** (default, loopback-only). Its HTTP API is for controlling the agent session, not for issuing targeted research commands.

@@ -99,18 +99,39 @@ export async function POST(request: Request) {
 
   // Audit + Telegram for urgent submissions
   let telegramMessageId: string | null = null;
+  let telegramError: string | null = null;
   if (urgency === "urgent" || urgency === "high") {
-    const text =
-`🔥 *${urgency === "urgent" ? "Hot seller" : "Promising lead"}* — ${submitterName} submitted
+    const alertTitle = urgency === "urgent" ? "HOT SELLER SUBMITTED" : "PROMISING LEAD SUBMITTED";
+    const owner   = snap?.full_name ?? snap?.company_name ?? "Unknown";
+    const address = snap?.address ?? "Unknown";
+    const city    = snap?.city ?? "Unknown";
+    const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:8985";
 
-*Owner:* ${snap?.full_name ?? snap?.company_name ?? "—"}
-*Property:* ${snap?.address ?? "—"}${snap?.num_units ? ` · ${snap.num_units} units` : ""}
-*City:* ${snap?.city ?? "—"}${snap?.best_phone ? ` · ${snap.best_phone}` : ""}
-*Interest:* ${body.sellerInterestLevel ?? body.outcome}${body.timeline ? ` · timeline: ${body.timeline}` : ""}${body.askingPrice ? ` · asking $${body.askingPrice.toLocaleString()}` : ""}
+    const lines: string[] = [
+      "🚨🚨 NEW LEAD!! 🚨🚨",
+      alertTitle,
+      "",
+      `Caller: ${submitterName}`,
+      `Owner: ${owner}`,
+      `Property: ${address}`,
+    ];
+    if (snap?.num_units)        lines.push(`Units: ${snap.num_units}`);
+    lines.push(`City: ${city}`);
+    if (snap?.best_phone)       lines.push(`Phone: ${snap.best_phone}`);
+    lines.push(`Outcome: ${body.sellerInterestLevel ?? body.outcome}`);
+    if (body.timeline)          lines.push(`Timeline: ${body.timeline}`);
+    if (body.askingPrice != null) lines.push(`Asking: $${body.askingPrice.toLocaleString()}`);
+    lines.push("", `Summary:\n${summary}`);
+    lines.push("", `Open in CRM:\n${appUrl}/review`);
 
-${summary}`;
+    const text = lines.join("\n");
     const tg = await sendTelegramAlert(text);
-    telegramMessageId = tg?.message_id ?? null;
+    if (tg.ok) {
+      telegramMessageId = tg.message_id;
+    } else {
+      telegramError = tg.error;
+      console.error("[submissions] Telegram alert failed:", tg.error);
+    }
   }
 
   await sb.from("automation_events").insert({
@@ -122,8 +143,9 @@ ${summary}`;
     related_property_id: lead.property_id,
     triggered_by: user.id,
     telegram_message_id: telegramMessageId,
+    error_message: telegramError,
     payload: { submissionId: sub!.id, outcome: body.outcome, urgency },
-    result: { telegramSent: !!telegramMessageId },
+    result: { telegramSent: !!telegramMessageId, telegramError },
   });
 
   return NextResponse.json({ ok: true, data: { submissionId: sub!.id, urgency, telegramSent: !!telegramMessageId } });

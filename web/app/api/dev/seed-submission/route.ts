@@ -122,14 +122,14 @@ export async function POST() {
 
   // 10. Telegram alert (only fires if TELEGRAM_ANTHONY_CHAT_ID is set)
   const tg = await sendTelegramAlert(
-`🔥 *Hot seller* — seed test
-
-*Owner:* Gestion CML inc.
-*Property:* ${stamp} rue Notre-Dame, Granby — 8 units, eval $1.45M
-*Interest:* hot · timeline: 3 months · asking $1.6M
-
-Open to selling — wants offer in next 30 days. Mortgage maturity is the trigger.`
+`Hot seller submitted (seed test)
+Owner: Gestion CML inc.
+Property: ${stamp} rue Notre-Dame, Granby (8 units, eval $1.45M)
+Outcome: hot | timeline: 3 months | asking $1.6M
+Summary: Open to selling — wants offer in next 30 days. Mortgage maturity is the trigger.`
   );
+  const telegramMessageId = tg.ok ? tg.message_id : null;
+  const telegramError = tg.ok ? null : tg.error;
 
   // 11. Automation event
   await sb.from("automation_events").insert({
@@ -141,8 +141,9 @@ Open to selling — wants offer in next 30 days. Mortgage maturity is the trigge
     related_property_id: prop!.id,
     triggered_by: user.id,
     payload: { stamp, campaignId: camp!.id, submissionId: sub!.id },
-    result: { telegramSent: !!tg, telegramMessageId: tg?.message_id ?? null },
-    telegram_message_id: tg?.message_id ?? null,
+    result: { telegramSent: !!telegramMessageId, telegramMessageId, telegramError },
+    telegram_message_id: telegramMessageId,
+    error_message: telegramError,
   });
 
   return NextResponse.json({

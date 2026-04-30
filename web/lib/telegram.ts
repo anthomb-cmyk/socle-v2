@@ -5,6 +5,11 @@
 
 const API = "https://api.telegram.org";
 
+export type TelegramResult =
+  | { ok: true; message_id: string }
+  | { ok: false; error: string };
+
+/** @deprecated Use sendTelegramAlert which now returns TelegramResult */
 export interface SendResult {
   message_id: string;
 }
@@ -12,37 +17,48 @@ export interface SendResult {
 export async function sendTelegramAlert(
   text: string,
   options: { chatId?: string; parseMode?: "Markdown" | "MarkdownV2" | "HTML" } = {},
-): Promise<SendResult | null> {
+): Promise<TelegramResult> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = options.chatId ?? process.env.TELEGRAM_ANTHONY_CHAT_ID;
   if (!token) {
-    console.warn("[telegram] TELEGRAM_BOT_TOKEN not set — alert not sent.");
-    return null;
+    const msg = "TELEGRAM_BOT_TOKEN not set";
+    console.warn(`[telegram] ${msg}`);
+    return { ok: false, error: msg };
   }
   if (!chatId) {
-    console.warn("[telegram] TELEGRAM_ANTHONY_CHAT_ID not set — alert not sent. Send /start to your bot first to discover the chat ID.");
-    return null;
+    const msg = "TELEGRAM_ANTHONY_CHAT_ID not set — send /start to bot to get your chat ID";
+    console.warn(`[telegram] ${msg}`);
+    return { ok: false, error: msg };
+  }
+
+  // Build request body — omit parse_mode entirely when not explicitly set so
+  // Telegram treats the message as plain text. User-entered content (names,
+  // addresses, notes) is not safe to pass through any Markdown parser.
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+  };
+  if (options.parseMode) {
+    body.parse_mode = options.parseMode;
   }
 
   try {
     const resp = await fetch(`${API}/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: options.parseMode ?? "Markdown",
-        disable_web_page_preview: true,
-      }),
+      body: JSON.stringify(body),
     });
     const json = await resp.json();
     if (!json.ok) {
+      const msg = `Telegram API error ${json.error_code}: ${json.description}`;
       console.error("[telegram] sendMessage failed:", json);
-      return null;
+      return { ok: false, error: msg };
     }
-    return { message_id: String(json.result.message_id) };
+    return { ok: true, message_id: String(json.result.message_id) };
   } catch (err) {
+    const msg = `sendMessage threw: ${String(err)}`;
     console.error("[telegram] sendMessage error:", err);
-    return null;
+    return { ok: false, error: msg };
   }
 }

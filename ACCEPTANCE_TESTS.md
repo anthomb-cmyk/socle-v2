@@ -361,6 +361,67 @@ Expected: 200 with `data.results=[{ok:true},{ok:true},{ok:true}]` (or `{ok:false
 
 ---
 
+## AT-22 — High-confidence auto-import (no approval required)
+
+> Tests DEC-03: parser-resolved leads with valid phone, clear owner/address, and no conflicts auto-create as `ready_to_call` without any human review step.
+
+### Setup
+- A Format A or B XLSX file that contains at least one row with: a clear owner name, a valid Quebec property address, a parseable phone number, no duplicate conflict, high parser confidence score.
+
+### Steps
+
+| # | Action | Expected DB state | Expected UI |
+|---|---|---|---|
+| 1 | Anthony: `/import` → upload the XLSX | `import_jobs` row with `status='preview'`, `format_detected`, `preview_data` populated | Preview shows: N phone-ready leads auto-created, M needing enrichment, K needing review |
+| 2 | Anthony: click "Confirm import" | `import_jobs.status='completed'`. For each high-confidence phone-ready row: `leads.status='ready_to_call'`. `phones` row with `status='verified'`, `source='import'`. `automation_events.event_type='import_completed'` with `payload.auto_created_count > 0`. | Toast shows exact counts — auto-created / needs enrichment / needs review / errors |
+| 3 | Anthony: filter `/leads` for newly imported leads | `leads.status='ready_to_call'` for all phone-ready rows | Leads appear immediately in the list, callable, no "Pending review" badge |
+| 4 | Verify no enrichment jobs created for auto-created leads | `enrichment_jobs` has 0 rows for the phone-ready `lead_id`s | `/admin/enrichment` shows no new jobs for these leads |
+| 5 | Verify no review items created for auto-created leads | `review_items` has 0 rows for the phone-ready `lead_id`s | `/review` does not show these leads |
+
+**Pass criteria**: phone-ready leads are in `/leads` as `ready_to_call` with no `enrichment_jobs` or `review_items` rows. Parser counts match exactly what the file contained.
+
+**Boundary check — what should NOT auto-create:**
+- Rows where owner name is ambiguous (two owners on one property, initials-only name)
+- Rows where the phone number appears on more than 3 unrelated properties
+- Rows where the city cannot be normalized to a canonical city name
+- Rows where a duplicate property conflict exists in the DB
+
+---
+
+## AT-23 — Staged enrichment pipeline (deferred — after alpha)
+
+> Tests DEC-05 and DEC-08: Supabase status controls pipeline filtering; each stage queries eligible records by status, not from n8n memory; leads exit as soon as one stage resolves their phone.
+
+**Prerequisite**: Email → CRM round-trip (alpha) is proven, W7 is built. Do not run this test before that.
+
+### Setup
+- At least 5 leads with `status='needs_enrichment'` (no phone; use import or seed).
+- `N8N_SHARED_KEY`, `N8N_ENRICHMENT_WEBHOOK_URL` configured.
+- n8n W7 (staged phone enrichment) workflow is published.
+- Test stubs available for Brave, 411, Google Places, and OpenClaw (to control which leads each stage resolves).
+
+### Steps
+
+| # | Action | Expected DB state | Expected UI / Events |
+|---|---|---|---|
+| 1 | Trigger W7 for 5 leads with `status='needs_enrichment'` | All 5 flip to `brave_queued` | `/admin/enrichment` shows 5 running jobs |
+| 2 | Brave stub resolves 2 leads, returns nothing for 3 | 2 leads → `ready_to_call`, `enrichment_results` with `source='brave'`, `status='unverified'`; 3 leads → `unresolved_after_brave` | `automation_events` row `event_type='enrichment_stage_complete'`, `stage='brave'`, counts: `input_count=5, found_count=2, passed_to_next_count=3` |
+| 3 | 411 stub resolves 1 of the remaining 3 | 1 lead → `ready_to_call`, `source='411'`; 2 leads → `unresolved_after_411` | `automation_events` stage=`directory_411`, `input_count=3, found_count=1, passed_to_next_count=2` |
+| 4 | Google Places stub resolves 1 of the remaining 2 | 1 lead → `ready_to_call`, `source='google_places'`; 1 lead → `unresolved_after_places` | `automation_events` stage=`places`, `input_count=2, found_count=1, passed_to_next_count=1` |
+| 5 | OpenClaw is called for the remaining 1 lead; returns low-confidence result | 1 lead → `needs_human_review`, `enrichment_results` row `status='unverified'`, `confidence < 70`, `source='openclaw'` | `automation_events` stage=`openclaw`, `input_count=1, found_count=1, pending_review_count=1` |
+| 6 | Anthony visits `/leads/<id>` for the needs_human_review lead | (read-only) | OpenClaw result appears in "Pending review" with Approve / Reject buttons |
+| 7 | Anthony approves the OpenClaw result | `enrichment_results.status='verified'`. New `phones` row `status='verified'`, `source='openclaw'`. `leads.status='ready_to_call'`. | Lead is now callable. `automation_events.event_type='enrichment_result_accepted'`. |
+
+**Isolation check — already-solved leads are excluded:**
+After step 2, trigger a second pass of Stage 1 (Brave) for all 5 leads. Expected: the 2 that became `ready_to_call` in step 2 are excluded from the query — `skipped_already_solved_count=2`, `input_count=3`. No duplicate enrichment_results created for them.
+
+**No-result path:**
+Repeat with a lead where all four stages return nothing. Expected: `leads.status='no_contact_found'`. No `enrichment_results` rows created. `automation_events` all show `found_count=0` for this lead. Lead is visible on `/data-health` "No contact found" tile.
+
+**Pass criteria**: stage counts in `automation_events` are accurate at every step. Leads exit the pipeline exactly when a stage resolves them. No lead is passed to a later stage after being resolved. No CRM record is overwritten without Anthony's approval.
+
+---
+
 ## How to run these manually until E2E test infra exists
 
 1. Have one terminal tail Supabase logs (`supabase logs --project-ref ...`).

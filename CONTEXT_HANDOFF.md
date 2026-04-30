@@ -86,16 +86,24 @@ Critical CRM-side n8n endpoints (auth: `Bearer ${N8N_SHARED_KEY}`):
 - Format B (Granby compact-indexed `Propriétaire1_Téléphone`): 16/16 smoke tests pass
 - Format C/D: deferred until sample files arrive
 
+## n8n Workflows — Current Status
+
+| Workflow | ID | Status | Notes |
+|---|---|---|---|
+| Auto-Reply: Immeubles Quebec | `2gZp3dbXCZPU3NV6` | ✅ Published | Fixed 2026-04-30. `AI Email Classifier` JSON body bug resolved. Test execution 95: success. activeVersionId: `48d72cf2`. **Still needs**: `/api/n8n/lead` + `/api/n8n/event` call nodes added to complete email→CRM round-trip. |
+| AI Secretary — Email Triage to Socle Calendar | `eLsh4aPMQfmNAOCx` | ✅ Published | Fixed 2026-04-30. `OpenAI GPT-4o-mini` credentials + `responsesApiEnabled: false` + JSON prompt in agent `text`. Test execution 101: success. activeVersionId: `26c96685`. **Manual step still required**: connect credentials for Gmail Account 2 & 3 triggers, set real Google Sheet ID in `Add Follow-up to Sheets`. |
+
 ## What's NOT live yet
 
 | Thing | Why |
 |---|---|
-| Phone enrichment workflow itself in n8n | Skeleton ready (CRM accepts results), but not connecting to Brave/Places/PJ until the round-trip is verified |
+| n8n Email → CRM round-trip | `2gZp3dbXCZPU3NV6` is published but still needs `POST /api/n8n/lead` + `POST /api/n8n/event` nodes added. This is the current #1 priority. |
+| Phone enrichment workflow in n8n (W7) | CRM skeleton ready; staged pipeline architecture decided (Brave → 411 → Places → OpenClaw, Supabase status filtering). Not building until alpha round-trip is proven. |
 | Twilio click-to-call | Deferred to phase 2 |
 | SMS outreach | Phase 3 (Quebec Law 25 requires consent UI) |
-| Real n8n integration to CRM | Workflow `2gZp3dbXCZPU3NV6` ("Auto-Reply: Immeubles Quebec") exists but doesn't yet call /api/n8n/lead or /api/n8n/event |
 | Telegram inbound webhook | Code is written; needs public URL (ngrok or Vercel deploy) |
 | Vercel deployment | Pending; works locally |
+| OpenClaw W8 | Deferred until alpha proof complete. Integration pattern documented in DECISIONS.md. |
 
 ## Credentials + env vars
 
@@ -158,16 +166,34 @@ AT-1 through AT-21 cover: import, leads list, dossier, caller workspace, hot sel
 - **All 5 migrations applied to live DB** ✓
 - **Seed data populated** ✓
 
+## Blueprint Decisions Locked (2026-04-30)
+
+See SPEC.md § "V2 Blueprint — Design & Pipeline Decisions" and DECISIONS.md DEC-01 through DEC-11 for the full record. Key points:
+
+- V2 looks like V1 (warm/gold UX, compact rows, French labels) but has no V1 technical weaknesses
+- Import parser is deterministic code (not n8n, not OpenClaw, not OpenAI)
+- High-confidence phone-ready leads auto-create without approval — go straight to Leads
+- Only uncertain/conflicting records go to Import Review
+- Enrichment pipeline: Brave → 411 → Google Places → OpenClaw — Supabase status drives eligibility at every stage
+- Every stage reports real counts (input / found / accepted / pending-review / no-result / failed / forwarded)
+- OpenClaw is a judgment-call worker, not a universal enrichment tool; its findings always land unverified
+- Do not build enrichment pipeline, OpenClaw, or any advanced feature until alpha proof is done
+
 ## Where we left off + what to do next
 
-The user just acknowledged the conversation is getting heavy and asked for context to switch to a new one. The immediate state:
+**Current state (as of 2026-04-30):**
+- ✅ Platform is provably operational. `/admin/test` is the readiness check.
+- ✅ `Auto-Reply: Immeubles Quebec` (n8n) — fixed and published. Test execution 95 passed.
+- ✅ `AI Secretary — Email Triage to Socle Calendar` (n8n) — fixed and published. Test execution 101 passed.
+- ✅ V2 blueprint decisions locked in SPEC.md + DECISIONS.md.
 
-1. ✅ Platform is provably operational. Visit `/admin/test` after sign-out + sign-in to verify (the JWT may need refresh).
-2. ⏳ Next priorities (the blueprint says: stabilize → enrich → operate):
-   - **Now**: Anthony walks through the surfaces with seeded data; confirms nothing is broken in the UI
-   - **Next**: build CRM integration into the existing email-triage n8n workflow (add `/api/n8n/lead` + `/api/n8n/event` calls). Needs `N8N_SHARED_KEY` + a public CRM URL (ngrok or Vercel)
-   - **After**: build the actual phone-enrichment n8n workflow (Brave → Places → Pages Jaunes → POST `/api/n8n/enrichment-result`). All CRM-side plumbing already done.
-   - **Defer**: OpenClaw, paid enrichment, AI scoring, proposal engine, Format C/D parsers
+**Immediate next priorities (in order):**
+1. **Email → CRM round-trip**: Add `POST /api/n8n/lead` + `POST /api/n8n/event` to `Auto-Reply: Immeubles Quebec`. Needs `N8N_SHARED_KEY` set in `.env.local` + a public CRM URL (ngrok or Vercel deploy).
+2. **Prove caller loop end-to-end**: Import one real lead → assign to caller → caller logs hot seller → Review Inbox shows it → `automation_event` logged.
+3. **Deploy to stable URL**: Vercel deploy so n8n + Telegram can reach the CRM.
+4. **Then**: staged phone enrichment pipeline (Brave → 411 → Places → OpenClaw).
+
+**Do not start yet**: OpenClaw W8, real enrichment workflow, proposal engine, advanced scoring, duplicate merge UI, Twilio CRM integration, UI polish beyond V1-inspired direction.
 
 ## Working style (Anthony's stated preferences)
 

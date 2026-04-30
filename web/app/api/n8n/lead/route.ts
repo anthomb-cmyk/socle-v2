@@ -208,9 +208,10 @@ export async function POST(request: Request) {
 
   // 6. Optional Telegram alert
   let telegramMessageId: string | null = null;
+  let telegramError: string | null = null;
   if (body.alert?.telegram) {
     const tg = await sendTelegramAlert(
-`📩 *Lead created from email*
+`📩 Lead created from email
 
 *Owner:* ${body.contact.full_name ?? body.contact.company_name}
 *Property:* ${body.property.address}${body.property.num_units ? ` · ${body.property.num_units} units` : ""}
@@ -219,7 +220,12 @@ export async function POST(request: Request) {
 
 ${body.lead?.notes ? body.lead.notes.slice(0, 200) : ""}`,
     );
-    telegramMessageId = tg?.message_id ?? null;
+    if (tg.ok) {
+      telegramMessageId = tg.message_id;
+    } else {
+      telegramError = tg.error;
+      console.error("[n8n/lead] Telegram alert failed:", tg.error);
+    }
   }
 
   // 7. Audit
@@ -231,8 +237,9 @@ ${body.lead?.notes ? body.lead.notes.slice(0, 200) : ""}`,
     related_contact_id: contactId,
     related_property_id: propertyId,
     payload: { input: body, counts },
-    result: { leadId, contactId, propertyId, telegramSent: !!telegramMessageId },
+    result: { leadId, contactId, propertyId, telegramSent: !!telegramMessageId, telegramError },
     telegram_message_id: telegramMessageId,
+    error_message: telegramError,
   });
 
   return NextResponse.json({ ok: true, data: { leadId, contactId, propertyId, counts, telegramMessageId } });
