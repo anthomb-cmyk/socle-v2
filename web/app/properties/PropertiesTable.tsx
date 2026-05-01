@@ -28,6 +28,7 @@ export default function PropertiesTable() {
     setTotal(j.data.total);
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, [city]);
 
   return (

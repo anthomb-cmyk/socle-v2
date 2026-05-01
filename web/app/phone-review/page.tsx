@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import PhoneReviewClient, { type PhoneCandidate } from "./PhoneReviewClient";
 
@@ -76,12 +77,12 @@ export default async function PhoneReviewPage() {
             </p>
           </div>
           <nav className="flex gap-2 text-sm">
-            <a href="/leads" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-50">
+            <Link href="/leads" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-50">
               Leads
-            </a>
-            <a href="/review" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-50">
+            </Link>
+            <Link href="/review" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-50">
               Review inbox
-            </a>
+            </Link>
           </nav>
         </div>
 
