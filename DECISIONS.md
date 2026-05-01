@@ -4,6 +4,33 @@ Append-only log. Newest at top. One entry per decision.
 
 ---
 
+## 2026-05-01 — W7 enrichment: phone found → needs_human_review, not ready_to_call
+- **Decision**: When Brave finds a phone, lead goes to `needs_human_review` (not `ready_to_call` immediately). Anthony approves via /admin/enrichment Approve button. On approve, lead moves to `ready_to_call`.
+- **Why**: Brave results are confidence=60 (not verified). Skipping review would put unverified numbers into callers' hands. The extra approve step takes 2 seconds in the enrichment UI.
+- **Reversible**: Flip to auto-accept at confidence threshold ≥ 80 when we trust the source more.
+
+## 2026-05-01 — Enrichment webhook payload includes lead_info
+- **Decision**: The `POST /api/enrichment-jobs/batch` webhook to n8n includes `lead_info: { full_name, company_name, address, city, already_has_phone }` in the body.
+- **Why**: Avoids a round-trip from n8n back to CRM just to get the contact name for building the Brave search query. The data is already in the DB row being read, zero extra cost.
+- **Reversible**: Remove from payload if the webhook body size becomes an issue.
+
+## 2026-05-01 — n8n lead-status endpoint separate from general PATCH
+- **Decision**: Added `POST /api/n8n/lead-status` (Bearer auth) instead of teaching n8n to use `PATCH /api/leads/[id]` (session auth).
+- **Why**: n8n can't do session cookie auth — it uses shared key Bearer. The existing PATCH was session-only. Separate endpoint keeps auth separation clean and adds explicit enrichment job lifecycle management.
+- **Reversible**: Could unify behind a shared PATCH with multiple auth strategies, but YAGNI.
+
+## 2026-05-01 — Admin nav: 6 primary links + CSS-hover "Admin ▾" dropdown
+- **Decision**: Collapsed 14-link flat nav to 6 primary + dropdown (Properties, Contacts, Health, Enrichment, Users, Events, Test, Seed).
+- **Why**: 14 links in one row overflows on 13" screens. The 6 primary links cover 95% of daily use. Admin-only tools are rarely needed mid-workflow.
+- **Reversible**: Expand back if users complain they can't find things quickly.
+
+## 2026-05-01 — Caller queue sort: priority DESC, last_contacted_at ASC NULLS FIRST
+- **Decision**: Queue shows never-contacted leads first, then oldest-contacted, all within priority band.
+- **Why**: A lead that was never called is more urgent than one that was called yesterday and didn't pick up. Priority overrides recency.
+- **Reversible**: Add configurable sort to the caller queue client-side if callers want different ordering.
+
+---
+
 ## 2026-04-30 — V2 Blueprint finalized: visual direction, enrichment pipeline, alpha priority
 
 This entry consolidates 11 architectural decisions made after reviewing V1 UX patterns and n8n workflow experience. All decisions supersede any prior vague or placeholder descriptions of "enrichment" or "import review."

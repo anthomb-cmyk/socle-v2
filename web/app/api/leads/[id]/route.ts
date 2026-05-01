@@ -6,9 +6,18 @@ import { z } from "zod";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
+const ALL_LEAD_STATUSES = [
+  "new", "enriching", "needs_enrichment", "ready_to_call",
+  "brave_queued", "unresolved_after_brave",
+  "directory_411_queued", "unresolved_after_411",
+  "places_queued", "unresolved_after_places",
+  "openclaw_queued", "needs_human_review", "no_contact_found",
+  "in_outreach", "meeting_set", "qualified", "no_answer", "rejected", "do_not_contact",
+] as const;
+
 const Patch = z.object({
   notes: z.string().optional(),
-  status: z.enum(["new", "enriching", "ready_to_call", "in_outreach", "meeting_set", "qualified", "no_answer", "rejected", "do_not_contact"]).optional(),
+  status: z.enum(ALL_LEAD_STATUSES).optional(),
   priority: z.number().int().min(0).max(100).optional(),
   assignedToUserId: z.string().uuid().nullable().optional(),
 });

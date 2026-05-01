@@ -6,6 +6,18 @@ import { normalizeCity } from "./cities";
 import { formatDisplay } from "./role-parser/phone-utils";
 import type { ParseResult, ParsedRow, ParsedOwner } from "./role-parser/types";
 
+// Normalise a contact name for dedup matching.
+// Rôle exports are ALL-CAPS; other sources may be title-cased.
+// We title-case before both lookup AND storage so the same person matches
+// regardless of the capitalisation in the source file.
+function normaliseName(s: string): string {
+  if (!s) return s;
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/(^|\s|-|')(\p{L})/gu, (_, sep: string, c: string) => sep + c.toUpperCase());
+}
+
 export interface CommitCounts {
   properties_created: number;
   properties_updated: number;
@@ -158,10 +170,13 @@ async function upsertContact(
   importJobId: string,
   counts: CommitCounts,
 ): Promise<string | null> {
-  // Try to find by company_name (for entities) or full_name (for persons)
+  // Try to find by company_name (for entities) or full_name (for persons).
+  // Normalise to title-case before both lookup and storage so that
+  // "TREMBLAY, JEAN" from one file matches "Tremblay, Jean" from another.
   const lookupField = owner.kind === "person" ? "full_name" : "company_name";
-  const lookupVal = owner.kind === "person" ? owner.full_name : (owner.company_name || owner.full_name);
-  if (!lookupVal) return null;
+  const rawLookup = owner.kind === "person" ? owner.full_name : (owner.company_name || owner.full_name);
+  if (!rawLookup) return null;
+  const lookupVal = normaliseName(rawLookup);
 
   const { data: existing } = await supabase.from("contacts")
     .select("id")
@@ -170,10 +185,10 @@ async function upsertContact(
 
   const payload = {
     kind: owner.kind,
-    first_name: owner.first_name ?? null,
-    last_name: owner.last_name ?? null,
-    full_name: owner.full_name,
-    company_name: owner.company_name ?? null,
+    first_name: owner.first_name ? normaliseName(owner.first_name) : null,
+    last_name: owner.last_name ? normaliseName(owner.last_name) : null,
+    full_name: normaliseName(owner.full_name),
+    company_name: owner.company_name ? normaliseName(owner.company_name) : null,
     numbered_co_id: owner.numbered_co_id ?? null,
     mailing_address: owner.mailing_address ?? null,
     mailing_city: owner.mailing_city ? normalizeCity(owner.mailing_city) : null,

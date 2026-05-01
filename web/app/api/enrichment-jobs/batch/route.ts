@@ -32,11 +32,12 @@ export async function POST(request: Request) {
 
   const sb = createSupabaseAdminClient();
 
-  // Hydrate leads → contact_id (in one query)
-  const { data: leadRows } = await sb.from("leads")
-    .select("id, contact_id")
-    .in("id", body.leadIds);
-  const leadMap = new Map<string, string>(((leadRows ?? []) as Array<{ id: string; contact_id: string }>).map(l => [l.id, l.contact_id]));
+  // Hydrate leads → contact_id + enrichment info (in one query via leads_view)
+  const { data: leadRows } = await sb.from("leads_view")
+    .select("lead_id, contact_id, full_name, company_name, address, city, num_units, best_phone")
+    .in("lead_id", body.leadIds);
+  type LeadInfo = { contact_id: string; full_name: string | null; company_name: string | null; address: string; city: string | null; num_units: number | null; best_phone: string | null };
+  const leadMap = new Map<string, LeadInfo>(((leadRows ?? []) as Array<{ lead_id: string } & LeadInfo>).map(l => [l.lead_id, l]));
 
   // Existing non-terminal jobs of same type (for the skip check)
   let existingByLead = new Map<string, string>();
@@ -53,11 +54,12 @@ export async function POST(request: Request) {
   const webhookUrl = process.env.N8N_ENRICHMENT_WEBHOOK_URL;
 
   for (const leadId of body.leadIds) {
-    const contactId = leadMap.get(leadId);
-    if (!contactId) {
+    const leadInfo = leadMap.get(leadId);
+    if (!leadInfo) {
       results.push({ leadId, status: "failed", error: "Lead not found" });
       continue;
     }
+    const contactId = leadInfo.contact_id;
     if (!body.force && existingByLead.has(leadId)) {
       results.push({ leadId, status: "skipped", error: `existing ${body.jobType} job (${existingByLead.get(leadId)})` });
       continue;
@@ -83,7 +85,21 @@ export async function POST(request: Request) {
         if (process.env.N8N_SHARED_KEY) headers["Authorization"] = `Bearer ${process.env.N8N_SHARED_KEY}`;
         const r = await fetch(webhookUrl, {
           method: "POST", headers,
-          body: JSON.stringify({ enrichment_job_id: jobId, lead_id: leadId, contact_id: contactId, job_type: body.jobType }),
+          body: JSON.stringify({
+            enrichment_job_id: jobId,
+            lead_id: leadId,
+            contact_id: contactId,
+            job_type: body.jobType,
+            // Lead context so W7 can build a search query without a round-trip
+            lead_info: {
+              full_name: leadInfo.full_name,
+              company_name: leadInfo.company_name,
+              address: leadInfo.address,
+              city: leadInfo.city,
+              num_units: leadInfo.num_units,
+              already_has_phone: !!leadInfo.best_phone,
+            },
+          }),
         });
         if (r.ok) {
           await sb.from("enrichment_jobs").update({ status: "running", started_at: new Date().toISOString() }).eq("id", jobId);

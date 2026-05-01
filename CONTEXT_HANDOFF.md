@@ -14,7 +14,7 @@
 
 ## Current Live Alpha Status
 
-**As of 2026-04-30 ~23:55 UTC — Both alpha loops confirmed on Railway.**
+**As of 2026-05-01 (overnight build) — Priority 1+2+3 autonomous build complete.**
 
 | Item | Status |
 |---|---|
@@ -24,6 +24,7 @@
 | Alpha Proof A — hot seller → Telegram → audit | ✅ CONFIRMED ON RAILWAY (telegram_message_id: "43" at 23:52:35 UTC) |
 | Alpha Proof B — n8n CRM endpoints | ✅ CONFIRMED (`lead_upserted_from_email` at 23:26:34 UTC, W1a → Railway) |
 | Alpha Proof B — Gmail trigger end-to-end | ⏳ Pending Gmail + OpenAI credentials attached to W1a |
+| Alpha Proof C — import pipeline end-to-end | ✅ CONFIRMED ON RAILWAY: 5 properties, 6 contacts, 6 phones, 6 leads, 6 assigned to Gaylord. Co-owner row creates 2 leads per property (correct). |
 | n8n W1a ngrok dependency | ✅ ELIMINATED — all 3 nodes → Railway |
 | Railway env vars | ✅ All 7 confirmed functional |
 
@@ -36,21 +37,35 @@
 ### What has passed
 - AT-A: Hot seller loop on Railway ✅ (2026-04-30 23:52 UTC)
 - AT-B (partial): n8n CRM endpoints on Railway ✅ (2026-04-30 23:26 UTC)
+- AT-C: Import pipeline on Railway ✅ (2026-04-30): 5 props / 6 contacts / 6 phones / 6 leads / 6 assigned
 
-### What remains deferred
+### What remains deferred (manual steps only)
 - W1a Gmail credentials (manual n8n step — see below)
-- W1a-biz for `anthony@socleacquisitions.com` (duplicate W1a in n8n UI)
+- W1a-biz for `anthony@socleacquisitions.com` (4 inactive drafts exist in n8n — pick one, attach Gmail cred + activate)
 - Telegram inbound webhook registration
-- Phone enrichment pipeline (W7: Brave → 411 → Places → OpenClaw)
+- W7 credentials in n8n (see W7 section below)
+- Supabase migration 0006 — must be applied manually (see below)
 - Twilio click-to-call (phase 2)
 - SMS outreach (phase 3 — Quebec Law 25 consent)
 - GitHub push (HTTPS keychain — `brew install gh && gh auth login`)
 
 ### What Anthony should do next (in order)
-1. **n8n W1a credentials** (5 min): open `https://anthonysocleacquisitions.app.n8n.cloud/workflow/2gZp3dbXCZPU3NV6`, attach `antho02mb@gmail.com` OAuth2 to `New Email Received` trigger + 2 draft nodes + OpenAI API to `AI Email Classifier`
-2. **Live email test** (2 min): send a test email to `antho02mb@gmail.com` from a personal address, verify lead appears in Railway CRM within 1 minute
-3. **W1a-biz** (10 min): in n8n UI, duplicate W1a, rename to "Auto-Reply: Socle Acquisitions", swap Gmail credential to `anthony@socleacquisitions.com`
-4. **Then**: start phone enrichment pipeline (W7)
+1. **Remove git lock + commit + push** (2 min):
+   ```bash
+   cd "/Users/anthonymakeen/Documents/New project/socle-v2"
+   rm .git/index.lock
+   git add -A
+   git commit -m "feat: caller queue, import quick-assign, leads filters, nav, enrichment pipeline (W7)"
+   git push origin main
+   ```
+2. **Apply Supabase migration 0006** (2 min): Go to Supabase dashboard → SQL Editor → paste and run contents of `supabase/migrations/0006_enrichment_status.sql` (adds enrichment pipeline statuses to `lead_status` enum)
+3. **n8n W1a credentials** (5 min): open `https://anthonysocleacquisitions.app.n8n.cloud/workflow/2gZp3dbXCZPU3NV6`, attach `antho02mb@gmail.com` OAuth2 to `New Email Received` trigger + 2 draft nodes + OpenAI API to `AI Email Classifier`
+4. **W1a-biz** (5 min): In n8n, find any "Auto-Reply: Socle Business Email" workflow → open `New Email Received` trigger + both `Create Draft` nodes → attach `anthony@socleacquisitions.com` Gmail OAuth2 → Activate
+5. **W7 credentials** (5 min): In n8n, open W7 (`ieE7UpmdRiWejjz7`) → create two credentials:
+   - `Socle CRM N8N Key` — HTTP Header Auth, Name: `Authorization`, Value: `Bearer {N8N_SHARED_KEY}`
+   - `Brave Search API` — HTTP Header Auth, Name: `X-Subscription-Token`, Value: `{BRAVE_API_KEY}`
+   Then set `N8N_ENRICHMENT_WEBHOOK_URL` in Railway env vars to the W7 webhook URL (shown in n8n as `https://anthonysocleacquisitions.app.n8n.cloud/webhook/enrichment-job`) → Activate W7
+6. **Live email test** (2 min): send a test email to `antho02mb@gmail.com`, verify lead appears in Railway CRM within 1 minute
 
 ---
 
@@ -104,12 +119,13 @@ Key config facts:
 
 ## Database (Supabase `mkgkrfcfhtrlecfuzroz`)
 
-All 5 migrations applied:
+5 migrations applied on Railway, 1 pending manual apply:
 - `0001_init.sql` — base schema (16 tables)
 - `0002_followups_sync.sql` — Google Calendar / Tasks sync fields
 - `0003_user_roles.sql` — widened role taxonomy + `is_active` + `email`
 - `0004_enrichment_extensions.sql` — `enrichment_jobs` + `enrichment_results`
 - `0005_properties_source.sql` — `source` + `source_meta` on properties
+- `0006_enrichment_status.sql` — ⚠️ **PENDING MANUAL APPLY** — adds `needs_enrichment`, `brave_queued`, `unresolved_after_brave`, etc. to `lead_status` enum
 
 Seeded: 10 leads (Granby), 10 properties, 11 contacts, 10 phones, 1 campaign, follow-ups, 1 hot-seller submission, 1 open review item, 1 pending proposed action.
 
@@ -148,6 +164,7 @@ n8n endpoints (auth: `Bearer ${N8N_SHARED_KEY}`):
 - `POST /api/n8n/event` — audit-log sink
 - `POST /api/n8n/lead` — create/update lead from email triage
 - `POST /api/n8n/enrichment-result` — enrichment findings (land `unverified`)
+- `POST /api/n8n/lead-status` — update lead pipeline status (enrichment stages)
 - `POST /api/follow-ups/[id]/sync` — single sync writeback
 - `POST /api/follow-ups/sync-batch` — bulk sync (up to 500)
 
@@ -155,8 +172,10 @@ n8n endpoints (auth: `Bearer ${N8N_SHARED_KEY}`):
 
 | Workflow | ID | Status | CRM Target | Notes |
 |---|---|---|---|---|
-| Auto-Reply: Immeubles Quebec | `2gZp3dbXCZPU3NV6` | ✅ Active (activeVersionId `dba063d4`) | Railway | All 3 HTTP nodes → Railway. **Pending**: Gmail OAuth2 on trigger + 2 draft nodes + OpenAI on classifier |
+| Auto-Reply: Immeubles Quebec (W1a) | `2gZp3dbXCZPU3NV6` | ✅ Active (activeVersionId `764ae196`) | Railway | All 3 HTTP nodes → Railway. `continueOnFail: true` on both Gmail draft nodes. **Pending**: Gmail OAuth2 on trigger + 2 draft nodes + OpenAI on classifier |
+| Auto-Reply: Socle Acquisitions (Biz) (W1a-biz) | `frgVOM2HCi1aCvDd` (or any of 4 inactive drafts) | ⏳ Inactive — needs Gmail cred attached | Railway | Open any "Auto-Reply: Socle Business Email" in n8n → attach `anthony@socleacquisitions.com` OAuth2 → Activate |
 | AI Secretary — Email Triage to Socle Calendar | `eLsh4aPMQfmNAOCx` | ✅ Published | Google Calendar | **Pending**: Gmail credentials for accounts 2+3, real Google Sheet ID |
+| W7 — Phone Enrichment: Brave Stage | `ieE7UpmdRiWejjz7` | ⏳ Inactive — needs credentials | Railway | Webhook path: `enrichment-job`. Needs: `Socle CRM N8N Key` (HTTP Header Auth Bearer) + `Brave Search API` (HTTP Header Auth X-Subscription-Token). Set `N8N_ENRICHMENT_WEBHOOK_URL` in Railway. |
 
 ## Telegram
 
@@ -251,22 +270,38 @@ Two new checks under "Import pipeline" section:
 
 ## Where we left off + next build step
 
-**Completed this session:**
-- Railway deployment: fixed all 5 build failures, deployed, live
-- Auth: fixed Supabase URL config, Google OAuth redirect works
-- Telegram: fixed silent failures, fixed Markdown parse errors, plain text format
-- n8n W1a: replaced all 3 ngrok URLs with Railway, published
-- Alpha Proof A: CONFIRMED ON RAILWAY (Telegram message 43)
-- Alpha Proof B: CRM endpoints confirmed, Gmail trigger pending credentials
-- /admin/test: added Alpha loops group, Import pipeline group, migration 0004/0005 checks, NEXT_PUBLIC_APP_URL env check
-- Import system audited: parsers A+B confirmed working, fixture created (web/fixtures/granby-sample-5rows.xlsx), bulk-assign path confirmed
+**Completed overnight build (2026-05-01):**
 
-**Next recommended build step: W1a Gmail credentials + live email test**
-This is a 5-minute manual step in n8n UI (not Claude). After that, the first real-world email through the complete pipeline (Gmail → n8n → AI classify → draft → Railway CRM) will be proven, and the platform is ready for W1a-biz and then W7 (phone enrichment).
+Priority 1 — Calling workflow:
+- `web/app/import/page.tsx` — post-import Quick Assign inline panel; phone-ready count; campaign warning
+- `web/app/api/leads/route.ts` — `campaign_id`, `has_phone`, enhanced `assigned_to` filters; campaigns list in response
+- `web/components/leads-table.tsx` — campaign filter, assigned-to filter, has-phone filter, load-more pagination, assigned-to column, "Select callable only" button
+- `web/app/calls/queue/page.tsx` — campaign name, last-contacted date, call count, phone formatting, priority badge, sorted by priority + oldest contact first, phone-ready count in header
 
-**Then: real import test** — upload `web/fixtures/granby-sample-5rows.xlsx` at `/import`, confirm, bulk-assign to Gaylord, verify `/calls/queue` shows 5 leads.
+Priority 2 — Usability:
+- `web/components/app-nav.tsx` — Admin nav collapsed into primary links + "Admin ▾" CSS-hover dropdown; clean 10px height bar
+- `next.config.ts` — moved `typedRoutes` out of `experimental` (fixes build warning)
 
-**Do not start yet**: OpenClaw, enrichment pipeline, proposal engine, Twilio, advanced scoring, UI polish.
+Priority 3 — Enrichment pipeline:
+- `supabase/migrations/0006_enrichment_status.sql` — adds 10 pipeline statuses to `lead_status` enum (⚠️ needs manual apply in Supabase dashboard)
+- `web/app/api/n8n/lead-status/route.ts` — new n8n-authenticated endpoint for pipeline status updates
+- `web/app/api/enrichment-jobs/batch/route.ts` — webhook payload now includes `lead_info` (name, address, city) so W7 has everything it needs without round-trip
+- `web/app/api/leads/[id]/route.ts` — PATCH now accepts all enrichment pipeline statuses
+- **W7 created in n8n** (`ieE7UpmdRiWejjz7`): webhook trigger → skip-if-phone → build Brave query → Brave Search API → phone regex extraction → save `enrichment_result (unverified)` → update lead status → log event. Needs credentials attached (see "What Anthony should do next").
+
+**TypeScript: 0 errors** across all changes.
+
+**Real blockers remaining (all manual steps, no code changes needed):**
+1. `rm .git/index.lock` then git commit + push — can't do from sandbox (Mac process owns lock)
+2. Supabase 0006 migration — `ALTER TYPE` in SQL Editor
+3. W1a Gmail credentials in n8n
+4. W7 credentials in n8n + `N8N_ENRICHMENT_WEBHOOK_URL` in Railway
+
+**Next build priorities (when Anthony is back):**
+- Test W7 end-to-end: trigger enrichment batch from /admin/enrichment on a no-phone lead → verify Brave result appears → approve → lead moves to ready_to_call
+- Build W7b (411/Pages Jaunes stage) — same pattern as W7, different search API
+- Telegram inbound command registration (`/register` to capture chat ID)
+- Twilio click-to-call scaffolding (Phase 2)
 
 ## MCP tools for next session
 

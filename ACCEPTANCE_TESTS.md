@@ -14,7 +14,7 @@ A test is **passed** only when it runs against the live Supabase + UI and produc
 | **AT-B: n8n → /api/n8n/lead (Railway)** | ✅ PASSED | `automation_events`: `lead_upserted_from_email` at 2026-04-30 23:26:34 UTC |
 | **AT-B: n8n → /api/n8n/event (Railway)** | ✅ PASSED | `automation_events`: `railway_smoke_test` at 2026-04-30 23:26:35 UTC |
 | **AT-B: Gmail trigger → full pipeline** | ⏳ PENDING | Blocked on Gmail OAuth2 + OpenAI credentials attached to W1a in n8n UI |
-| **AT-C: Import proof (one-click fixture)** | ⏳ READY TO RUN | Go to `/admin/test` → "Run import proof" button. No manual steps needed. |
+| **AT-C: Import proof (one-click fixture)** | ✅ PASSED | Railway `/admin/test` → "Run import proof": 5 properties, 6 contacts, 6 phones, 6 leads, 6 assigned to Gaylord. Co-owner row (GAGNON×2) correctly creates 2 separate leads — expected behaviour. |
 | **AT-1 (formal): Import → Assign → Hot seller → Telegram → Inbox** | ⏳ NOT YET RUN | Prerequisite for v1-of-v2 ship |
 
 ---
@@ -40,14 +40,17 @@ Proves the real business input path without needing a real Excel file or manual 
 
 ### Pass criteria
 
-| # | Check | Expected |
-|---|---|---|
-| 1 | Button returns success | `counts.leads_created >= 1` (or `leads_updated` if re-run) |
-| 2 | Leads assigned | `assignedCount >= 1` |
-| 3 | DB: `import_jobs` | New row with `status='completed'`, `format_detected='role_b'` |
-| 4 | DB: `leads` | 5–6 leads (1 property has 2 co-owners → 2 leads) with `assigned_to = callerId` |
-| 5 | DB: `phones` | Leads' contacts each have 1 E.164 phone with `status='unverified'` |
-| 6 | Caller queue | Sign in as Gaylord (or use `/calls/queue` in separate session) → 5+ leads visible |
+| # | Check | Expected | Actual (Railway 2026-04-30) |
+|---|---|---|---|
+| 1 | Button returns success | `counts.leads_created >= 1` (or `leads_updated` if re-run) | ✅ `leads_created=6` |
+| 2 | Leads assigned | `assignedCount >= 1` | ✅ `assignedCount=6` |
+| 3 | DB: `import_jobs` | New row with `status='completed'`, `format_detected='role_b'` | ✅ |
+| 4 | DB: `leads` | 5–6 leads with `assigned_to = callerId` | ✅ 6 leads (row 3 has 2 co-owners → 2 leads per property — expected) |
+| 5 | DB: `phones` | Contacts each have 1 E.164 phone with `status='unverified'` | ✅ 6 phones |
+| 6 | Caller queue | `/calls/queue` → 5+ leads visible for Gaylord | ✅ visible under campaign "Granby Sample — fixture" |
+
+### Co-owner note
+The co-owner row (GAGNON, MARIE-FRANCE + GAGNON, RICHARD) creates 2 separate contacts and 2 separate leads for the same property. This is correct — each owner is a distinct calling target. If we ever want to collapse co-owners into one lead, that's a future policy decision (DEC-TBD), not a bug.
 
 ### Fixture data coverage
 - Row 1: person owner (TREMBLAY, JEAN-PIERRE) — tests `kind=person`, name split
