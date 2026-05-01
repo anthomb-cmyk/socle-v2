@@ -55,3 +55,6 @@ n8n/data/
 
 # Migration artifacts (we keep the .sql files but not the local generated DB)
 supabase/.tmp_migrations/
+
+# Claude Code sandboxed worktrees — never commit
+.claude/worktrees/

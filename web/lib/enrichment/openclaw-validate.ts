@@ -13,7 +13,7 @@
 // If OPENCLAW_WEBHOOK_URL is not set, this module logs a warning and
 // returns a "skipped" result so the pipeline degrades gracefully.
 
-import type { LeadContext, OpenclawValidationResult, PhoneCandidate, StageResult } from "./types";
+import type { LeadContext, OpenclawValidationResult, PhoneCandidate } from "./types";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 // ── Role 2: Validate a low-confidence candidate ───────────────────────────

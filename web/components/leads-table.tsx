@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 type Lead = {
@@ -89,7 +89,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
   }
 
   // Re-fetch when any filter changes
-  useEffect(() => { refresh(); }, [city, status, campaignId, assignedTo, hasPhone, q]);
+  useEffect(() => { refresh(); }, [city, status, campaignId, assignedTo, hasPhone, q, refresh]);
 
   useEffect(() => {
     if (!canAssign) return;
@@ -98,7 +98,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
 
   // Selection helpers
   function toggle(id: string) {
-    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelected(prev => { const n = new Set(prev); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
   }
   function toggleAll() {
     setSelected(selected.size === leads.length ? new Set() : new Set(leads.map(l => l.lead_id)));
@@ -131,7 +131,6 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
 
   const hasMore = leads.length < total;
   const phoneReady = leads.filter(l => l.best_phone).length;
-  const phoneReadyTotal = hasPhone ? total : phoneReady; // approximate for display
 
   return (
     <div className="space-y-4">
