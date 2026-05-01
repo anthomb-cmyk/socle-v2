@@ -1,5 +1,8 @@
 # RUNBOOK.md
 
+> **Production is live.** Railway URL: `https://socle-v2-production.up.railway.app`
+> One-time setup is complete. Use this file for operational procedures and re-deployment steps.
+
 Setup steps for v2. Anthony does the parts marked **[manual]**; everything else is automated.
 
 ## One-time infra setup
@@ -37,16 +40,19 @@ on conflict (user_id) do update set role = 'admin', display_name = 'Anthony Make
 
 (Repeat with `'caller'` for Gaylord once he signs in.)
 
-### 4. Vercel project **[manual]**
+### 4. Railway deployment **[COMPLETE as of 2026-04-30]**
 
-1. Import the `socle-v2` repo in Vercel.
-2. Root directory: `web/`.
-3. Add env vars from `.env.example` (filled in with real values).
-4. Deploy.
+Railway is the production platform. Vercel is superseded.
 
-### 5. n8n.cloud **[manual, deferred until Phase 2]**
+- Root directory: `web/`
+- `web/railway.json` handles build + start commands — do not override in Railway UI
+- All env vars set in Railway → Service → Variables (see DEPLOY.md for full list)
+- Supabase Auth URL Configuration updated to Railway URL
 
-Skip until import + caller workspace are working.
+### 5. n8n.cloud **[COMPLETE — W1a active, W1a-biz pending]**
+
+W1a (`2gZp3dbXCZPU3NV6`) is live and pointing to Railway.
+Pending manual steps: attach Gmail OAuth2 credentials to trigger + 2 draft nodes, attach OpenAI credential to classifier.
 
 ### 6. Telegram bot **[manual, deferred until Phase 2]**
 

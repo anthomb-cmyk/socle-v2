@@ -10,8 +10,14 @@ type Diag = {
   checks: Check[];
 };
 
-type Seeder = { label: string; endpoint: string; body: Record<string, unknown>; primary?: boolean };
+type Seeder = { label: string; endpoint: string; body: Record<string, unknown>; primary?: boolean; importProof?: boolean };
 const SEEDERS: Seeder[] = [
+  {
+    label: "▶ Import proof — 5-row Granby fixture → parser → DB → assign to Gaylord",
+    endpoint: "/api/dev/seed-fixture-import",
+    body: {},
+    importProof: true,
+  },
   { label: "Seed everything (one-shot full chain)", endpoint: "/api/dev/seed-everything", body: { city: "Granby", leadCount: 10 }, primary: true },
   { label: "Seed a fake caller user", endpoint: "/api/dev/seed-caller", body: {} },
   { label: "Seed 10 leads in Granby", endpoint: "/api/dev/seed-leads", body: { count: 10, city: "Granby" } },
@@ -57,12 +63,14 @@ export default function TestPanel() {
   if (!diag) return null;
 
   // Group checks by category
-  const groups = {
+  const groups: Record<string, Check[]> = {
     Migrations: diag.checks.filter(c => c.id.startsWith("migration_")),
     Auth: diag.checks.filter(c => c.id === "admin_seeded" || c.id === "jwt_fresh"),
     Environment: diag.checks.filter(c => c.id.startsWith("env_")),
     "Seed data": diag.checks.filter(c => c.id.startsWith("seed_")),
     Enrichment: diag.checks.filter(c => c.id.startsWith("enrich_")),
+    "Import pipeline": diag.checks.filter(c => c.id.startsWith("import_")),
+    "Alpha loops": diag.checks.filter(c => c.id.startsWith("alpha_")),
   };
 
   return (
@@ -78,13 +86,23 @@ export default function TestPanel() {
         </section>
       ))}
 
+      {/* ── Import proof seeder — top of page, prominent ── */}
+      <section className="bg-blue-50 rounded-2xl border border-blue-200 p-4">
+        <h2 className="text-sm font-semibold text-blue-900 mb-1">Import proof (one-click)</h2>
+        <p className="text-xs text-blue-700 mb-3">
+          Runs the real import pipeline end-to-end: 5-row Granby XLSX → parser → DB → assign to Gaylord caller.
+          Safe to re-run (idempotent). After running, open Caller queue to confirm leads appear.
+        </p>
+        <ImportProofSeeder running={running} setRunning={setRunning} onDone={refresh} />
+      </section>
+
       <section className="bg-zinc-50 rounded-2xl border border-zinc-200 p-4">
         <h2 className="text-sm font-semibold text-zinc-700 mb-3">One-click seeders</h2>
         <p className="text-xs text-zinc-500 mb-3">
           Each seeder runs against the live database. Run &quot;Seed everything&quot; first if starting from empty.
         </p>
         <div className="space-y-2">
-          {SEEDERS.map(s => (
+          {SEEDERS.filter(s => !s.importProof).map(s => (
             <div key={s.label} className={`flex items-center justify-between gap-3 rounded-lg p-3 ${s.primary ? "bg-emerald-50 border border-emerald-200" : "bg-white border border-zinc-200"}`}>
               <span className="text-sm">{s.label}</span>
               <button onClick={() => runSeed(s)} disabled={running !== null}
@@ -107,6 +125,7 @@ export default function TestPanel() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
           <Link href="/" className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Dashboard →</Link>
           <Link href="/leads" className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Leads list →</Link>
+          <Link href="/import" className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Import rôle →</Link>
           <Link href={"/calls/queue" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Caller queue →</Link>
           <Link href={"/follow-ups" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Follow-ups →</Link>
           <Link href={"/calendar" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Calendar →</Link>
@@ -177,5 +196,101 @@ function CheckRow({ check }: { check: Check }) {
         </div>
       )}
     </li>
+  );
+}
+
+// ─── Import proof component ────────────────────────────────────────────────
+type ImportProofResult = {
+  ok: boolean;
+  data?: {
+    jobId: string;
+    counts: {
+      properties_created: number; contacts_created: number;
+      phones_created: number; leads_created: number; leads_updated: number;
+    };
+    assignedCount: number;
+    caller: { email: string; displayName: string; created: boolean };
+    nextSteps: { leads: string; callerQueue: string };
+  };
+  error?: string;
+};
+
+function ImportProofSeeder({
+  running,
+  setRunning,
+  onDone,
+}: {
+  running: string | null;
+  setRunning: (v: string | null) => void;
+  onDone: () => void;
+}) {
+  const KEY = "import-proof";
+  const [result, setResult] = useState<ImportProofResult | null>(null);
+
+  async function run() {
+    setRunning(KEY);
+    setResult(null);
+    const r = await fetch("/api/dev/seed-fixture-import", { method: "POST" });
+    const j: ImportProofResult = await r.json();
+    setRunning(null);
+    setResult(j);
+    onDone();
+  }
+
+  const busy = running !== null;
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={run}
+        disabled={busy}
+        className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-medium">
+        {running === KEY ? "Running import…" : "Run import proof"}
+      </button>
+
+      {result && result.ok && result.data && (
+        <div className="bg-white border border-blue-200 rounded-lg p-4 space-y-3 text-sm">
+          <p className="font-semibold text-blue-900">✓ Import proof complete</p>
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            <Pill label="Properties" value={result.data.counts.properties_created} suffix="created" />
+            <Pill label="Contacts" value={result.data.counts.contacts_created} suffix="created" />
+            <Pill label="Phones" value={result.data.counts.phones_created} suffix="created" />
+            <Pill label="Leads" value={result.data.counts.leads_created} suffix="created" />
+            <Pill label="Leads updated" value={result.data.counts.leads_updated} />
+            <Pill label="Assigned to caller" value={result.data.assignedCount} />
+          </div>
+          <p className="text-xs text-zinc-600">
+            Caller: <strong>{result.data.caller.displayName}</strong> ({result.data.caller.email})
+            {result.data.caller.created && <span className="ml-1 text-blue-600">— just created</span>}
+          </p>
+          <div className="flex gap-2 pt-1">
+            <Link href={result.data.nextSteps.leads as never}
+              className="bg-zinc-900 text-white rounded px-3 py-1.5 text-xs">
+              View leads →
+            </Link>
+            <Link href={result.data.nextSteps.callerQueue as never}
+              className="border border-zinc-300 rounded px-3 py-1.5 text-xs">
+              Caller queue →
+            </Link>
+          </div>
+          <p className="text-xs text-zinc-400">Job ID: {result.data.jobId}</p>
+        </div>
+      )}
+
+      {result && !result.ok && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+          ✗ {result.error ?? "Unknown error"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Pill({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
+  return (
+    <div className="bg-zinc-50 rounded p-2">
+      <div className="text-zinc-500 text-xs">{label}</div>
+      <div className="font-semibold text-zinc-900">{value}{suffix && <span className="text-zinc-400 font-normal"> {suffix}</span>}</div>
+    </div>
   );
 }

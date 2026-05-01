@@ -12,6 +12,48 @@
   - AI / automation never auto-overwrites important records — proposes via `proposed_actions` or `enrichment_results`, Anthony approves.
   - CRM is the source of truth. n8n orchestrates. Telegram is mobile UI.
 
+## Current Live Alpha Status
+
+**As of 2026-04-30 ~23:55 UTC — Both alpha loops confirmed on Railway.**
+
+| Item | Status |
+|---|---|
+| Production URL | ✅ `https://socle-v2-production.up.railway.app` |
+| `/api/health` | ✅ `{"ok":true,"schemaApplied":true}` |
+| Google OAuth login → Railway CRM | ✅ Fixed (Supabase Site URL + Redirect URLs updated) |
+| Alpha Proof A — hot seller → Telegram → audit | ✅ CONFIRMED ON RAILWAY (telegram_message_id: "43" at 23:52:35 UTC) |
+| Alpha Proof B — n8n CRM endpoints | ✅ CONFIRMED (`lead_upserted_from_email` at 23:26:34 UTC, W1a → Railway) |
+| Alpha Proof B — Gmail trigger end-to-end | ⏳ Pending Gmail + OpenAI credentials attached to W1a |
+| n8n W1a ngrok dependency | ✅ ELIMINATED — all 3 nodes → Railway |
+| Railway env vars | ✅ All 7 confirmed functional |
+
+### What is live
+- Railway CRM: all routes load, auth works, Supabase connected
+- Hot-seller loop: caller submits → review inbox → Telegram alert (plain text, no parse_mode) → automation_event with `telegram_message_id`
+- n8n → Railway: `/api/n8n/lead` and `/api/n8n/event` both return `{"ok":true}` and create DB rows
+- W1a active and pointing to Railway — no ngrok
+
+### What has passed
+- AT-A: Hot seller loop on Railway ✅ (2026-04-30 23:52 UTC)
+- AT-B (partial): n8n CRM endpoints on Railway ✅ (2026-04-30 23:26 UTC)
+
+### What remains deferred
+- W1a Gmail credentials (manual n8n step — see below)
+- W1a-biz for `anthony@socleacquisitions.com` (duplicate W1a in n8n UI)
+- Telegram inbound webhook registration
+- Phone enrichment pipeline (W7: Brave → 411 → Places → OpenClaw)
+- Twilio click-to-call (phase 2)
+- SMS outreach (phase 3 — Quebec Law 25 consent)
+- GitHub push (HTTPS keychain — `brew install gh && gh auth login`)
+
+### What Anthony should do next (in order)
+1. **n8n W1a credentials** (5 min): open `https://anthonysocleacquisitions.app.n8n.cloud/workflow/2gZp3dbXCZPU3NV6`, attach `antho02mb@gmail.com` OAuth2 to `New Email Received` trigger + 2 draft nodes + OpenAI API to `AI Email Classifier`
+2. **Live email test** (2 min): send a test email to `antho02mb@gmail.com` from a personal address, verify lead appears in Railway CRM within 1 minute
+3. **W1a-biz** (10 min): in n8n UI, duplicate W1a, rename to "Auto-Reply: Socle Acquisitions", swap Gmail credential to `anthony@socleacquisitions.com`
+4. **Then**: start phone enrichment pipeline (W7)
+
+---
+
 ## Repo + paths
 
 | Thing | Where |
@@ -20,8 +62,9 @@
 | Web app | `web/` (Next.js 15 App Router, TypeScript, Tailwind v4) |
 | Supabase migrations | `supabase/migrations/0001_init.sql` … `0005_properties_source.sql` |
 | Dev server port | **8985** (`npm run dev`) |
-| GitHub repo | `https://github.com/anthomb-cmyk/socle-v2` (created but push currently blocked by HTTPS keychain — `brew install gh && gh auth login` is the unblocker) |
-| Docs | `SPEC.md`, `DECISIONS.md`, `RUNBOOK.md`, `API.md`, `N8N_WORKFLOWS.md`, `TELEGRAM_COMMANDS.md`, `ACCEPTANCE_TESTS.md` |
+| **Railway production URL** | **`https://socle-v2-production.up.railway.app`** |
+| GitHub repo | `https://github.com/anthomb-cmyk/socle-v2` (push blocked by HTTPS keychain — `brew install gh && gh auth login` is the unblocker) |
+| Docs | `SPEC.md`, `DECISIONS.md`, `RUNBOOK.md`, `API.md`, `N8N_WORKFLOWS.md`, `TELEGRAM_COMMANDS.md`, `ACCEPTANCE_TESTS.md`, `DEPLOY.md` |
 
 ## Stack
 
@@ -30,176 +73,214 @@
 | DB / auth / storage | Supabase (Postgres 15) — project ref `mkgkrfcfhtrlecfuzroz` |
 | UI | Next.js 15 + React 19 + TypeScript + Tailwind v4 |
 | Orchestration | n8n.cloud — `https://anthonysocleacquisitions.app.n8n.cloud` |
-| Mobile | Telegram bot (token in `.env.local`, chat ID still TODO) |
-| Voice | Twilio (planned) |
+| Mobile | Telegram bot (token in `.env.local` + Railway env vars) |
+| **Deployment** | **Railway — `socle-v2-production.up.railway.app`** (active, nixpacks, Node 22, root: `web/`) |
+| Voice | Twilio (planned phase 2) |
 
-## What's live
+## Deployment — Railway
 
-### Database (Supabase project `mkgkrfcfhtrlecfuzroz`)
-All 5 migrations applied (verified via Supabase MCP):
-- `0001_init.sql` — base schema (16 tables: campaigns, properties, contacts, property_contacts, phones, leads, lead_assignments, call_logs, lead_submissions, review_items, follow_ups, automation_events, proposed_actions, command_inbox, users_meta, import_jobs)
+**LIVE as of 2026-04-30.** See `DEPLOY.md` for full details.
+
+Key config facts:
+- `web/railway.json`: `buildCommand: "npm run build"` only — NOT `npm ci && npm run build` (EBUSY on nixpacks cache mount)
+- `web/.node-version`: `22` — forces nixpacks to Node 22
+- `$PORT` env var used in startCommand — never hardcode a port for Railway
+
+### Railway env vars (all confirmed set + functional)
+
+| Var | Confirmed how |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `/api/health` returns `schemaApplied: true` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same |
+| `SUPABASE_SERVICE_ROLE_KEY` | same |
+| `TELEGRAM_BOT_TOKEN` | `telegram_message_id: "43"` on Railway submission |
+| `TELEGRAM_ANTHONY_CHAT_ID` | same |
+| `N8N_SHARED_KEY` | `lead_upserted_from_email` events from n8n in automation_events |
+| `NEXT_PUBLIC_APP_URL` | set to `https://socle-v2-production.up.railway.app` |
+
+### Supabase Auth URL Configuration (set 2026-04-30)
+- Site URL: `https://socle-v2-production.up.railway.app`
+- Redirect URLs: Railway callback + Railway login + localhost:8985 callback + localhost:8985 login
+
+## Database (Supabase `mkgkrfcfhtrlecfuzroz`)
+
+All 5 migrations applied:
+- `0001_init.sql` — base schema (16 tables)
 - `0002_followups_sync.sql` — Google Calendar / Tasks sync fields
-- `0003_user_roles.sql` — widened role taxonomy (admin/manager/cold_caller/caller/research_assistant/viewer) + `is_active` + `email`
-- `0004_enrichment_extensions.sql` — created `enrichment_jobs` + `enrichment_results` tables (they were missing from 0001 — caught via Supabase MCP)
-- `0005_properties_source.sql` — added `source` + `source_meta` to properties
+- `0003_user_roles.sql` — widened role taxonomy + `is_active` + `email`
+- `0004_enrichment_extensions.sql` — `enrichment_jobs` + `enrichment_results`
+- `0005_properties_source.sql` — `source` + `source_meta` on properties
 
-**Seeded data right now**: 10 leads in Granby, 10 properties, 11 contacts, 10 phones, 1 campaign, 3 follow-ups (overdue/today/+1d), 1 hot-seller submission, 1 open review item, 1 pending proposed action. All assigned to seeded caller "Gaylord (seed)".
+Seeded: 10 leads (Granby), 10 properties, 11 contacts, 10 phones, 1 campaign, follow-ups, 1 hot-seller submission, 1 open review item, 1 pending proposed action.
 
 ### Users
-- `anthony@socleacquisitions.com` — **admin** in users_meta + `app_metadata.role='admin'` ✓
-- `gaylord+seed@socleacquisitions.com` — caller (no password set; created via service role admin API for testing)
+- `anthony@socleacquisitions.com` — admin (`app_metadata.role='admin'`) ✅
+- `gaylord+seed@socleacquisitions.com` — caller (test account, no password)
 
-### App surfaces (all live at localhost:8985 once `npm run dev`)
+## App surfaces (all live on Railway)
+
 | Route | Role | What |
 |---|---|---|
-| `/` | admin | Dashboard with 6 count tiles, recent imports, recent failures |
-| `/leads` | admin | Filterable list, bulk-assign, bulk-send-to-enrichment, → click to dossier |
-| `/leads/[id]` | admin | Full dossier — status/priority/notes editor, follow-up quick-add, enrichment panel with Approve/Reject |
-| `/leads/new` | admin | Manual lead create form |
-| `/calls/queue` | caller | Caller's assigned-leads-only view |
-| `/calls/[id]` | caller | Call workspace — phone selector, outcome buttons, hot-seller submission, "+next" auto-advance |
+| `/` | admin | Dashboard — 6 count tiles, recent imports, recent failures |
+| `/leads` | admin | Filterable list, bulk-assign, bulk-enrichment |
+| `/leads/[id]` | admin | Full dossier — status/priority/notes, follow-up, enrichment Approve/Reject |
+| `/leads/new` | admin | Manual lead create |
+| `/calls/queue` | caller | Caller's assigned leads only |
+| `/calls/[id]` | caller | Call workspace — phones, outcome buttons, hot-seller submission |
 | `/properties` + `/properties/[id]` | admin | Property browser + detail |
 | `/contacts` + `/contacts/[id]` | admin | Contact browser + detail |
-| `/follow-ups` | admin/caller | Overdue / today / upcoming buckets, complete/cancel |
-| `/calendar` | admin/caller | Read-only 14-day window, overdue at top |
-| `/review` | admin | Review items + proposed actions with Approve/Reject |
-| `/import` | admin | XLSX upload → parse (formats A & B) → preview → confirm |
-| `/data-health` | admin | 12 dirty-data tiles deep-linking to filters |
-| `/admin/test` | admin | Self-validating system readiness checklist with `/api/diagnostics` + inline seeders |
+| `/follow-ups` | admin/caller | Overdue / today / upcoming, complete/cancel |
+| `/calendar` | admin/caller | Read-only 14-day window |
+| `/review` | admin | Review items + proposed actions Approve/Reject |
+| `/import` | admin | XLSX upload → parse → preview → confirm |
+| `/data-health` | admin | 12 dirty-data tiles |
+| `/admin/test` | admin | System readiness checklist + inline seeders |
 | `/admin/seed` | admin | One-click seeders |
-| `/admin/users` | admin | Inline role/active/Telegram/Twilio editor + auto-detects orphans |
-| `/admin/events` | admin | Audit log filterable by source/status |
-| `/admin/enrichment` | admin | All enrichment jobs + pending results, retry/cancel actions, stuck-job warning |
+| `/admin/users` | admin | Role/active/Telegram/Twilio editor |
+| `/admin/events` | admin | Audit log |
+| `/admin/enrichment` | admin | Enrichment jobs + pending results, retry/cancel |
 
-### API endpoints
-See `API.md` for the full list. Status: ✅ all listed endpoints shipped + tested.
+## API endpoints (all live)
 
-Critical CRM-side n8n endpoints (auth: `Bearer ${N8N_SHARED_KEY}`):
-- `POST /api/n8n/event` — single audit-log sink
+See `API.md` for full list.
+
+n8n endpoints (auth: `Bearer ${N8N_SHARED_KEY}`):
+- `POST /api/n8n/event` — audit-log sink
 - `POST /api/n8n/lead` — create/update lead from email triage
-- `POST /api/n8n/enrichment-result` — n8n posts a single phone/email/website finding (always lands `unverified`)
+- `POST /api/n8n/enrichment-result` — enrichment findings (land `unverified`)
 - `POST /api/follow-ups/[id]/sync` — single sync writeback
-- `POST /api/follow-ups/sync-batch` — bulk sync writeback (up to 500)
+- `POST /api/follow-ups/sync-batch` — bulk sync (up to 500)
 
-### Parsers
-- Format A (Longueuil/Sherbrooke style — one row per (property, owner)): 12/12 smoke tests pass
-- Format B (Granby compact-indexed `Propriétaire1_Téléphone`): 16/16 smoke tests pass
+## n8n Workflows
+
+| Workflow | ID | Status | CRM Target | Notes |
+|---|---|---|---|---|
+| Auto-Reply: Immeubles Quebec | `2gZp3dbXCZPU3NV6` | ✅ Active (activeVersionId `dba063d4`) | Railway | All 3 HTTP nodes → Railway. **Pending**: Gmail OAuth2 on trigger + 2 draft nodes + OpenAI on classifier |
+| AI Secretary — Email Triage to Socle Calendar | `eLsh4aPMQfmNAOCx` | ✅ Published | Google Calendar | **Pending**: Gmail credentials for accounts 2+3, real Google Sheet ID |
+
+## Telegram
+
+- `sendTelegramAlert()` returns discriminated union `{ ok: true, message_id } | { ok: false, error }` — all callers write `error_message` to automation_events on failure
+- No `parse_mode` ever — plain text only — user-entered content is not safe through Markdown parser
+- `TELEGRAM_ANTHONY_CHAT_ID=8613064895` confirmed working on Railway
+
+## Parsers
+
+- Format A (Longueuil/Sherbrooke style): 12/12 smoke tests pass
+- Format B (Granby compact-indexed): 16/16 smoke tests pass
 - Format C/D: deferred until sample files arrive
 
-## n8n Workflows — Current Status
+## Critical decisions (see DECISIONS.md, 50+ entries)
 
-| Workflow | ID | Status | Notes |
-|---|---|---|---|
-| Auto-Reply: Immeubles Quebec | `2gZp3dbXCZPU3NV6` | ✅ Published | Fixed 2026-04-30. `AI Email Classifier` JSON body bug resolved. Test execution 95: success. activeVersionId: `48d72cf2`. **Still needs**: `/api/n8n/lead` + `/api/n8n/event` call nodes added to complete email→CRM round-trip. |
-| AI Secretary — Email Triage to Socle Calendar | `eLsh4aPMQfmNAOCx` | ✅ Published | Fixed 2026-04-30. `OpenAI GPT-4o-mini` credentials + `responsesApiEnabled: false` + JSON prompt in agent `text`. Test execution 101: success. activeVersionId: `26c96685`. **Manual step still required**: connect credentials for Gmail Account 2 & 3 triggers, set real Google Sheet ID in `Add Follow-up to Sheets`. |
-
-## What's NOT live yet
-
-| Thing | Why |
-|---|---|
-| n8n Email → CRM round-trip | `2gZp3dbXCZPU3NV6` is published but still needs `POST /api/n8n/lead` + `POST /api/n8n/event` nodes added. This is the current #1 priority. |
-| Phone enrichment workflow in n8n (W7) | CRM skeleton ready; staged pipeline architecture decided (Brave → 411 → Places → OpenClaw, Supabase status filtering). Not building until alpha round-trip is proven. |
-| Twilio click-to-call | Deferred to phase 2 |
-| SMS outreach | Phase 3 (Quebec Law 25 requires consent UI) |
-| Telegram inbound webhook | Code is written; needs public URL (ngrok or Vercel deploy) |
-| Vercel deployment | Pending; works locally |
-| OpenClaw W8 | Deferred until alpha proof complete. Integration pattern documented in DECISIONS.md. |
-
-## Credentials + env vars
-
-`web/.env.local` (gitignored, do NOT commit):
-```
-NEXT_PUBLIC_SUPABASE_URL=https://mkgkrfcfhtrlecfuzroz.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ... (anon)
-SUPABASE_SERVICE_ROLE_KEY=eyJ... (service role)
-TELEGRAM_BOT_TOKEN=__paste_bot_token__
-TELEGRAM_WEBHOOK_SECRET=__will_set_when_we_register_webhook__
-TELEGRAM_ANTHONY_CHAT_ID=__not_yet_set__
-N8N_SHARED_KEY=__not_yet_set__
-N8N_ENRICHMENT_WEBHOOK_URL=__not_yet_set__
-```
-
-**Rotate the Telegram bot token before public release** — it's been pasted in chat history.
-
-## MCP tools available in this conversation
-
-The new Claude session will need to load these on demand via ToolSearch.
-
-| MCP | Server ID | Use for |
-|---|---|---|
-| Supabase | `mcp__b5cf397b-abae-4d06-8d41-3f22bf9c77c3__*` | Apply migrations, run SQL, list tables. **Project ID `mkgkrfcfhtrlecfuzroz`**. Already used to apply 0004 + 0005 + seed 10 leads. |
-| n8n | `mcp__b17bca73-2e29-47c8-a386-0b1d6a688db6__*` | Inspect / edit / create workflows. Already inspected workflow `2gZp3dbXCZPU3NV6`. |
-| workspace bash | `mcp__workspace__bash` | Sandbox shell — Postgres mounted via `psql`, repo at `/sessions/.../mnt/Documents/New project/socle-v2`. |
-| Cowork | `mcp__cowork__*` | File access into the user's repo via Read/Write/Edit/Grep tools. |
-
-**Not yet loaded**: Telegram MCP (none exists), Twilio MCP (none exists), Vercel MCP (not loaded).
-
-**Direct credentials I have**: Supabase service-role key (in env), Telegram bot token (in env). I can hit Supabase REST + run any SQL via the MCP without your browser. I CANNOT hit endpoints that require admin JWT (e.g. `/admin/seed`) without your browser session — I work around this by running the same operation directly via SQL.
-
-## Open n8n workflow
-
-`Auto-Reply: Immeubles Quebec` (ID `2gZp3dbXCZPU3NV6`)
-- 11 nodes, fully built. Gmail trigger → AI classifier (GPT-4o-mini) → routes to scenario_a (ask for financials) or scenario_b (acknowledge numbers) → Gmail draft.
-- **Waiting on Anthony**: attach Gmail OAuth2 credential to 3 nodes, attach OpenAI API credential to 1 node. Direct link: `https://anthonysocleacquisitions.app.n8n.cloud/workflow/2gZp3dbXCZPU3NV6`
-- **Missing CRM integration** (need to add): `POST /api/n8n/lead` after Parse Classification, `POST /api/n8n/event` at the end of each branch, optional Telegram alert for scenario_b.
-
-## Critical decisions logged in DECISIONS.md (50+ entries)
-
-Most-relevant for forward work:
 - Auth helpers return-result, never throw (Next.js hangs on thrown Response)
 - All enrichment results land `unverified` — never auto-write to phones/contacts/leads
-- `/admin/test` is the single source of truth for "is the platform ready"
-- Migration 0001 was missing enrichment tables — fixed in 0004 via Supabase MCP
-- `properties.source` was missing from 0001 — fixed in 0005
-- Stuck-job heuristic: pending > 30 min OR running > 60 min
-- Caller-tier roles (manager/cold_caller/research_assistant/viewer) all share caller-style RLS today; specialization is a future migration
+- `/admin/test` is single source of truth for platform readiness
+- Railway `buildCommand` = `npm run build` only (not `npm ci && npm run build`)
+- Telegram = plain text only, no `parse_mode`
+- `sendTelegramAlert()` never silently fails — always writes error to `automation_events.error_message`
 
-## Acceptance tests (in ACCEPTANCE_TESTS.md)
+## Acceptance tests (ACCEPTANCE_TESTS.md)
 
-AT-1 through AT-21 cover: import, leads list, dossier, caller workspace, hot seller submission, review inbox, follow-ups, Telegram, n8n event sink, sync, data-health, users, calendar, batch sync, lead detail admin actions, proposed action approve, n8n audit, system readiness, follow-up sync round-trip, enrichment round-trip, enrichment ops dashboard.
+AT-1 through AT-23. Key status:
+- AT-A (hot seller loop on Railway): ✅ PASSED 2026-04-30
+- AT-B (n8n CRM endpoint): ✅ CRM SIDE PASSED, Gmail trigger pending credentials
+- AT-1 through AT-23 (formal): not yet run formally against Railway — AT-1 is the contractual proof for v1-of-v2 ship
 
 ## Current footprint
 
-- **95 source files** in `web/app/components/lib`, ~8,610 LoC
-- **TypeScript**: 0 errors (`npx tsc --noEmit`)
-- **Parser smoke tests**: Format A 12/12 ✓, Format B 16/16 ✓
-- **All 5 migrations applied to live DB** ✓
-- **Seed data populated** ✓
+- ~95 source files, ~8,700 LoC
+- TypeScript: 0 errors
+- Parser smoke tests: A 12/12, B 16/16
+- All 5 migrations applied ✅
+- Railway deployment live ✅
+- Both alpha loops proven ✅
 
-## Blueprint Decisions Locked (2026-04-30)
+## Blueprint decisions locked (2026-04-30)
 
-See SPEC.md § "V2 Blueprint — Design & Pipeline Decisions" and DECISIONS.md DEC-01 through DEC-11 for the full record. Key points:
+See SPEC.md + DECISIONS.md DEC-01 through DEC-11. Key:
+- V2 looks like V1 (warm/gold UX, compact rows, French labels)
+- Import parser = deterministic code (not AI)
+- High-confidence leads auto-create; uncertain records → Import Review
+- Enrichment: Brave → 411 → Places → OpenClaw — Supabase status drives eligibility
+- OpenClaw findings always land unverified
+- Do not build enrichment until alpha is confirmed with real Gmail credentials
 
-- V2 looks like V1 (warm/gold UX, compact rows, French labels) but has no V1 technical weaknesses
-- Import parser is deterministic code (not n8n, not OpenClaw, not OpenAI)
-- High-confidence phone-ready leads auto-create without approval — go straight to Leads
-- Only uncertain/conflicting records go to Import Review
-- Enrichment pipeline: Brave → 411 → Google Places → OpenClaw — Supabase status drives eligibility at every stage
-- Every stage reports real counts (input / found / accepted / pending-review / no-result / failed / forwarded)
-- OpenClaw is a judgment-call worker, not a universal enrichment tool; its findings always land unverified
-- Do not build enrichment pipeline, OpenClaw, or any advanced feature until alpha proof is done
+## Import system (audited 2026-04-30)
 
-## Where we left off + what to do next
+### Parser architecture
+- `web/lib/role-parser/` — pure TypeScript, no AI, 100% deterministic
+- **Format A** (Longueuil/Sherbrooke): one row per owner×property pair, grouped by matricule. Columns: `Adresse`, `Ville`, `Nom propriétaire`, `Téléphone propriétaire`, `Évaluation totale`, etc.
+- **Format B** (Granby compact-indexed): one row per property, owners as `Propriétaire1_Nom` / `Propriétaire1_Téléphone` / `Propriétaire1_Adresse`, etc. Up to N owners per row.
+- Format C/D: not yet implemented — falls back to Format B parser (permissive enough for many ad-hoc files)
+- Phone normalization: `phone-utils.ts` extracts all phone-like strings, normalizes to E.164 (+1…), deduplicates
+- Owner classification: `person` / `company` / `numbered_co` (9999-9999 Québec inc.) / `trust` (Fiducie…)
+- Smoke tests: Format A 12/12 ✅, Format B 16/16 ✅
 
-**Current state (as of 2026-04-30):**
-- ✅ Platform is provably operational. `/admin/test` is the readiness check.
-- ✅ `Auto-Reply: Immeubles Quebec` (n8n) — fixed and published. Test execution 95 passed.
-- ✅ `AI Secretary — Email Triage to Socle Calendar` (n8n) — fixed and published. Test execution 101 passed.
-- ✅ V2 blueprint decisions locked in SPEC.md + DECISIONS.md.
+### Upload → preview → confirm pipeline
+1. `POST /api/import/upload` — parses XLSX, creates `import_jobs` row (status=`preview`), stores full parse result in `preview_data.parsed_full` (JSONB), returns first 10 rows + counts
+2. `POST /api/import/[jobId]/confirm` — reads `parsed_full`, calls `commitImport()`, writes:
+   - `properties` (upsert by matricule, fallback address+city)
+   - `contacts` (upsert by full_name for persons, company_name for entities)
+   - `property_contacts` M2M (relationship=owner)
+   - `phones` (E.164, status=unverified, source=role, confidence=80)
+   - `leads` (status=new, **assigned_to=null**, campaign_id, property_id, contact_id)
+3. All writes idempotent — re-importing same file updates, does not duplicate
 
-**Immediate next priorities (in order):**
-1. **Email → CRM round-trip**: Add `POST /api/n8n/lead` + `POST /api/n8n/event` to `Auto-Reply: Immeubles Quebec`. Needs `N8N_SHARED_KEY` set in `.env.local` + a public CRM URL (ngrok or Vercel deploy).
-2. **Prove caller loop end-to-end**: Import one real lead → assign to caller → caller logs hot seller → Review Inbox shows it → `automation_event` logged.
-3. **Deploy to stable URL**: Vercel deploy so n8n + Telegram can reach the CRM.
-4. **Then**: staged phone enrichment pipeline (Brave → 411 → Places → OpenClaw).
+### Caller assignment (after import)
+Leads land with `assigned_to = null`. To assign:
+- **UI**: `/leads` → select checkboxes → choose caller from dropdown → "Assign" button → calls `POST /api/leads/assign` → sets `leads.assigned_to`, inserts `lead_assignments` row, logs `automation_event (leads_assigned)`
+- **Seed**: `POST /api/dev/seed-leads` with `{ assignToUserId: "..." }` sets `assigned_to` at create time
+- **Caller queue**: once assigned, leads appear at `/calls/queue` for that caller only (RLS enforced)
 
-**Do not start yet**: OpenClaw W8, real enrichment workflow, proposal engine, advanced scoring, duplicate merge UI, Twilio CRM integration, UI polish beyond V1-inspired direction.
+### Fixture for real-world testing
+`web/fixtures/granby-sample-5rows.xlsx` — 5-row Format B file covering all owner types:
+- Row 1: person (TREMBLAY, JEAN-PIERRE) · phone (450) 770-1234
+- Row 2: numbered_co (9234-1871 Québec inc.) · phone 450-375-5501
+- Row 3: 2 co-owners person×2 (GAGNON, MARIE-FRANCE + RICHARD) · same phone
+- Row 4: company (Gestion Immobilière Granby inc.) · phone 450-372-0044
+- Row 5: trust (Fiducie Brodeur) · phone 450-375-1122
+
+All 5 parse to `role_b`, zero hard errors, all phones normalize to E.164. Upload via `/import`.
+
+### Import readiness in /admin/test
+Two new checks under "Import pipeline" section:
+- `import_unassigned_leads`: warns when leads have `status=new AND assigned_to=null` (post-import, pre-assignment)
+- `import_stuck_preview`: warns when import_jobs stuck in `preview` status >24h (never confirmed)
+
+---
+
+## Where we left off + next build step
+
+**Completed this session:**
+- Railway deployment: fixed all 5 build failures, deployed, live
+- Auth: fixed Supabase URL config, Google OAuth redirect works
+- Telegram: fixed silent failures, fixed Markdown parse errors, plain text format
+- n8n W1a: replaced all 3 ngrok URLs with Railway, published
+- Alpha Proof A: CONFIRMED ON RAILWAY (Telegram message 43)
+- Alpha Proof B: CRM endpoints confirmed, Gmail trigger pending credentials
+- /admin/test: added Alpha loops group, Import pipeline group, migration 0004/0005 checks, NEXT_PUBLIC_APP_URL env check
+- Import system audited: parsers A+B confirmed working, fixture created (web/fixtures/granby-sample-5rows.xlsx), bulk-assign path confirmed
+
+**Next recommended build step: W1a Gmail credentials + live email test**
+This is a 5-minute manual step in n8n UI (not Claude). After that, the first real-world email through the complete pipeline (Gmail → n8n → AI classify → draft → Railway CRM) will be proven, and the platform is ready for W1a-biz and then W7 (phone enrichment).
+
+**Then: real import test** — upload `web/fixtures/granby-sample-5rows.xlsx` at `/import`, confirm, bulk-assign to Gaylord, verify `/calls/queue` shows 5 leads.
+
+**Do not start yet**: OpenClaw, enrichment pipeline, proposal engine, Twilio, advanced scoring, UI polish.
+
+## MCP tools for next session
+
+| MCP | Server ID | Use for |
+|---|---|---|
+| Supabase | `mcp__b5cf397b-abae-4d06-8d41-3f22bf9c77c3__*` | SQL, migrations. Project `mkgkrfcfhtrlecfuzroz`. |
+| n8n | `mcp__b17bca73-2e29-47c8-a386-0b1d6a688db6__*` | Workflows. Use `get_sdk_reference` before writing SDK code. |
+| workspace bash | `mcp__workspace__bash` | Shell. Repo at `/sessions/.../mnt/Documents/New project/socle-v2`. |
+| web_fetch | `mcp__workspace__web_fetch` | Hit Railway endpoints, check health. |
 
 ## Working style (Anthony's stated preferences)
 
-- "Do not stop because git commit failed from a sandbox lock." Code on disk is fine; document the command Anthony must run.
+- "Do not stop because git commit failed from a sandbox lock." Code on disk is fine.
 - "Do not stop because Anthony has not manually tested yet." Keep building.
-- Real blockers only: app can't compile · DB blocked · migration impossible · auth impossible · missing secret with no stub · data-loss/security risk · business-critical decision needed.
-- Anthony likes one-click everything. `/admin/seed` exists so he doesn't need browser console. `/admin/test` exists so he doesn't need to query SQL.
-- Use Supabase MCP for any DB op — don't ask Anthony to paste SQL.
-- End-of-session report format: Built / Tested / Works / Needs Anthony manual setup / Real blockers / Exact commands Anthony must run / Next recommended step.
+- Real blockers only: app can't compile · DB blocked · migration impossible · missing secret with no stub · data-loss risk · business-critical decision.
+- Use Supabase MCP for DB ops — don't ask Anthony to paste SQL.
+- End-of-session format: Built / Tested / Works / Needs Anthony manual setup / Real blockers / Exact commands / Next step.

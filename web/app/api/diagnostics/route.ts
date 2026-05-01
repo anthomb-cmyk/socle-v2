@@ -102,11 +102,40 @@ export async function GET() {
     checks.push({ id: "jwt_fresh", label: "Your JWT role matches the database", status: "ok", detail: `role='${jwtRole}'` });
   }
 
+  // ─── 4b. Migration 0004: enrichment_jobs + enrichment_results ────────
+  const m0004 = await sb.from("enrichment_jobs").select("id", { count: "exact", head: true });
+  if (m0004.error) {
+    checks.push({
+      id: "migration_0004",
+      label: "Migration 0004 (enrichment tables)",
+      status: "fail",
+      detail: m0004.error.message,
+      fix: "Paste supabase/migrations/0004_enrichment_extensions.sql into the Supabase SQL editor and click Run.",
+    });
+  } else {
+    checks.push({ id: "migration_0004", label: "Migration 0004 (enrichment tables)", status: "ok", detail: "enrichment_jobs table reachable" });
+  }
+
+  // ─── 4c. Migration 0005: properties.source_meta column ───────────────
+  const m0005 = await sb.from("properties").select("id, source, source_meta").limit(1);
+  if (m0005.error) {
+    checks.push({
+      id: "migration_0005",
+      label: "Migration 0005 (properties.source + source_meta)",
+      status: "fail",
+      detail: m0005.error.message,
+      fix: "Paste supabase/migrations/0005_properties_source.sql into the Supabase SQL editor and click Run.",
+    });
+  } else {
+    checks.push({ id: "migration_0005", label: "Migration 0005 (properties.source + source_meta)", status: "ok", detail: "source + source_meta columns present" });
+  }
+
   // ─── 6. Env vars ──────────────────────────────────────────────────────
   const envChecks: Array<{ name: string; required: boolean; helpFix: string }> = [
     { name: "NEXT_PUBLIC_SUPABASE_URL", required: true, helpFix: "Add to web/.env.local (project URL from Supabase dashboard)." },
     { name: "NEXT_PUBLIC_SUPABASE_ANON_KEY", required: true, helpFix: "Add to web/.env.local (anon key from Supabase dashboard)." },
     { name: "SUPABASE_SERVICE_ROLE_KEY", required: true, helpFix: "Add to web/.env.local (service-role key — server-only)." },
+    { name: "NEXT_PUBLIC_APP_URL", required: false, helpFix: "Set to the public URL (e.g. https://socle-v2-production.up.railway.app). Required for Telegram CRM links to work in production." },
     { name: "TELEGRAM_BOT_TOKEN", required: false, helpFix: "Create a bot via @BotFather, paste token into web/.env.local." },
     { name: "TELEGRAM_ANTHONY_CHAT_ID", required: false, helpFix: "Send /start to your bot, then visit /api/telegram/identify and copy the id into web/.env.local." },
     { name: "TELEGRAM_WEBHOOK_SECRET", required: false, helpFix: "Run `openssl rand -hex 32`, put the result in web/.env.local. Required only when registering inbound webhook." },
@@ -145,8 +174,13 @@ export async function GET() {
       .eq("status", "pending").lt("created_at", new Date(Date.now() - 30 * 60_000).toISOString()),
     sb.from("enrichment_jobs").select("id", { count: "exact", head: true })
       .eq("status", "running").lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString()),
+    // Import pipeline: unassigned leads + stuck preview jobs
+    sb.from("leads").select("id", { count: "exact", head: true })
+      .eq("status", "new").is("assigned_to", null),
+    sb.from("import_jobs").select("id", { count: "exact", head: true })
+      .eq("status", "preview").lt("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString()),
   ]);
-  const [imps, leads, assigned, calls, subs, reviews, proposed, fups, events, enrichJobs, enrichJobFailures, enrichResults, enrichPending, stuckPending, stuckRunning] = seedCounts.map(r => r.count ?? 0);
+  const [imps, leads, assigned, calls, subs, reviews, proposed, fups, events, enrichJobs, enrichJobFailures, enrichResults, enrichPending, stuckPending, stuckRunning, unassignedLeads, stuckPreviews] = seedCounts.map(r => r.count ?? 0);
   const stuckTotal = stuckPending + stuckRunning;
 
   const seedChecks: Array<{ id: string; label: string; n: number; warnIf0: boolean; fix: string }> = [
@@ -182,6 +216,32 @@ export async function GET() {
     });
   }
 
+  // ─── Import pipeline health ────────────────────────────────────────────
+  checks.push(
+    {
+      id: "import_unassigned_leads",
+      label: "Unassigned leads ready to assign",
+      status: unassignedLeads > 0 ? "warn" : "ok",
+      detail: unassignedLeads > 0
+        ? `${unassignedLeads} lead(s) with status='new' and no caller assigned`
+        : "All new leads have a caller assigned",
+      fix: unassignedLeads > 0
+        ? "Go to /leads → select unassigned leads → bulk-assign to a caller. Or run /admin/seed → 'Seed 10 leads + assign to caller'."
+        : undefined,
+    },
+    {
+      id: "import_stuck_preview",
+      label: "Import jobs stuck in preview (>24h)",
+      status: stuckPreviews > 0 ? "warn" : "ok",
+      detail: stuckPreviews > 0
+        ? `${stuckPreviews} import job(s) never confirmed — preview data may be stale`
+        : "No stuck preview jobs",
+      fix: stuckPreviews > 0
+        ? "Go to /import and re-upload the file, or check import_jobs table for orphaned preview rows."
+        : undefined,
+    },
+  );
+
   // ─── overall status ───────────────────────────────────────────────────
   const fails = checks.filter(c => c.status === "fail").length;
   const warns = checks.filter(c => c.status === "warn").length;
@@ -191,6 +251,52 @@ export async function GET() {
   else if (fails > 0) overall = "needs_setup";
   else if (warns > 0) overall = "needs_seed";
   else overall = "ready";
+
+  // ─── Alpha loop health (informational — do NOT affect overall banner) ───
+  const [tgRow, n8nLeadRow, n8nDraftRow] = await Promise.all([
+    sb.from("automation_events").select("occurred_at, telegram_message_id")
+      .not("telegram_message_id", "is", null).order("occurred_at", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("automation_events").select("occurred_at")
+      .eq("source", "n8n").eq("event_type", "lead_upserted_from_email").eq("status", "success")
+      .order("occurred_at", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("automation_events").select("occurred_at")
+      .eq("source", "n8n").eq("event_type", "email_triage_draft_created").eq("status", "success")
+      .order("occurred_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const tgData = tgRow.data as { occurred_at: string; telegram_message_id: string } | null;
+  const n8nLeadData = n8nLeadRow.data as { occurred_at: string } | null;
+  const n8nDraftData = n8nDraftRow.data as { occurred_at: string } | null;
+  checks.push(
+    {
+      id: "alpha_telegram",
+      label: "Alpha A — Telegram alert delivered (ever)",
+      status: tgData ? "ok" : "warn",
+      detail: tgData
+        ? `Last: ${tgData.occurred_at} (msg ${tgData.telegram_message_id})`
+        : "No Telegram message ever sent",
+      fix: tgData
+        ? undefined
+        : "Set TELEGRAM_ANTHONY_CHAT_ID + TELEGRAM_BOT_TOKEN, then submit a hot seller from /calls.",
+    },
+    {
+      id: "alpha_n8n_lead",
+      label: "Alpha B — n8n → CRM lead created (ever)",
+      status: n8nLeadData ? "ok" : "warn",
+      detail: n8nLeadData ? `Last: ${n8nLeadData.occurred_at}` : "No n8n lead event ever received",
+      fix: n8nLeadData
+        ? undefined
+        : "Update n8n W1a CRM nodes to Railway URL + confirm N8N_SHARED_KEY is set.",
+    },
+    {
+      id: "alpha_n8n_draft",
+      label: "Alpha B — n8n → Gmail draft created (ever)",
+      status: n8nDraftData ? "ok" : "warn",
+      detail: n8nDraftData ? `Last: ${n8nDraftData.occurred_at}` : "No Gmail draft event — Gmail credentials not yet attached",
+      fix: n8nDraftData
+        ? undefined
+        : "In n8n: open W1a (2gZp3dbXCZPU3NV6), attach antho02mb@gmail.com OAuth2 to: New Email Received, Create Draft - Ask for Details, Create Draft - Acknowledge Numbers. Attach OpenAI API to: AI Email Classifier.",
+    },
+  );
 
   return NextResponse.json({
     ok: true,

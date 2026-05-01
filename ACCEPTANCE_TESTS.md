@@ -6,6 +6,61 @@ A test is **passed** only when it runs against the live Supabase + UI and produc
 
 ---
 
+## Live Alpha Status (2026-04-30)
+
+| Test | Status | Evidence |
+|---|---|---|
+| **AT-A: Hot seller → Telegram → audit (Railway)** | ✅ PASSED | `automation_events`: `lead_submission_created`, `telegram_message_id: "43"`, `error_message: null` at 2026-04-30 23:52:35 UTC |
+| **AT-B: n8n → /api/n8n/lead (Railway)** | ✅ PASSED | `automation_events`: `lead_upserted_from_email` at 2026-04-30 23:26:34 UTC |
+| **AT-B: n8n → /api/n8n/event (Railway)** | ✅ PASSED | `automation_events`: `railway_smoke_test` at 2026-04-30 23:26:35 UTC |
+| **AT-B: Gmail trigger → full pipeline** | ⏳ PENDING | Blocked on Gmail OAuth2 + OpenAI credentials attached to W1a in n8n UI |
+| **AT-C: Import proof (one-click fixture)** | ⏳ READY TO RUN | Go to `/admin/test` → "Run import proof" button. No manual steps needed. |
+| **AT-1 (formal): Import → Assign → Hot seller → Telegram → Inbox** | ⏳ NOT YET RUN | Prerequisite for v1-of-v2 ship |
+
+---
+
+---
+
+## AT-C — Import proof (one-click, no manual steps)
+
+Proves the real business input path without needing a real Excel file or manual steps.
+
+### How to run
+1. Sign in as admin at `https://socle-v2-production.up.railway.app`
+2. Go to `/admin/test`
+3. Click **"Run import proof"** (blue button at top)
+4. Wait ~5 seconds
+
+### What it does internally
+- Generates the 5-row Granby fixture XLSX in memory (Format B, real parser)
+- Runs `parseRoleFile()` → `commitImport()` (same code path as the real `/import` UI)
+- Creates or finds the `gaylord+seed@socleacquisitions.com` caller
+- Assigns all 5 leads to that caller
+- Logs `automation_event` with `event_type='import_completed'`
+
+### Pass criteria
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | Button returns success | `counts.leads_created >= 1` (or `leads_updated` if re-run) |
+| 2 | Leads assigned | `assignedCount >= 1` |
+| 3 | DB: `import_jobs` | New row with `status='completed'`, `format_detected='role_b'` |
+| 4 | DB: `leads` | 5–6 leads (1 property has 2 co-owners → 2 leads) with `assigned_to = callerId` |
+| 5 | DB: `phones` | Leads' contacts each have 1 E.164 phone with `status='unverified'` |
+| 6 | Caller queue | Sign in as Gaylord (or use `/calls/queue` in separate session) → 5+ leads visible |
+
+### Fixture data coverage
+- Row 1: person owner (TREMBLAY, JEAN-PIERRE) — tests `kind=person`, name split
+- Row 2: numbered_co (9234-1871 Québec inc.) — tests numbered company detection
+- Row 3: 2 co-owners (GAGNON×2) — tests multiple owners → 2 leads per property
+- Row 4: company (Gestion Immobilière Granby inc.) — tests company detection
+- Row 5: trust (Fiducie Brodeur) — tests trust detection
+
+### Re-run behaviour
+Idempotent: running twice upserts on matricule (property) and full_name (contact). `leads_created=0`, `leads_updated=5` on second run. No duplicates. Both runs are safe.
+
+---
+
 ## AT-1 (PRIMARY) — Import → Assign → Hot Seller → Telegram → Inbox
 
 This is the contractual proof that v1-of-v2 ships.
