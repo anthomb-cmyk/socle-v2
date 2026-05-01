@@ -21,6 +21,7 @@ export default function AppNav({ email, role }: { email: string; role: "admin" |
             <NavLink href="/">Dashboard</NavLink>
             <NavLink href="/leads">Leads</NavLink>
             <NavLink href="/review">Review inbox</NavLink>
+            <NavLink href="/phone-review">Phone review</NavLink>
             <NavLink href="/follow-ups">Follow-ups</NavLink>
             <NavLink href="/import">Import</NavLink>
             <NavLink href="/calls/queue">Call queue</NavLink>

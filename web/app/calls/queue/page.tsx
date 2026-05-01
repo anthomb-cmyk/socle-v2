@@ -62,12 +62,19 @@ export default async function CallQueuePage() {
 
   const sb = createSupabaseAdminClient();
 
-  // All leads assigned to this user in callable statuses
+  // Callable statuses: only leads with a verified phone may appear in the call queue.
+  // "new" and "ready_to_call" remain for leads that already had a phone at import time.
+  // "phone_verified" is the status set when Anthony approves an enriched phone candidate.
+  // All enrichment-pipeline statuses are explicitly excluded.
+  const CALLABLE_STATUSES = ["new", "ready_to_call", "in_outreach", "no_answer", "phone_verified"] as const;
+
+  // All leads assigned to this user in callable statuses AND with a verified phone
   const { data: rawLeads } = await sb
     .from("leads_view")
     .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,priority")
     .eq("assigned_to", user.id)
-    .in("status", ["new", "ready_to_call", "in_outreach", "no_answer"])
+    .in("status", CALLABLE_STATUSES as unknown as string[])
+    .not("best_phone", "is", null)   // must have a verified phone — no-phone leads never show here
     .order("priority", { ascending: false })
     .order("last_contacted_at", { ascending: true, nullsFirst: true });
 
@@ -86,8 +93,9 @@ export default async function CallQueuePage() {
     });
   }
 
-  const phoneReady = leads.filter((l) => l.best_phone).length;
-  const noPhone = leads.length - phoneReady;
+  // All visible leads already have a verified phone (enforced by query above)
+  const phoneReady = leads.length;
+  const noPhone = 0;
 
   return (
     <main className="mx-auto max-w-2xl p-6">
