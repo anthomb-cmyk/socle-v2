@@ -57,9 +57,17 @@ export async function POST(request: Request) {
     row: r.row_number,
     address: r.property.address,
     city: r.property.city,
+    postal_code: r.property.postal_code,
     matricule: r.property.matricule,
     num_units: r.property.num_units,
-    owners: r.owners.map(o => ({ kind: o.kind, name: o.full_name, phones: o.phones })),
+    year_built: r.property.year_built,
+    evaluation_total: r.property.evaluation_total,
+    owners: r.owners.map(o => ({
+      kind: o.kind,
+      name: o.full_name,
+      company_name: o.company_name,
+      phones: o.phones,
+    })),
     errors: r.errors,
   }));
 

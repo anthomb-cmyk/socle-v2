@@ -80,6 +80,7 @@ async function commitRow(
   const propPayload = {
     address: property.address,
     city,
+    postal_code: property.postal_code ?? null,
     matricule: property.matricule || null,
     year_built: property.year_built ?? null,
     num_units: property.num_units ?? null,

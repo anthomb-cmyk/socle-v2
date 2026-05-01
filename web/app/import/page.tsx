@@ -9,9 +9,10 @@ type PreviewSummary = {
   totalRows: number;
   summary: { properties: number; owners: number; phones: number; cities: string[] };
   previewRows: Array<{
-    row: number; address: string; city: string | null; matricule?: string;
-    num_units?: number;
-    owners: Array<{ kind: string; name: string; phones: string[] }>;
+    row: number; address: string; city: string | null;
+    postal_code?: string; matricule?: string;
+    num_units?: number; year_built?: number; evaluation_total?: number;
+    owners: Array<{ kind: string; name: string; company_name?: string; phones: string[] }>;
     errors: string[];
   }>;
   errorsCount: number;
@@ -182,24 +183,52 @@ export default function ImportPage() {
           )}
 
           {/* Preview table */}
-          <div className="border border-zinc-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="border border-zinc-200 rounded-lg overflow-x-auto">
+            <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-zinc-50 text-zinc-500 text-xs">
                 <tr>
                   <th className="text-left p-2">#</th>
                   <th className="text-left p-2">Address</th>
                   <th className="text-left p-2">City</th>
+                  <th className="text-left p-2">Mat.</th>
+                  <th className="text-left p-2">Units</th>
+                  <th className="text-left p-2">Built</th>
+                  <th className="text-left p-2">Eval ($)</th>
                   <th className="text-left p-2">Owners</th>
                   <th className="text-left p-2">Phones</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.previewRows.map(r => (
-                  <tr key={r.row} className="border-t border-zinc-100">
+                  <tr key={r.row} className="border-t border-zinc-100 hover:bg-zinc-50">
                     <td className="p-2 text-zinc-400">{r.row}</td>
-                    <td className="p-2">{r.address}</td>
+                    <td className="p-2 max-w-xs truncate" title={r.address}>{r.address}</td>
                     <td className="p-2">{r.city ?? <span className="text-zinc-400">—</span>}</td>
-                    <td className="p-2">{r.owners.map(o => o.name).join("; ") || <span className="text-zinc-400">none</span>}</td>
+                    <td className="p-2 font-mono text-xs text-zinc-500">
+                      {r.matricule ?? <span className="text-zinc-300">—</span>}
+                    </td>
+                    <td className="p-2 text-center">{r.num_units ?? <span className="text-zinc-400">—</span>}</td>
+                    <td className="p-2">{r.year_built ?? <span className="text-zinc-400">—</span>}</td>
+                    <td className="p-2 text-right">
+                      {r.evaluation_total != null
+                        ? r.evaluation_total.toLocaleString("fr-CA")
+                        : <span className="text-zinc-400">—</span>}
+                    </td>
+                    <td className="p-2 max-w-xs">
+                      {r.owners.length === 0
+                        ? <span className="text-zinc-400">none</span>
+                        : r.owners.map((o, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 mr-1">
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                              o.kind === "company" || o.kind === "numbered_co" ? "bg-violet-400" : "bg-blue-400"
+                            }`} />
+                            <span className="truncate max-w-[120px]" title={o.company_name || o.name}>
+                              {o.company_name ? o.company_name.slice(0, 20) : o.name.slice(0, 20)}
+                            </span>
+                          </span>
+                        ))
+                      }
+                    </td>
                     <td className="p-2 font-mono text-xs text-emerald-700">
                       {r.owners.flatMap(o => o.phones).slice(0, 2).join(" ") || <span className="text-zinc-400">—</span>}
                     </td>
@@ -209,7 +238,7 @@ export default function ImportPage() {
             </table>
             {preview.totalRows > 10 && (
               <p className="p-2 text-xs text-zinc-400 bg-zinc-50">
-                Showing first 10 of {preview.totalRows} rows.
+                Showing first 10 of {preview.totalRows} rows. <span className="text-zinc-500">● blue = person  ● purple = company</span>
               </p>
             )}
           </div>
