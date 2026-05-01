@@ -45,7 +45,7 @@ export async function requestOpenclawValidation(
       method: "POST",
       headers,
       body: JSON.stringify({
-        mode: "validate",
+        mode: "validate_candidate",
         candidate_id: candidateId,
         lead_id: ctx.leadId,
         phone_raw: candidate.phoneRaw,

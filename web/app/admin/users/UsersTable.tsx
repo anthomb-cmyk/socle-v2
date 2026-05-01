@@ -32,7 +32,6 @@ export default function UsersTable() {
     if (!j.ok) { setError(j.error); return; }
     setUsers(j.data);
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, []);
 
   async function patch(id: string, body: Partial<UserRow>) {

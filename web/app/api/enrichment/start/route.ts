@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     contact_id: lead.contact_id,
     workflow_id: "pipeline_v2",
     job_type: "find_phone",
-    status: "running",
+    status: "processing",
     started_at: new Date().toISOString(),
     raw_input: { leadId: lead.id, contactId: lead.contact_id, pipeline: "multi_stage_v2" },
   }).select("id").single();
@@ -147,9 +147,9 @@ export async function POST(request: Request) {
 
   // Mark job status
   const jobStatus = result.foundCandidates
-    ? "success"
+    ? "completed"
     : result.openclawDispatched
-      ? "running"   // still waiting for OpenClaw callback
+      ? "processing"   // still waiting for OpenClaw callback
       : "failed";
 
   await sb.from("enrichment_jobs").update({

@@ -148,7 +148,7 @@ export async function POST(request: Request) {
 
   if (jobId) {
     await sb.from("enrichment_jobs").update({
-      status: "success",
+      status: "completed",
       completed_at: new Date().toISOString(),
       raw_output: { candidates: savedIds.length, reasoning_summary },
     }).eq("id", jobId);

@@ -29,7 +29,6 @@ export default function ContactsTable() {
     setItems(j.data.contacts);
     setTotal(j.data.total);
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, [kind]);
 
   return (
