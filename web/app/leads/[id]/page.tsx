@@ -74,11 +74,11 @@ export default async function LeadDetailPage(
           {lead.num_units != null && <> · {lead.num_units} units</>}
           {lead.evaluation_total != null && <> · eval ${Math.round(lead.evaluation_total / 1000)}k</>}
         </p>
-        <p className="text-xs text-zinc-500 mt-1">
-          status: <span className="font-medium">{lead.status}</span> ·
-          priority: {lead.priority} ·
-          assigned to: {assignedUser?.display_name ?? <span className="text-zinc-400">unassigned</span>}
-          {lead.campaign_name && <> · campaign: {lead.campaign_name}</>}
+        <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1.5 flex-wrap">
+          <LeadStatusPill status={lead.status} />
+          <span>· priority: {lead.priority}</span>
+          <span>· {assignedUser?.display_name ? `assigned to: ${assignedUser.display_name}` : <span className="text-zinc-400">unassigned</span>}</span>
+          {lead.campaign_name && <span>· {lead.campaign_name}</span>}
         </p>
       </header>
 
@@ -213,6 +213,37 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 function Dt({ children }: { children: React.ReactNode }) { return <dt className="text-zinc-500">{children}</dt>; }
 function Dd({ children, className = "" }: { children: React.ReactNode; className?: string }) { return <dd className={className}>{children}</dd>; }
+function LeadStatusPill({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    // Calling workflow
+    new: "bg-blue-100 text-blue-800",
+    ready_to_call: "bg-emerald-100 text-emerald-800",
+    in_outreach: "bg-amber-100 text-amber-800",
+    meeting_set: "bg-purple-100 text-purple-800",
+    qualified: "bg-emerald-200 text-emerald-900",
+    no_answer: "bg-zinc-100 text-zinc-600",
+    rejected: "bg-red-100 text-red-800",
+    do_not_contact: "bg-red-200 text-red-900",
+    // Enrichment pipeline
+    needs_enrichment: "bg-sky-100 text-sky-800",
+    brave_queued: "bg-sky-50 text-sky-600",
+    unresolved_after_brave: "bg-zinc-200 text-zinc-600",
+    directory_411_queued: "bg-sky-50 text-sky-600",
+    unresolved_after_411: "bg-zinc-200 text-zinc-600",
+    places_queued: "bg-sky-50 text-sky-600",
+    unresolved_after_places: "bg-zinc-200 text-zinc-600",
+    openclaw_queued: "bg-violet-100 text-violet-700",
+    needs_human_review: "bg-orange-100 text-orange-800",
+    no_contact_found: "bg-red-50 text-red-500",
+    enriching: "bg-sky-100 text-sky-700",
+  };
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? "bg-zinc-100 text-zinc-600"}`}>
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 function PhoneStatusPill({ s }: { s: string }) {
   const c: Record<string, string> = {
     unverified: "bg-zinc-100 text-zinc-700",

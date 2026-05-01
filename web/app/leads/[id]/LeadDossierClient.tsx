@@ -2,7 +2,29 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const STATUSES = ["new", "enriching", "ready_to_call", "in_outreach", "meeting_set", "qualified", "no_answer", "rejected", "do_not_contact"] as const;
+// Grouped status lists — keep in sync with ALL_LEAD_STATUSES in /api/leads/[id]/route.ts
+const STATUS_GROUPS = [
+  {
+    label: "Calling workflow",
+    statuses: ["new", "ready_to_call", "in_outreach", "no_answer", "meeting_set", "qualified", "rejected", "do_not_contact"],
+  },
+  {
+    label: "Enrichment pipeline",
+    statuses: [
+      "needs_enrichment",
+      "brave_queued", "unresolved_after_brave",
+      "directory_411_queued", "unresolved_after_411",
+      "places_queued", "unresolved_after_places",
+      "openclaw_queued", "needs_human_review", "no_contact_found",
+    ],
+  },
+  {
+    label: "Legacy / misc",
+    statuses: ["enriching"],
+  },
+] as const;
+
+const ALL_STATUSES = STATUS_GROUPS.flatMap(g => g.statuses);
 
 type User = { user_id: string; display_name: string | null; role: string };
 type EnrichJob = { id: string; job_type: string; status: string; started_at: string | null; completed_at: string | null; error_message: string | null; created_at: string };
@@ -102,7 +124,17 @@ export default function LeadDossierClient({
             onChange={e => { setStatus(e.target.value); patch({ status: e.target.value }, "status"); }}
             disabled={busy !== null}
             className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {/* Safety: show current status even if not in grouped list */}
+            {!ALL_STATUSES.includes(status as typeof ALL_STATUSES[number]) && (
+              <option value={status}>{status} (current)</option>
+            )}
+            {STATUS_GROUPS.map(group => (
+              <optgroup key={group.label} label={group.label}>
+                {group.statuses.map(s => (
+                  <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </Field>
         <Field label={`Priority (${priority})`}>
