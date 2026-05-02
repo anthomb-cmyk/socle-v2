@@ -26,35 +26,39 @@ export default async function ReviewPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <header className="flex items-center justify-between">
+      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 4, flexWrap: "wrap" }}>
         <div>
-          <h1 className="text-2xl font-semibold">Review</h1>
-          <p className="text-sm text-zinc-500">Hot sellers · proposed actions · ambiguous commands.</p>
+          <h1 className="crm-page-title">Revue</h1>
+          <p className="crm-page-sub">Vendeurs chauds · actions proposées · commandes ambiguës.</p>
         </div>
-        <nav className="flex gap-2 text-sm">
-          <Link href="/leads" className="border border-zinc-300 rounded-lg px-3 py-1.5">Leads</Link>
-          <Link href="/import" className="bg-zinc-900 text-white rounded-lg px-3 py-1.5">Import</Link>
-        </nav>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/leads" className="crm-btn">Leads</Link>
+          <Link href="/import" className="crm-btn crm-btn-dark">Import</Link>
+        </div>
       </header>
 
       <section>
-        <h2 className="text-sm uppercase tracking-wide text-zinc-500 mb-2">Review items ({reviews.length})</h2>
+        <h2 className="crm-section-label">Éléments à revue ({reviews.length})</h2>
         {reviews.length === 0 ? (
-          <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center text-zinc-500">
-            Nothing in your inbox.
+          <div className="crm-card" style={{ padding: "32px 24px", textAlign: "center", color: "var(--crm-text3)" }}>
+            Boîte vide — rien à revue.
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {reviews.map(it => (
-              <li key={it.id} className="bg-white border border-zinc-200 rounded-2xl p-4">
-                <div className="flex justify-between items-start mb-1">
-                  <h3 className="font-semibold">{it.title}</h3>
+              <li key={it.id} className="crm-card" style={{ padding: "14px 18px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <h3 style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", margin: 0 }}>{it.title}</h3>
                   <UrgencyPill urgency={it.urgency} />
                 </div>
-                {it.summary && <p className="text-sm text-zinc-700 whitespace-pre-wrap">{it.summary}</p>}
-                <div className="text-xs text-zinc-500 mt-2 flex gap-4">
-                  <span>{new Date(it.created_at).toLocaleString()}</span>
-                  {it.lead_id && <Link href={`/leads/${it.lead_id}` as never} className="underline">Open lead →</Link>}
+                {it.summary && <p style={{ fontSize: 13, color: "var(--crm-text2)", whiteSpace: "pre-wrap", margin: "0 0 8px" }}>{it.summary}</p>}
+                <div style={{ fontSize: 11, color: "var(--crm-text3)", display: "flex", gap: 16 }}>
+                  <span>{new Date(it.created_at).toLocaleString("fr-CA")}</span>
+                  {it.lead_id && (
+                    <Link href={`/leads/${it.lead_id}` as never} style={{ color: "var(--crm-blue)", textDecoration: "none" }}>
+                      Ouvrir lead →
+                    </Link>
+                  )}
                 </div>
               </li>
             ))}
@@ -63,7 +67,7 @@ export default async function ReviewPage() {
       </section>
 
       <section>
-        <h2 className="text-sm uppercase tracking-wide text-zinc-500 mb-2">Proposed actions ({proposed.length})</h2>
+        <h2 className="crm-section-label">Actions proposées ({proposed.length})</h2>
         <ProposedActionsList initial={proposed} />
       </section>
     </main>
@@ -71,11 +75,19 @@ export default async function ReviewPage() {
 }
 
 function UrgencyPill({ urgency }: { urgency: string }) {
-  const colors: Record<string, string> = {
-    urgent: "bg-red-100 text-red-800",
-    high: "bg-amber-100 text-amber-800",
-    normal: "bg-zinc-100 text-zinc-700",
-    low: "bg-zinc-50 text-zinc-500",
+  const cfg: Record<string, { label: string; bg: string; color: string }> = {
+    urgent:  { label: "Urgent",  bg: "var(--crm-red-light)",   color: "var(--crm-red)" },
+    high:    { label: "Élevé",   bg: "var(--crm-amber-light)", color: "var(--crm-amber)" },
+    normal:  { label: "Normal",  bg: "#F3F4F6",                color: "#4B5563" },
+    low:     { label: "Faible",  bg: "#F9FAFB",                color: "var(--crm-text3)" },
   };
-  return <span className={`text-xs uppercase tracking-wide rounded px-2 py-0.5 ${colors[urgency] ?? "bg-zinc-100"}`}>{urgency}</span>;
+  const { label, bg, color } = cfg[urgency] ?? { label: urgency, bg: "#F3F4F6", color: "#4B5563" };
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: "0.6px", textTransform: "uppercase",
+      background: bg, color, borderRadius: 6, padding: "3px 8px",
+    }}>
+      {label}
+    </span>
+  );
 }

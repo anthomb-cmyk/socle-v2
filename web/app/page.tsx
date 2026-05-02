@@ -10,9 +10,9 @@ export default async function Home() {
   if (!user) {
     return (
       <main className="mx-auto max-w-2xl p-8">
-        <h1 className="text-2xl font-semibold mb-2">Socle CRM</h1>
-        <p className="text-zinc-600 mb-6">Québec multifamily acquisition operating system.</p>
-        <Link className="inline-block bg-zinc-900 text-white rounded-lg px-4 py-2 text-sm font-medium" href="/login">Sign in</Link>
+        <h1 className="crm-page-title mb-2">Socle CRM</h1>
+        <p style={{ color: "var(--crm-text2)", marginBottom: 24, fontSize: 14 }}>Système d&rsquo;acquisition immobilier multifamilial au Québec.</p>
+        <Link className="crm-btn crm-btn-dark" href="/login">Se connecter</Link>
       </main>
     );
   }
@@ -49,47 +49,47 @@ export default async function Home() {
 
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-zinc-500">Bonjour, {user.email}.</p>
+      <header style={{ marginBottom: 20 }}>
+        <h1 className="crm-page-title">Tableau de bord</h1>
+        <p className="crm-page-sub">Bonjour, {user.email}.</p>
       </header>
 
       <section className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Tile href="/review" label="Urgent reviews" value={c.urgentReviews} sub={`${c.openReviews} total open`} highlight={c.urgentReviews > 0} />
-        <Tile href="/follow-ups?bucket=overdue" label="Overdue follow-ups" value={c.overdueFu} sub={`${c.todayFu} due today`} highlight={c.overdueFu > 0} />
-        <Tile href="/follow-ups" label="Today's follow-ups" value={c.todayFu} />
-        <Tile href="/leads?status=new" label="New leads" value={c.newLeads} />
-        <Tile href="/leads" label="Leads in motion" value={c.leadsToCall} sub="assigned + active" />
-        <Tile href="/import" label="Import" value="↗" sub="add a rôle" />
+        <Tile href="/review" label="Revues urgentes" value={c.urgentReviews} sub={`${c.openReviews} total ouvert`} highlight={c.urgentReviews > 0} />
+        <Tile href="/follow-ups?bucket=overdue" label="Suivis en retard" value={c.overdueFu} sub={`${c.todayFu} aujourd'hui`} highlight={c.overdueFu > 0} />
+        <Tile href="/follow-ups" label="Suivis aujourd'hui" value={c.todayFu} />
+        <Tile href="/leads?status=new" label="Nouveaux leads" value={c.newLeads} />
+        <Tile href="/leads" label="Leads en cours" value={c.leadsToCall} sub="assignés + actifs" />
+        <Tile href="/import" label="Import" value="↗" sub="ajouter un rôle" />
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Panel title="Recent imports" empty="No imports yet.">
+        <Panel title="Imports récents" empty="Aucun import.">
           {(recentImports.data ?? []).length > 0 && (
-            <ul className="text-sm divide-y divide-zinc-100">
+            <ul style={{ fontSize: 13 }}>
               {((recentImports.data ?? []) as Array<{ id: string; file_name: string; status: string; properties_created: number; leads_created: number; errors_count: number; created_at: string }>).map(i => (
-                <li key={i.id} className="py-2 flex justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{i.file_name}</div>
-                    <div className="text-xs text-zinc-500">{new Date(i.created_at).toLocaleString()} · {i.status}</div>
+                <li key={i.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--crm-card-border)", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.file_name}</div>
+                    <div style={{ fontSize: 11, color: "var(--crm-text3)" }}>{new Date(i.created_at).toLocaleString("fr-CA")} · {i.status}</div>
                   </div>
-                  <div className="text-right text-xs text-zinc-600 whitespace-nowrap">
+                  <div style={{ textAlign: "right", fontSize: 11, color: "var(--crm-text2)", whiteSpace: "nowrap" }}>
                     {i.properties_created}p · {i.leads_created}l
-                    {i.errors_count > 0 && <span className="text-red-600"> · {i.errors_count} err</span>}
+                    {i.errors_count > 0 && <span style={{ color: "var(--crm-red)" }}> · {i.errors_count} err</span>}
                   </div>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
-        <Panel title="Recent failures (24h)" empty="Nothing failing.">
+        <Panel title="Erreurs récentes (24h)" empty="Aucune erreur.">
           {(recentFailures.data ?? []).length > 0 && (
-            <ul className="text-sm divide-y divide-zinc-100">
+            <ul style={{ fontSize: 13 }}>
               {((recentFailures.data ?? []) as Array<{ id: string; source: string; event_type: string; error_message: string | null; occurred_at: string }>).map(e => (
-                <li key={e.id} className="py-2">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">{e.source} · {e.event_type}</div>
-                  <div className="text-sm text-red-700">{e.error_message ?? "(no message)"}</div>
-                  <div className="text-xs text-zinc-400">{new Date(e.occurred_at).toLocaleString()}</div>
+                <li key={e.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--crm-card-border)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)" }}>{e.source} · {e.event_type}</div>
+                  <div style={{ fontSize: 13, color: "var(--crm-red)" }}>{e.error_message ?? "(no message)"}</div>
+                  <div style={{ fontSize: 11, color: "var(--crm-text3)" }}>{new Date(e.occurred_at).toLocaleString("fr-CA")}</div>
                 </li>
               ))}
             </ul>
@@ -102,19 +102,19 @@ export default async function Home() {
 
 function Tile({ href, label, value, sub, highlight }: { href: string; label: string; value: number | string; sub?: string; highlight?: boolean }) {
   return (
-    <Link href={href as never} className={`block bg-white rounded-2xl border p-4 hover:border-zinc-400 transition ${highlight ? "border-amber-300 bg-amber-50" : "border-zinc-200"}`}>
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className={`text-3xl font-semibold mt-1 ${highlight ? "text-amber-900" : "text-zinc-900"}`}>{value}</div>
-      {sub && <div className="text-xs text-zinc-500 mt-1">{sub}</div>}
+    <Link href={href as never} className={`crm-tile${highlight ? " crm-tile-hot" : ""}`}>
+      <div className="crm-tile-label">{label}</div>
+      <div className="crm-tile-value">{value}</div>
+      {sub && <div className="crm-tile-sub">{sub}</div>}
     </Link>
   );
 }
 
 function Panel({ title, empty, children }: { title: string; empty: string; children?: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl border border-zinc-200 p-4">
-      <h2 className="text-sm font-semibold text-zinc-700 mb-2">{title}</h2>
-      {children ?? <p className="text-sm text-zinc-400">{empty}</p>}
+    <div className="crm-card" style={{ padding: "16px 20px" }}>
+      <h2 style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 12 }}>{title}</h2>
+      {children ?? <p style={{ fontSize: 13, color: "var(--crm-text3)" }}>{empty}</p>}
     </div>
   );
 }

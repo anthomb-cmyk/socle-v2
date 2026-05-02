@@ -1,1 +1,310 @@
 @import "tailwindcss";
+
+/* ─── Socle CRM Design Tokens ─────────────────────────────────────────────
+   Ported from V1 (proforma-web) — warm cream palette, gold accents.
+   These complement Tailwind; use --crm-* vars or .crm-* classes for
+   anything that needs the V1 feel without overriding Tailwind utilities.
+──────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Background — warm off-white cream */
+  --crm-bg:          #F9F7F4;
+  --crm-bg-alt:      #F5F2ED;
+  --crm-surface:     #FFFDF9;
+
+  /* Cards */
+  --crm-card:        #FFFFFF;
+  --crm-card-border: #E8E3DA;
+
+  /* Gold accent */
+  --crm-gold:        #C9A84C;
+  --crm-gold-light:  #F5EDD6;
+  --crm-gold-border: #E9D9AA;
+
+  /* Typography */
+  --crm-text:        #1A1A1A;
+  --crm-text2:       #6B6B6B;
+  --crm-text3:       #A0A0A0;
+
+  /* Semantic */
+  --crm-green:       #2D8C4E;
+  --crm-green-light: #E9F7EF;
+  --crm-red:         #C0392B;
+  --crm-red-light:   #FDF0ED;
+  --crm-blue:        #2563EB;
+  --crm-blue-light:  #EAF1FF;
+  --crm-amber:       #B7791F;
+  --crm-amber-light: #FFF3D8;
+}
+
+/* ─── Body background override: warm cream instead of zinc-50 ─────────── */
+body {
+  background-color: var(--crm-bg) !important;
+  color: var(--crm-text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Nav ─────────────────────────────────────────────────────────────── */
+.crm-nav {
+  background: var(--crm-card);
+  border-bottom: 1px solid var(--crm-card-border);
+}
+
+.crm-nav-link {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  height: 44px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crm-text2);
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+  border-bottom: 2px solid transparent;
+}
+
+.crm-nav-link:hover {
+  color: var(--crm-text);
+  background: var(--crm-bg);
+}
+
+.crm-nav-link.active {
+  color: var(--crm-gold);
+  border-bottom-color: var(--crm-gold);
+}
+
+/* ─── Page header ─────────────────────────────────────────────────────── */
+.crm-page-header {
+  margin-bottom: 20px;
+}
+
+.crm-page-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.15px;
+  color: var(--crm-text);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.crm-page-sub {
+  font-size: 12px;
+  color: var(--crm-text3);
+  margin-top: 3px;
+}
+
+/* ─── Cards ───────────────────────────────────────────────────────────── */
+.crm-card {
+  background: var(--crm-card);
+  border: 1px solid var(--crm-card-border);
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.crm-card-gold {
+  background: var(--crm-surface);
+  border: 1.5px solid var(--crm-gold);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+/* ─── Lead row left-border indicators ────────────────────────────────── */
+/* Used for priority/status in lead lists. Apply on <tr> or <li>. */
+.crm-row-hot    { border-left: 4px solid var(--crm-red)   !important; }
+.crm-row-warm   { border-left: 4px solid var(--crm-gold)  !important; }
+.crm-row-cold   { border-left: 4px solid var(--crm-blue)  !important; }
+.crm-row-normal { border-left: 4px solid var(--crm-card-border) !important; }
+.crm-row-done   { border-left: 4px solid var(--crm-text3) !important; }
+
+/* Selected row in leads list */
+.crm-row-selected {
+  background: #FFFBF1 !important;
+}
+
+/* ─── Status pills ─────────────────────────────────────────────────────
+   V1 class names mapped to V2 statuses.
+   Usage: <span class="crm-pill crm-pill--nouveau">Nouveau</span>
+──────────────────────────────────────────────────────────────────────── */
+.crm-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  line-height: 1.5;
+}
+
+/* Calling workflow */
+.crm-pill--nouveau        { background: #F3F4F6; color: #4B5563; }
+.crm-pill--a-appeler      { background: var(--crm-amber-light); color: var(--crm-amber); }
+.crm-pill--contacte       { background: var(--crm-blue-light); color: var(--crm-blue); }
+.crm-pill--rdv-fixe       { background: #EDE9FE; color: #5B21B6; }
+.crm-pill--qualifie       { background: var(--crm-green-light); color: var(--crm-green); }
+.crm-pill--ferme          { background: #F3F4F6; color: #9CA3AF; }
+.crm-pill--dnc            { background: var(--crm-red-light); color: var(--crm-red); }
+.crm-pill--sans-reponse   { background: #F9FAFB; color: #9CA3AF; }
+
+/* Enrichment pipeline */
+.crm-pill--enrichissement { background: #EFF6FF; color: #1E40AF; }
+.crm-pill--a-verifier     { background: #FFF7ED; color: #C2410C; }
+.crm-pill--pipeline       { background: #F0F9FF; color: #0369A1; }
+.crm-pill--non-resolu     { background: #F9FAFB; color: #9CA3AF; }
+.crm-pill--converti       { background: var(--crm-green-light); color: var(--crm-green); }
+
+/* ─── "sans tél." badge ───────────────────────────────────────────────── */
+.crm-no-phone {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--crm-red);
+}
+
+/* ─── Phone link ─────────────────────────────────────────────────────── */
+.crm-phone-link {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--crm-green);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.crm-phone-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Property chips ─────────────────────────────────────────────────── */
+.crm-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.crm-chip-units  { background: #FFF7ED; color: #C2410C; }
+.crm-chip-year   { background: #F0FDF4; color: #166534; }
+.crm-chip-eval   { background: #FFF8F0; color: #92400E; }
+.crm-chip-type   { background: #EEF2FF; color: #3730A3; }
+
+/* ─── Buttons ────────────────────────────────────────────────────────── */
+.crm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--crm-card-border);
+  background: #fff;
+  color: var(--crm-text2);
+  padding: 7px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.crm-btn:hover { background: var(--crm-bg); }
+
+.crm-btn-gold {
+  border-color: transparent;
+  background: var(--crm-gold);
+  color: #fff;
+}
+
+.crm-btn-gold:hover { filter: brightness(1.05); }
+
+.crm-btn-dark {
+  border-color: transparent;
+  background: var(--crm-text);
+  color: #fff;
+}
+
+/* ─── Section headings ───────────────────────────────────────────────── */
+.crm-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--crm-text3);
+  margin-bottom: 8px;
+}
+
+/* ─── Form rows ──────────────────────────────────────────────────────── */
+.crm-f-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 9px;
+}
+
+.crm-f-lbl {
+  font-size: 11px;
+  color: var(--crm-text2);
+  font-weight: 600;
+}
+
+/* ─── Dashboard tiles ────────────────────────────────────────────────── */
+.crm-tile {
+  display: block;
+  background: var(--crm-card);
+  border: 1px solid var(--crm-card-border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.crm-tile:hover {
+  border-color: #D4C99A;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+}
+
+.crm-tile-hot {
+  border-color: #E9D9AA;
+  background: #FFFBF1;
+}
+
+.crm-tile-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--crm-text3);
+}
+
+.crm-tile-value {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--crm-text);
+  margin-top: 4px;
+  line-height: 1;
+}
+
+.crm-tile-hot .crm-tile-value {
+  color: #92400E;
+}
+
+.crm-tile-sub {
+  font-size: 11px;
+  color: var(--crm-text3);
+  margin-top: 4px;
+}
+
+/* ─── Progress bar (import) ──────────────────────────────────────────── */
+.crm-progress-track {
+  height: 8px;
+  background: var(--crm-gold-light);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.crm-progress-fill {
+  height: 100%;
+  background: var(--crm-gold);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}

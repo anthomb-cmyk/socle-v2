@@ -5,66 +5,119 @@ export default function AppNav({ email, role }: { email: string; role: "admin" |
   const isAdmin = role === "admin";
 
   return (
-    <nav className="bg-white border-b border-zinc-200 px-4 py-0 flex items-stretch text-sm">
+    <nav className="crm-nav" style={{ display: "flex", alignItems: "stretch", padding: "0 16px", gap: 0 }}>
       {/* Brand */}
       <Link
         href={(isAdmin ? "/" : "/calls/queue") as never}
-        className="font-semibold tracking-tight flex items-center pr-5 border-r border-zinc-100 mr-2"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          paddingRight: 16,
+          marginRight: 6,
+          borderRight: "1px solid var(--crm-card-border)",
+          textDecoration: "none",
+          flexShrink: 0,
+        }}
       >
-        Socle
+        <span style={{
+          width: 28,
+          height: 28,
+          borderRadius: 8,
+          background: "var(--crm-gold)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: 0.5,
+          flexShrink: 0,
+        }}>S</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", letterSpacing: 0.3 }}>Socle</span>
       </Link>
 
       {/* Primary links */}
-      <div className="flex items-stretch gap-0">
+      <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
         {isAdmin ? (
           <>
             <NavLink href="/">Dashboard</NavLink>
             <NavLink href="/leads">Leads</NavLink>
-            <NavLink href="/review">Review inbox</NavLink>
-            <NavLink href="/phone-review">Phone review</NavLink>
-            <NavLink href="/follow-ups">Follow-ups</NavLink>
+            <NavLink href="/review">Revue</NavLink>
+            <NavLink href="/phone-review">Tél. revue</NavLink>
+            <NavLink href="/follow-ups">Suivis</NavLink>
             <NavLink href="/import">Import</NavLink>
-            <NavLink href="/calls/queue">Call queue</NavLink>
+            <NavLink href="/calls/queue">File d&rsquo;appels</NavLink>
 
-            {/* Admin dropdown — CSS-only hover */}
-            <div className="relative group flex items-center">
-              <button className="h-full px-3 text-zinc-500 hover:text-zinc-900 flex items-center gap-1 cursor-default">
+            {/* Admin dropdown */}
+            <div style={{ position: "relative", display: "flex", alignItems: "stretch" }} className="group">
+              <button style={{
+                height: "100%",
+                padding: "0 12px",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--crm-text2)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}>
                 Admin
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ opacity: 0.5 }}>
                   <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
-              <div className="absolute top-full left-0 hidden group-hover:block bg-white border border-zinc-200 rounded-xl shadow-lg py-1 z-50 min-w-[160px]">
-                <DropLink href="/admin/users">Users</DropLink>
-                <DropLink href="/admin/enrichment">Enrichment</DropLink>
-                <DropLink href="/admin/events">Events log</DropLink>
-                <DropLink href="/data-health">Data health</DropLink>
-                <DropLink href="/properties">Properties</DropLink>
+              <div style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                minWidth: 160,
+                background: "#fff",
+                border: "1px solid var(--crm-card-border)",
+                borderRadius: 12,
+                boxShadow: "0 8px 28px rgba(0,0,0,.10)",
+                padding: "4px 0",
+                zIndex: 50,
+              }} className="hidden group-hover:block">
+                <DropLink href="/admin/users">Utilisateurs</DropLink>
+                <DropLink href="/admin/enrichment">Enrichissement</DropLink>
+                <DropLink href="/admin/events">Journal événements</DropLink>
+                <DropLink href="/data-health">Santé données</DropLink>
+                <DropLink href="/properties">Propriétés</DropLink>
                 <DropLink href="/contacts">Contacts</DropLink>
-                <DropLink href="/calendar">Calendar</DropLink>
-                <div className="my-1 border-t border-zinc-100" />
-                <DropLink href="/admin/test" muted>Test panel</DropLink>
-                <DropLink href="/admin/seed" muted>Seed data</DropLink>
+                <DropLink href="/calendar">Calendrier</DropLink>
+                <div style={{ margin: "4px 0", borderTop: "1px solid var(--crm-card-border)" }} />
+                <DropLink href="/admin/test" muted>Panel test</DropLink>
+                <DropLink href="/admin/seed" muted>Données seed</DropLink>
               </div>
             </div>
           </>
         ) : (
           <>
-            <NavLink href="/calls/queue">My queue</NavLink>
-            <NavLink href="/follow-ups">Follow-ups</NavLink>
-            <NavLink href="/calendar">Calendar</NavLink>
+            <NavLink href="/calls/queue">Ma file</NavLink>
+            <NavLink href="/follow-ups">Suivis</NavLink>
+            <NavLink href="/calendar">Calendrier</NavLink>
           </>
         )}
       </div>
 
-      <div className="flex-1" />
+      <div style={{ flex: 1 }} />
 
       {/* Right side */}
-      <div className="flex items-center gap-2 pl-4">
-        <span className="text-xs text-zinc-400 hidden lg:inline truncate max-w-[160px]">{email}</span>
-        <span className="text-xs uppercase tracking-wide rounded px-1.5 py-0.5 bg-zinc-100 text-zinc-500">
-          {role}
-        </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 12 }}>
+        <span style={{ fontSize: 11, color: "var(--crm-text3)" }} className="hidden lg:inline truncate max-w-[140px]">{email}</span>
+        <span style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.6px",
+          textTransform: "uppercase",
+          background: isAdmin ? "var(--crm-gold-light)" : "#F3F4F6",
+          color: isAdmin ? "var(--crm-gold)" : "var(--crm-text3)",
+          borderRadius: 6,
+          padding: "3px 7px",
+        }}>{role}</span>
         <SignOutButton />
       </div>
     </nav>
@@ -75,7 +128,20 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   return (
     <Link
       href={href as never}
-      className="flex items-center px-3 h-10 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 transition-colors"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        padding: "0 12px",
+        height: 44,
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--crm-text2)",
+        textDecoration: "none",
+        borderBottom: "2px solid transparent",
+        whiteSpace: "nowrap",
+        transition: "color 0.15s",
+      }}
+      className="hover:text-[var(--crm-text)] hover:bg-[var(--crm-bg)]"
     >
       {children}
     </Link>
@@ -86,7 +152,15 @@ function DropLink({ href, children, muted }: { href: string; children: React.Rea
   return (
     <Link
       href={href as never}
-      className={`block px-4 py-2 hover:bg-zinc-50 transition-colors ${muted ? "text-zinc-400" : "text-zinc-700"}`}
+      style={{
+        display: "block",
+        padding: "9px 16px",
+        fontSize: 13,
+        color: muted ? "var(--crm-text3)" : "var(--crm-text2)",
+        textDecoration: "none",
+        fontWeight: 600,
+      }}
+      className="hover:bg-[var(--crm-bg)]"
     >
       {children}
     </Link>

@@ -106,139 +106,140 @@ export default function ImportPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Import a rôle</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Upload a Québec rôle XLSX. Preview first, then confirm to write to the database.
+      <div style={{ marginBottom: 4 }}>
+        <h1 className="crm-page-title">Import d&rsquo;un rôle</h1>
+        <p className="crm-page-sub">
+          Importez un fichier XLSX du rôle d&rsquo;évaluation du Québec. Prévisualisez d&rsquo;abord, puis confirmez pour écrire en base.
         </p>
       </div>
 
       {/* ─── Upload form ─── */}
       {!result && (
-        <form onSubmit={onUpload} className="bg-white rounded-2xl border border-zinc-200 p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              XLSX file <span className="text-red-500">*</span>
+        <form onSubmit={onUpload} className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="crm-f-row">
+            <label className="crm-f-lbl">
+              Fichier XLSX <span style={{ color: "var(--crm-red)" }}>*</span>
             </label>
             <input type="file" accept=".xlsx,.xls"
               onChange={e => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm" required />
+              style={{ fontSize: 13 }} required />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Campaign name <span className="text-zinc-400 font-normal text-xs">(recommended — groups leads for assignment)</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="crm-f-row" style={{ marginBottom: 0 }}>
+              <label className="crm-f-lbl">
+                Nom de campagne <span style={{ fontSize: 10, color: "var(--crm-text3)", fontWeight: 400 }}>(recommandé — groupe les leads)</span>
               </label>
               <input type="text" value={campaignName} onChange={e => setCampaignName(e.target.value)}
-                placeholder="e.g. Granby rôle avril 2026"
-                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm" />
+                placeholder="ex. Granby rôle avril 2026"
+                style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "7px 10px", fontSize: 13, background: "#fff", width: "100%" }} />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">City <span className="text-zinc-400 font-normal text-xs">(optional hint)</span></label>
+            <div className="crm-f-row" style={{ marginBottom: 0 }}>
+              <label className="crm-f-lbl">Ville <span style={{ fontSize: 10, color: "var(--crm-text3)", fontWeight: 400 }}>(indice optionnel)</span></label>
               <input type="text" value={city} onChange={e => setCity(e.target.value)}
-                placeholder="e.g. Granby"
-                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm" />
+                placeholder="ex. Granby"
+                style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "7px 10px", fontSize: 13, background: "#fff", width: "100%" }} />
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={busy || !file}
-              className="bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-medium">
-              {busy ? "Parsing…" : "Parse and preview"}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button type="submit" disabled={busy || !file} className="crm-btn crm-btn-dark" style={{ opacity: (busy || !file) ? 0.5 : 1 }}>
+              {busy ? "Analyse en cours…" : "Analyser et prévisualiser"}
             </button>
             {preview && (
               <button type="button" onClick={() => { setPreview(null); setFile(null); setResult(null); }}
-                className="text-sm text-zinc-600 hover:underline">
-                Reset
+                style={{ fontSize: 13, color: "var(--crm-text3)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                Réinitialiser
               </button>
             )}
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
         </form>
       )}
 
       {/* ─── Preview ─── */}
       {preview && !result && (
-        <div className="bg-white rounded-2xl border border-zinc-200 p-6 space-y-4">
+        <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <h2 className="text-lg font-semibold">Preview</h2>
-            <p className="text-sm text-zinc-500">
-              Format: <code className="bg-zinc-100 px-1 rounded">{preview.format}</code> · {preview.totalRows} rows scanned
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-text)", marginBottom: 4 }}>Prévisualisation</h2>
+            <p style={{ fontSize: 12, color: "var(--crm-text3)" }}>
+              Format : <code style={{ background: "var(--crm-bg-alt)", padding: "1px 5px", borderRadius: 4 }}>{preview.format}</code> · {preview.totalRows} lignes scannées
               {!campaignName && (
-                <span className="ml-2 text-amber-600">⚠ No campaign name — leads will have no campaign tag</span>
+                <span style={{ marginLeft: 8, color: "var(--crm-amber)" }}>⚠ Aucun nom de campagne — les leads n&rsquo;auront pas de tag</span>
               )}
             </p>
           </div>
 
-          <dl className="grid grid-cols-4 gap-4">
-            <StatBox label="Properties" value={preview.summary.properties} />
-            <StatBox label="Owners / leads" value={preview.summary.owners} />
-            <StatBox label="Callable (with phone)" value={preview.summary.phones} highlight />
-            <StatBox label="Parse errors" value={preview.errorsCount} negative={preview.errorsCount > 0} />
+          <dl style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <StatBox label="Propriétés" value={preview.summary.properties} />
+            <StatBox label="Propriétaires / leads" value={preview.summary.owners} />
+            <StatBox label="Avec tél. (appelables)" value={preview.summary.phones} highlight />
+            <StatBox label="Erreurs parseur" value={preview.errorsCount} negative={preview.errorsCount > 0} />
           </dl>
 
           {preview.summary.cities.length > 0 && (
-            <p className="text-sm text-zinc-600">
-              Cities: {preview.summary.cities.slice(0, 8).join(", ")}{preview.summary.cities.length > 8 ? "…" : ""}
+            <p style={{ fontSize: 12, color: "var(--crm-text2)" }}>
+              Villes : {preview.summary.cities.slice(0, 8).join(", ")}{preview.summary.cities.length > 8 ? "…" : ""}
             </p>
           )}
 
           {/* Preview table */}
-          <div className="border border-zinc-200 rounded-lg overflow-x-auto">
-            <table className="w-full text-sm whitespace-nowrap">
-              <thead className="bg-zinc-50 text-zinc-500 text-xs">
+          <div style={{ border: "1px solid var(--crm-card-border)", borderRadius: 10, overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 12, whiteSpace: "nowrap", borderCollapse: "collapse" }}>
+              <thead style={{ background: "var(--crm-bg-alt)", color: "var(--crm-text3)", fontSize: 10, fontWeight: 700, letterSpacing: "0.6px", textTransform: "uppercase" }}>
                 <tr>
-                  <th className="text-left p-2">#</th>
-                  <th className="text-left p-2">Address</th>
-                  <th className="text-left p-2">City</th>
-                  <th className="text-left p-2">Mat.</th>
-                  <th className="text-left p-2">Units</th>
-                  <th className="text-left p-2">Built</th>
-                  <th className="text-left p-2">Eval ($)</th>
-                  <th className="text-left p-2">Owners</th>
-                  <th className="text-left p-2">Phones</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>#</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Adresse</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Ville</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Mat.</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Log.</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Const.</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Éval. ($)</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Propriétaires</th>
+                  <th style={{ textAlign: "left", padding: "7px 10px" }}>Téléphones</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.previewRows.map(r => (
-                  <tr key={r.row} className="border-t border-zinc-100 hover:bg-zinc-50">
-                    <td className="p-2 text-zinc-400">{r.row}</td>
-                    <td className="p-2 max-w-xs truncate" title={r.address}>{r.address}</td>
-                    <td className="p-2">{r.city ?? <span className="text-zinc-400">—</span>}</td>
-                    <td className="p-2 font-mono text-xs text-zinc-500">
-                      {r.matricule ?? <span className="text-zinc-300">—</span>}
+                  <tr key={r.row} style={{ borderTop: "1px solid var(--crm-card-border)" }}
+                    className="hover:bg-[var(--crm-bg-alt)]">
+                    <td style={{ padding: "6px 10px", color: "var(--crm-text3)" }}>{r.row}</td>
+                    <td style={{ padding: "6px 10px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }} title={r.address}>{r.address}</td>
+                    <td style={{ padding: "6px 10px" }}>{r.city ?? <span style={{ color: "var(--crm-text3)" }}>—</span>}</td>
+                    <td style={{ padding: "6px 10px", fontFamily: "monospace", fontSize: 10, color: "var(--crm-text3)" }}>
+                      {r.matricule ?? <span style={{ color: "var(--crm-card-border)" }}>—</span>}
                     </td>
-                    <td className="p-2 text-center">{r.num_units ?? <span className="text-zinc-400">—</span>}</td>
-                    <td className="p-2">{r.year_built ?? <span className="text-zinc-400">—</span>}</td>
-                    <td className="p-2 text-right">
+                    <td style={{ padding: "6px 10px", textAlign: "center" }}>{r.num_units ?? <span style={{ color: "var(--crm-text3)" }}>—</span>}</td>
+                    <td style={{ padding: "6px 10px" }}>{r.year_built ?? <span style={{ color: "var(--crm-text3)" }}>—</span>}</td>
+                    <td style={{ padding: "6px 10px", textAlign: "right" }}>
                       {r.evaluation_total != null
                         ? r.evaluation_total.toLocaleString("fr-CA")
-                        : <span className="text-zinc-400">—</span>}
+                        : <span style={{ color: "var(--crm-text3)" }}>—</span>}
                     </td>
-                    <td className="p-2 max-w-xs">
+                    <td style={{ padding: "6px 10px", maxWidth: 160 }}>
                       {r.owners.length === 0
-                        ? <span className="text-zinc-400">none</span>
+                        ? <span style={{ color: "var(--crm-text3)" }}>aucun</span>
                         : r.owners.map((o, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 mr-1">
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${
-                              o.kind === "company" || o.kind === "numbered_co" ? "bg-violet-400" : "bg-blue-400"
-                            }`} />
-                            <span className="truncate max-w-[120px]" title={o.company_name || o.name}>
-                              {o.company_name ? o.company_name.slice(0, 20) : o.name.slice(0, 20)}
+                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, marginRight: 6 }}>
+                            <span style={{
+                              display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                              background: (o.kind === "company" || o.kind === "numbered_co") ? "#7C3AED" : "#2563EB"
+                            }} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 100 }} title={o.company_name || o.name}>
+                              {o.company_name ? o.company_name.slice(0, 18) : o.name.slice(0, 18)}
                             </span>
                           </span>
                         ))
                       }
                     </td>
-                    <td className="p-2 font-mono text-xs text-emerald-700">
-                      {r.owners.flatMap(o => o.phones).slice(0, 2).join(" ") || <span className="text-zinc-400">—</span>}
+                    <td style={{ padding: "6px 10px", fontFamily: "monospace", fontSize: 11, color: "var(--crm-green)" }}>
+                      {r.owners.flatMap(o => o.phones).slice(0, 2).join(" ") || <span style={{ color: "var(--crm-text3)" }}>—</span>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {preview.totalRows > 10 && (
-              <p className="p-2 text-xs text-zinc-400 bg-zinc-50">
-                Showing first 10 of {preview.totalRows} rows. <span className="text-zinc-500">● blue = person  ● purple = company</span>
+              <p style={{ padding: "6px 10px", fontSize: 11, color: "var(--crm-text3)", background: "var(--crm-bg-alt)" }}>
+                Affichage des 10 premières lignes sur {preview.totalRows}. <span>● bleu = personne  ● violet = compagnie</span>
               </p>
             )}
           </div>
@@ -246,115 +247,108 @@ export default function ImportPage() {
           {preview.errorsCount > 0 && (
             <div>
               <button onClick={() => setErrorsOpen(o => !o)}
-                className="text-sm text-amber-700 hover:underline">
-                {errorsOpen ? "▾" : "▸"} {preview.errorsCount} parse error{preview.errorsCount === 1 ? "" : "s"} (soft — rows still import with available data)
+                style={{ fontSize: 12, color: "var(--crm-amber)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                {errorsOpen ? "▾" : "▸"} {preview.errorsCount} erreur{preview.errorsCount === 1 ? "" : "s"} de parseur (soft — les lignes s&rsquo;importent quand même avec les données disponibles)
               </button>
             </div>
           )}
 
-          <div className="flex gap-2 pt-2">
-            <button onClick={onConfirm} disabled={busy}
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-5 py-2 text-sm font-medium">
-              {busy ? "Importing…" : "Confirm import"}
+          <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
+            <button onClick={onConfirm} disabled={busy} className="crm-btn crm-btn-gold" style={{ opacity: busy ? 0.6 : 1 }}>
+              {busy ? "Import en cours…" : "Confirmer l'import"}
             </button>
-            <button onClick={() => { setPreview(null); setFile(null); }} disabled={busy}
-              className="bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg px-4 py-2 text-sm">
-              Cancel
+            <button onClick={() => { setPreview(null); setFile(null); }} disabled={busy} className="crm-btn">
+              Annuler
             </button>
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
         </div>
       )}
 
       {/* ─── Result + quick assign ─── */}
       {result && (
-        <div className="space-y-4">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-emerald-900">✓ Import complete</h2>
-            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-              <StatBox label="Properties created" value={result.properties_created} />
-              <StatBox label="Properties updated" value={result.properties_updated} />
-              <StatBox label="Contacts created" value={result.contacts_created} />
-              <StatBox label="Contacts updated" value={result.contacts_updated} />
-              <StatBox label="Phones (callable)" value={result.phones_created} highlight />
-              <StatBox label="Leads created" value={result.leads_created} />
-              <StatBox label="Leads updated" value={result.leads_updated} />
-              <StatBox label="Errors" value={result.errors.length} negative={result.errors.length > 0} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16, borderColor: "var(--crm-gold-border)", background: "var(--crm-surface)" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-green)", margin: 0 }}>✓ Import terminé</h2>
+            <dl style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }} className="sm:grid-cols-4">
+              <StatBox label="Propriétés créées" value={result.properties_created} />
+              <StatBox label="Propriétés mises à jour" value={result.properties_updated} />
+              <StatBox label="Contacts créés" value={result.contacts_created} />
+              <StatBox label="Contacts mis à jour" value={result.contacts_updated} />
+              <StatBox label="Téléphones (appelables)" value={result.phones_created} highlight />
+              <StatBox label="Leads créés" value={result.leads_created} />
+              <StatBox label="Leads mis à jour" value={result.leads_updated} />
+              <StatBox label="Erreurs" value={result.errors.length} negative={result.errors.length > 0} />
             </dl>
             {result.errors.length > 0 && (
-              <details className="text-sm">
-                <summary className="cursor-pointer text-amber-700 hover:underline">
-                  {result.errors.length} row error{result.errors.length === 1 ? "" : "s"}
+              <details style={{ fontSize: 13 }}>
+                <summary style={{ cursor: "pointer", color: "var(--crm-amber)" }}>
+                  {result.errors.length} erreur{result.errors.length === 1 ? "" : "s"} de ligne
                 </summary>
-                <ul className="mt-2 space-y-1 text-xs text-zinc-700">
+                <ul style={{ marginTop: 8, fontSize: 11, color: "var(--crm-text2)" }}>
                   {result.errors.slice(0, 20).map((e, i) => (
-                    <li key={i}>Row {e.row}: {e.message}</li>
+                    <li key={i}>Ligne {e.row}: {e.message}</li>
                   ))}
                 </ul>
               </details>
             )}
           </div>
 
-          {/* Quick assign panel — only shown if we have a campaign and leads */}
+          {/* Quick assign panel */}
           {newLeadIds.length > 0 && !assignResult && (
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 space-y-3">
-              <h2 className="text-base font-semibold text-blue-900">Assign leads to a caller</h2>
-              <p className="text-sm text-blue-800">
-                {newLeadIds.length} leads are ready to assign (from this campaign).
+            <div className="crm-card" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12, borderColor: "var(--crm-gold-border)" }}>
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--crm-text)", margin: 0 }}>Assigner les leads à un appelant</h2>
+              <p style={{ fontSize: 13, color: "var(--crm-text2)" }}>
+                {newLeadIds.length} leads prêts à assigner (de cette campagne).
                 {result.phones_created > 0 && (
-                  <> <strong>{result.phones_created}</strong> have a phone number and are immediately callable.</>
+                  <> <strong>{result.phones_created}</strong> ont un numéro de téléphone et sont immédiatement appelables.</>
                 )}
               </p>
-              <div className="flex items-center gap-3 flex-wrap">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <select value={assignTarget} onChange={e => setAssignTarget(e.target.value)}
-                  className="border border-blue-300 rounded-lg px-3 py-2 text-sm bg-white min-w-48">
-                  <option value="">Select caller…</option>
+                  style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "7px 10px", fontSize: 13, background: "#fff", minWidth: 180 }}>
+                  <option value="">Sélectionner un appelant…</option>
                   {users.map(u => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
                 </select>
-                <button onClick={quickAssign} disabled={assigning || !assignTarget}
-                  className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-medium">
-                  {assigning ? "Assigning…" : `Assign all ${newLeadIds.length} leads`}
+                <button onClick={quickAssign} disabled={assigning || !assignTarget} className="crm-btn crm-btn-gold" style={{ opacity: (assigning || !assignTarget) ? 0.5 : 1 }}>
+                  {assigning ? "Assignation…" : `Assigner ${newLeadIds.length} leads`}
                 </button>
-                <button onClick={() => router.push(campaignIdForResult
-                  ? `/leads?campaign_id=${campaignIdForResult}` : "/leads")}
-                  className="text-sm text-blue-700 hover:underline">
-                  Skip → view leads
+                <button onClick={() => router.push(campaignIdForResult ? `/leads?campaign_id=${campaignIdForResult}` : "/leads")}
+                  style={{ fontSize: 13, color: "var(--crm-text3)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                  Passer → voir les leads
                 </button>
               </div>
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
             </div>
           )}
 
           {/* Assignment done */}
           {assignResult && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6">
-              <p className="text-emerald-900 font-medium">
-                ✓ {assignResult.count} leads assigned to {assignResult.name}
+            <div className="crm-card" style={{ padding: "20px 24px", borderColor: "var(--crm-green)" }}>
+              <p style={{ fontWeight: 700, color: "var(--crm-green)", fontSize: 14 }}>
+                ✓ {assignResult.count} leads assignés à {assignResult.name}
               </p>
-              <p className="text-sm text-emerald-800 mt-1">
-                {assignResult.name} will see these leads in their call queue immediately.
+              <p style={{ fontSize: 13, color: "var(--crm-text2)", marginTop: 4 }}>
+                {assignResult.name} verra ces leads dans sa file d&rsquo;appels immédiatement.
               </p>
             </div>
           )}
 
-          <div className="flex gap-3">
-            <button onClick={() => router.push(campaignIdForResult
-              ? `/leads?campaign_id=${campaignIdForResult}` : "/leads")}
-              className="bg-zinc-900 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-zinc-800">
-              View leads →
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => router.push(campaignIdForResult ? `/leads?campaign_id=${campaignIdForResult}` : "/leads")}
+              className="crm-btn crm-btn-dark">
+              Voir les leads →
             </button>
             {assignResult && (
-              <button onClick={() => router.push("/calls/queue")}
-                className="bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-emerald-800">
-                Open caller queue →
+              <button onClick={() => router.push("/calls/queue")} className="crm-btn crm-btn-gold">
+                Ouvrir la file d&rsquo;appels →
               </button>
             )}
             <button onClick={() => {
               setPreview(null); setResult(null); setFile(null);
               setCampaignName(""); setCity(""); setAssignResult(null); setNewLeadIds([]);
-            }}
-              className="bg-white border border-zinc-200 hover:bg-zinc-50 rounded-lg px-4 py-2 text-sm">
-              Import another file
+            }} className="crm-btn">
+              Importer un autre fichier
             </button>
           </div>
         </div>
@@ -367,9 +361,18 @@ function StatBox({ label, value, negative = false, highlight = false }: {
   label: string; value: number; negative?: boolean; highlight?: boolean;
 }) {
   return (
-    <div className={`rounded-lg p-3 ${highlight ? "bg-emerald-100" : "bg-zinc-50"}`}>
-      <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
-      <dd className={`text-2xl font-semibold ${negative ? "text-red-600" : highlight ? "text-emerald-800" : "text-zinc-900"}`}>
+    <div style={{
+      borderRadius: 10,
+      padding: "10px 12px",
+      background: highlight ? "var(--crm-gold-light)" : "var(--crm-bg-alt)",
+    }}>
+      <dt style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.6px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 2 }}>{label}</dt>
+      <dd style={{
+        fontSize: 22,
+        fontWeight: 700,
+        color: negative ? "var(--crm-red)" : highlight ? "var(--crm-amber)" : "var(--crm-text)",
+        margin: 0,
+      }}>
         {value}
       </dd>
     </div>

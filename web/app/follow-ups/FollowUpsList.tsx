@@ -29,6 +29,7 @@ export default function FollowUpsList() {
     setLoading(false);
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, []);
 
   async function complete(id: string) {

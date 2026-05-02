@@ -1,3 +1,4 @@
+import React from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
@@ -40,19 +41,20 @@ function timeAgo(iso: string | null): string {
 
 function statusLabel(s: string) {
   const map: Record<string, string> = {
-    new: "New",
-    ready_to_call: "Ready",
-    in_outreach: "In outreach",
-    no_answer: "No answer",
+    new: "Nouveau",
+    ready_to_call: "À appeler",
+    in_outreach: "En démarche",
+    no_answer: "Sans réponse",
+    phone_verified: "Tél. vérifié",
   };
   return map[s] ?? s;
 }
 
-function priorityColor(p: number | null) {
-  if (p == null) return "bg-zinc-100 text-zinc-500";
-  if (p >= 8) return "bg-red-100 text-red-700";
-  if (p >= 5) return "bg-amber-100 text-amber-700";
-  return "bg-zinc-100 text-zinc-500";
+function rowBorderStyle(p: number | null): React.CSSProperties {
+  if (p == null) return { borderLeft: "4px solid var(--crm-card-border)" };
+  if (p >= 80) return { borderLeft: "4px solid var(--crm-red)" };
+  if (p >= 50) return { borderLeft: "4px solid var(--crm-gold)" };
+  return { borderLeft: "4px solid var(--crm-card-border)" };
 }
 
 export default async function CallQueuePage() {
@@ -99,100 +101,77 @@ export default async function CallQueuePage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <header className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Call queue</h1>
-            <p className="text-sm text-zinc-500 mt-0.5">
-              {leads.length} lead{leads.length === 1 ? "" : "s"} assigned to you
-              {phoneReady > 0 && (
-                <> · <span className="text-emerald-600 font-medium">{phoneReady} with phone</span></>
-              )}
-              {noPhone > 0 && (
-                <> · <span className="text-zinc-400">{noPhone} no phone</span></>
-              )}
-            </p>
-          </div>
-          <Link
-            href="/leads"
-            className="text-sm text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-3 py-1.5"
-          >
-            View all leads
-          </Link>
+      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+        <div>
+          <h1 className="crm-page-title">File d&rsquo;appels</h1>
+          <p className="crm-page-sub">
+            {leads.length} lead{leads.length === 1 ? "" : "s"} assigné{leads.length === 1 ? "" : "s"}
+            {phoneReady > 0 && (
+              <> · <span style={{ color: "var(--crm-green)", fontWeight: 600 }}>{phoneReady} avec tél.</span></>
+            )}
+          </p>
         </div>
+        <Link href="/leads" className="crm-btn">Tous les leads</Link>
       </header>
 
       {leads.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center text-zinc-500">
-          You&rsquo;re all caught up. Nothing in your queue right now.
-          <div className="mt-3">
-            <Link href="/leads" className="text-sm text-blue-600 hover:underline">Browse all leads</Link>
+        <div className="crm-card" style={{ padding: "32px 24px", textAlign: "center", color: "var(--crm-text3)" }}>
+          File vide — rien à appeler pour le moment.
+          <div style={{ marginTop: 12 }}>
+            <Link href="/leads" style={{ fontSize: 13, color: "var(--crm-blue)", textDecoration: "none" }}>Parcourir les leads</Link>
           </div>
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
           {leads.map((l) => {
-            const hasPhone = !!l.best_phone;
             const callCount = callCounts[l.lead_id] ?? 0;
+            const formatted = formatPhone(l.best_phone);
 
             return (
               <li key={l.lead_id}>
                 <Link
                   href={`/calls/${l.lead_id}` as never}
-                  className={[
-                    "block border rounded-2xl p-4 transition",
-                    hasPhone
-                      ? "bg-white border-zinc-200 hover:border-zinc-400"
-                      : "bg-zinc-50 border-zinc-200 opacity-70 hover:opacity-90 hover:border-zinc-300",
-                  ].join(" ")}
+                  style={{
+                    display: "block",
+                    background: "var(--crm-card)",
+                    border: "1px solid var(--crm-card-border)",
+                    borderRadius: 12,
+                    padding: "12px 16px",
+                    textDecoration: "none",
+                    transition: "border-color 0.15s, box-shadow 0.15s",
+                    ...rowBorderStyle(l.priority),
+                  }}
+                  className="hover:border-[var(--crm-gold-border)] hover:shadow-sm"
                 >
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold truncate">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {/* Line 1: name + status */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {l.full_name ?? l.company_name ?? "—"}
                         </span>
-                        {l.priority != null && l.priority >= 5 && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${priorityColor(l.priority)}`}>
-                            P{l.priority}
-                          </span>
-                        )}
+                        <span className={`crm-pill crm-pill--${l.status === "no_answer" ? "sans-reponse" : l.status === "in_outreach" ? "contacte" : l.status === "phone_verified" ? "a-appeler" : "nouveau"}`}>
+                          {statusLabel(l.status)}
+                        </span>
                       </div>
-                      <div className="text-sm text-zinc-600 truncate mt-0.5">
+                      {/* Line 2: address */}
+                      <div style={{ fontSize: 12, color: "var(--crm-text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
                         {l.address}{l.city ? `, ${l.city}` : ""}
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400 flex-wrap">
-                        {l.num_units != null && <span>{l.num_units} units</span>}
-                        {l.campaign_name && (
-                          <>
-                            {l.num_units != null && <span>·</span>}
-                            <span>{l.campaign_name}</span>
-                          </>
-                        )}
-                        {callCount > 0 && (
-                          <>
-                            <span>·</span>
-                            <span>{callCount} call{callCount !== 1 ? "s" : ""}</span>
-                          </>
-                        )}
+                      {/* Line 3: units · campaign · calls */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--crm-text3)", flexWrap: "wrap" }}>
+                        {l.num_units != null && <span className="crm-chip crm-chip-units">{l.num_units} log.</span>}
+                        {l.campaign_name && <span>{l.campaign_name}</span>}
+                        {callCount > 0 && <span>· {callCount} appel{callCount !== 1 ? "s" : ""}</span>}
+                        {l.last_contacted_at && <span>· {timeAgo(l.last_contacted_at)}</span>}
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      {hasPhone ? (
-                        <div className="font-mono text-sm text-emerald-700 font-medium">
-                          {formatPhone(l.best_phone)}
-                        </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      {formatted ? (
+                        <div className="crm-phone-link" style={{ fontSize: 14 }}>{formatted}</div>
                       ) : (
-                        <div className="text-xs text-zinc-400 bg-zinc-100 rounded px-2 py-1">
-                          no phone
-                        </div>
-                      )}
-                      <div className="text-xs text-zinc-400 mt-1">{statusLabel(l.status)}</div>
-                      {l.last_contacted_at && (
-                        <div className="text-xs text-zinc-400 mt-0.5">
-                          Called {timeAgo(l.last_contacted_at)}
-                        </div>
+                        <div className="crm-no-phone">sans tél.</div>
                       )}
                     </div>
                   </div>
@@ -203,10 +182,9 @@ export default async function CallQueuePage() {
         </ul>
       )}
 
-      {/* Quick stats footer */}
       {leads.length > 0 && (
-        <div className="mt-6 text-center text-xs text-zinc-400">
-          Sorted by priority · oldest contact first
+        <div style={{ marginTop: 20, textAlign: "center", fontSize: 11, color: "var(--crm-text3)" }}>
+          Triés par priorité · plus ancien contact en premier
         </div>
       )}
     </main>

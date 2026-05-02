@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import PhoneReviewClient, { type PhoneCandidate } from "./PhoneReviewClient";
 
@@ -65,33 +66,27 @@ export default async function PhoneReviewPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6 space-y-6">
-      <header>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Phone review queue</h1>
-            <p className="text-sm text-zinc-500 mt-0.5">
-              {candidates.length === 0
-                ? "No candidates waiting for review."
-                : `${candidates.length} candidate${candidates.length === 1 ? "" : "s"} need your review before becoming callable.`}
-            </p>
-          </div>
-          <nav className="flex gap-2 text-sm">
-            <a href="/leads" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-50">
-              Leads
-            </a>
-            <a href="/review" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-zinc-600 hover:bg-zinc-50">
-              Review inbox
-            </a>
-          </nav>
+      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 4 }}>
+        <div>
+          <h1 className="crm-page-title">Revue téléphonique</h1>
+          <p className="crm-page-sub">
+            {candidates.length === 0
+              ? "Aucun candidat en attente de revue."
+              : `${candidates.length} candidat${candidates.length === 1 ? "" : "s"} à approuver avant d'être appelable${candidates.length === 1 ? "" : "s"}.`}
+          </p>
         </div>
-
-        {candidates.length > 0 && (
-          <div className="mt-4 text-xs text-zinc-400 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2">
-            <strong>Rules:</strong> Approve a phone to make the lead callable. Reject to discard.
-            Retry re-runs the full enrichment pipeline. Keep unresolved hides from queue without retrying.
-          </div>
-        )}
+        <nav style={{ display: "flex", gap: 8 }}>
+          <Link href="/leads" className="crm-btn">Leads</Link>
+          <Link href="/review" className="crm-btn">Revue</Link>
+        </nav>
       </header>
+
+      {candidates.length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--crm-text3)", background: "var(--crm-bg-alt)", border: "1px solid var(--crm-card-border)", borderRadius: 10, padding: "8px 14px" }}>
+          <strong style={{ color: "var(--crm-text2)" }}>Règles :</strong> Approuvez un numéro pour rendre le lead appelable. Rejetez pour le supprimer.
+          Réessayer relance le pipeline. Garder non-résolu masque sans réessayer.
+        </div>
+      )}
 
       <PhoneReviewClient initialCandidates={candidates} />
     </main>

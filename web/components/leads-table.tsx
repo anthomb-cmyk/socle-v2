@@ -24,6 +24,53 @@ type Campaign = { id: string; name: string };
 
 const PAGE_SIZE = 100;
 
+// ── V1-style status pills ─────────────────────────────────────────────────
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  new:                      { label: "Nouveau",        cls: "crm-pill--nouveau" },
+  ready_to_call:            { label: "À appeler",      cls: "crm-pill--a-appeler" },
+  in_outreach:              { label: "Contacté",       cls: "crm-pill--contacte" },
+  no_answer:                { label: "Sans réponse",   cls: "crm-pill--sans-reponse" },
+  meeting_set:              { label: "RDV fixé",       cls: "crm-pill--rdv-fixe" },
+  qualified:                { label: "Qualifié",       cls: "crm-pill--qualifie" },
+  rejected:                 { label: "Fermé",          cls: "crm-pill--ferme" },
+  do_not_contact:           { label: "DNC",            cls: "crm-pill--dnc" },
+  // Enrichment
+  needs_enrichment:         { label: "Enrichissement", cls: "crm-pill--enrichissement" },
+  needs_human_review:       { label: "À vérifier",    cls: "crm-pill--a-verifier" },
+  brave_queued:             { label: "Brave…",         cls: "crm-pill--pipeline" },
+  unresolved_after_brave:   { label: "Non résolu",     cls: "crm-pill--non-resolu" },
+  directory_411_queued:     { label: "411…",           cls: "crm-pill--pipeline" },
+  unresolved_after_411:     { label: "Non résolu",     cls: "crm-pill--non-resolu" },
+  places_queued:            { label: "Places…",        cls: "crm-pill--pipeline" },
+  unresolved_after_places:  { label: "Non résolu",     cls: "crm-pill--non-resolu" },
+  openclaw_queued:          { label: "OpenClaw…",      cls: "crm-pill--pipeline" },
+  no_contact_found:         { label: "Introuvable",    cls: "crm-pill--ferme" },
+  phone_verified:           { label: "Tél. vérifié",   cls: "crm-pill--qualifie" },
+  enrichment_pending:       { label: "En attente",     cls: "crm-pill--pipeline" },
+  enrichment_running:       { label: "En cours…",      cls: "crm-pill--pipeline" },
+};
+
+function statusConfig(status: string) {
+  return STATUS_CFG[status] ?? { label: status.replace(/_/g, " "), cls: "crm-pill--nouveau" };
+}
+
+// Left-border color by priority (0–100 scale) or special statuses
+function rowBorderClass(priority: number, status: string): string {
+  if (status === "do_not_contact" || status === "rejected") return "crm-row-done";
+  if (status === "needs_human_review" || status === "meeting_set") return "crm-row-warm";
+  if (status === "qualified" || status === "phone_verified") return "crm-row-cold";
+  if (priority >= 80) return "crm-row-hot";
+  if (priority >= 50) return "crm-row-warm";
+  return "crm-row-normal";
+}
+
+function formatPhone(phone: string): string {
+  const m = phone.replace(/\D/g, "");
+  if (m.length === 11 && m[0] === "1") return `(${m.slice(1,4)}) ${m.slice(4,7)}-${m.slice(7)}`;
+  if (m.length === 10) return `(${m.slice(0,3)}) ${m.slice(3,6)}-${m.slice(6)}`;
+  return phone;
+}
+
 export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -88,15 +135,14 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
     setOffset(nextOffset);
   }
 
-  // Re-fetch when any filter changes
-  useEffect(() => { refresh(); }, [city, status, campaignId, assignedTo, hasPhone, q, refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refresh(); }, [city, status, campaignId, assignedTo, hasPhone, q]);
 
   useEffect(() => {
     if (!canAssign) return;
     fetch("/api/users").then(r => r.json()).then(j => j.ok && setUsers(j.data));
   }, [canAssign]);
 
-  // Selection helpers
   function toggle(id: string) {
     setSelected(prev => { const n = new Set(prev); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
   }
@@ -122,7 +168,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
     setBusy(false);
     if (!json.ok) { setError(json.error); return; }
     const assigneeName = users.find(u => u.user_id === assignTarget)?.display_name ?? "caller";
-    setSuccessMsg(`✓ ${selected.size} leads assigned to ${assigneeName}`);
+    setSuccessMsg(`✓ ${selected.size} leads assignés à ${assigneeName}`);
     setSelected(new Set());
     setAssignTarget("");
     refresh();
@@ -133,211 +179,259 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
   const phoneReady = leads.filter(l => l.best_phone).length;
 
   return (
-    <div className="space-y-4">
-      {/* ─── Filters ─── */}
-      <div className="flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Campaign</label>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* ─── Filter bar ─── */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+        <FilterField label="Campagne">
           <select value={campaignId} onChange={e => setCampaignId(e.target.value)}
-            className="border border-zinc-300 rounded-lg px-3 py-2 text-sm min-w-44">
-            <option value="">All campaigns</option>
+            style={filterSelectStyle}>
+            <option value="">Toutes les campagnes</option>
             {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">City</label>
-          <select value={city} onChange={e => setCity(e.target.value)}
-            className="border border-zinc-300 rounded-lg px-3 py-2 text-sm min-w-36">
-            <option value="">All cities</option>
+        </FilterField>
+        <FilterField label="Ville">
+          <select value={city} onChange={e => setCity(e.target.value)} style={filterSelectStyle}>
+            <option value="">Toutes les villes</option>
             {cities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Status</label>
-          <select value={status} onChange={e => setStatus(e.target.value)}
-            className="border border-zinc-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">All statuses</option>
-            <optgroup label="Calling">
-              <option value="new">new</option>
-              <option value="ready_to_call">ready_to_call</option>
-              <option value="in_outreach">in_outreach</option>
-              <option value="no_answer">no_answer</option>
-              <option value="meeting_set">meeting_set</option>
-              <option value="qualified">qualified</option>
-              <option value="rejected">rejected</option>
-              <option value="do_not_contact">do_not_contact</option>
+        </FilterField>
+        <FilterField label="Statut">
+          <select value={status} onChange={e => setStatus(e.target.value)} style={filterSelectStyle}>
+            <option value="">Tous les statuts</option>
+            <optgroup label="Appels">
+              <option value="new">Nouveau</option>
+              <option value="ready_to_call">À appeler</option>
+              <option value="in_outreach">Contacté</option>
+              <option value="no_answer">Sans réponse</option>
+              <option value="meeting_set">RDV fixé</option>
+              <option value="qualified">Qualifié</option>
+              <option value="rejected">Fermé</option>
+              <option value="do_not_contact">DNC</option>
             </optgroup>
-            <optgroup label="Enrichment pipeline">
-              <option value="needs_enrichment">needs_enrichment</option>
-              <option value="needs_human_review">needs_human_review ← review phone</option>
+            <optgroup label="Pipeline enrichissement">
+              <option value="needs_enrichment">Enrichissement</option>
+              <option value="needs_human_review">À vérifier</option>
+              <option value="phone_verified">Tél. vérifié</option>
               <option value="brave_queued">brave_queued</option>
-              <option value="unresolved_after_brave">unresolved_after_brave</option>
+              <option value="unresolved_after_brave">non résolu (brave)</option>
               <option value="directory_411_queued">directory_411_queued</option>
-              <option value="unresolved_after_411">unresolved_after_411</option>
+              <option value="unresolved_after_411">non résolu (411)</option>
               <option value="places_queued">places_queued</option>
-              <option value="unresolved_after_places">unresolved_after_places</option>
+              <option value="unresolved_after_places">non résolu (places)</option>
               <option value="openclaw_queued">openclaw_queued</option>
-              <option value="no_contact_found">no_contact_found</option>
+              <option value="no_contact_found">Introuvable</option>
             </optgroup>
           </select>
-        </div>
+        </FilterField>
         {canAssign && (
-          <div>
-            <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Assigned</label>
-            <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-              className="border border-zinc-300 rounded-lg px-3 py-2 text-sm min-w-36">
-              <option value="">Everyone</option>
-              <option value="unassigned">Unassigned</option>
-              <option value="assigned">Assigned</option>
+          <FilterField label="Assigné à">
+            <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)} style={filterSelectStyle}>
+              <option value="">Tout le monde</option>
+              <option value="unassigned">Non assigné</option>
+              <option value="assigned">Assigné</option>
               {users.map(u => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
             </select>
-          </div>
+          </FilterField>
         )}
-        <div>
-          <label className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 mb-1 cursor-pointer">
-            <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="rounded" />
-            Has phone
+        <FilterField label=" ">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--crm-text2)", fontWeight: 600, cursor: "pointer", paddingBottom: 1 }}>
+            <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} />
+            Avec tél.
           </label>
-        </div>
-        <div className="flex-1 min-w-48">
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Search</label>
-          <form onSubmit={e => { e.preventDefault(); setQ(qInput); }}>
-            <div className="flex gap-1">
-              <input value={qInput} onChange={e => setQInput(e.target.value)}
-                placeholder="Address, owner, company…"
-                className="flex-1 border border-zinc-300 rounded-lg px-3 py-2 text-sm" />
-              {qInput && (
-                <button type="button" onClick={() => { setQInput(""); setQ(""); }}
-                  className="px-2 text-zinc-400 hover:text-zinc-700">×</button>
-              )}
-            </div>
+        </FilterField>
+        <FilterField label="Recherche" flex>
+          <form onSubmit={e => { e.preventDefault(); setQ(qInput); }} style={{ display: "flex", gap: 4 }}>
+            <input value={qInput} onChange={e => setQInput(e.target.value)}
+              placeholder="Adresse, propriétaire, compagnie…"
+              style={{ ...filterSelectStyle, flex: 1, minWidth: 180 }} />
+            {qInput && (
+              <button type="button" onClick={() => { setQInput(""); setQ(""); }}
+                style={{ padding: "0 8px", color: "var(--crm-text3)", background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+            )}
           </form>
-        </div>
-        <div className="text-sm text-zinc-500 whitespace-nowrap">
-          {total} lead{total === 1 ? "" : "s"}
+        </FilterField>
+        <div style={{ fontSize: 12, color: "var(--crm-text3)", whiteSpace: "nowrap", paddingBottom: 2 }}>
+          {total} lead{total !== 1 ? "s" : ""}
           {phoneReady > 0 && !hasPhone && (
-            <span className="ml-2 text-emerald-700">· {phoneReady} callable</span>
+            <span style={{ marginLeft: 6, color: "var(--crm-green)", fontWeight: 700 }}>· {phoneReady} appelables</span>
           )}
         </div>
       </div>
 
       {/* ─── Bulk action bar ─── */}
       {canAssign && selected.size > 0 && (
-        <div className="bg-zinc-100 rounded-xl p-3 flex items-center gap-3 sticky top-2 z-10 flex-wrap shadow-sm">
-          <span className="text-sm font-medium">{selected.size} selected</span>
-          <button onClick={selectPhoneReady} className="text-xs text-zinc-600 hover:underline border border-zinc-300 rounded px-2 py-1">
-            Select callable only
+        <div style={{
+          background: "var(--crm-gold-light)",
+          border: "1px solid var(--crm-gold-border)",
+          borderRadius: 12,
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          position: "sticky",
+          top: 8,
+          zIndex: 10,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--crm-text)" }}>{selected.size} sélectionné{selected.size > 1 ? "s" : ""}</span>
+          <button onClick={selectPhoneReady} style={{ fontSize: 11, color: "var(--crm-text2)", border: "1px solid var(--crm-card-border)", background: "#fff", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>
+            Avec tél. seulement
           </button>
           <select value={assignTarget} onChange={e => setAssignTarget(e.target.value)}
-            className="border border-zinc-300 rounded-lg px-2 py-1.5 text-sm">
-            <option value="">Assign to…</option>
+            style={{ ...filterSelectStyle, fontSize: 12 }}>
+            <option value="">Assigner à…</option>
             {users.filter(u => u.role === "caller" || u.role === "cold_caller").map(u => (
               <option key={u.user_id} value={u.user_id}>{u.display_name}</option>
             ))}
-            <option value="__unassign__">— Unassign —</option>
+            <option value="__unassign__">— Désassigner —</option>
           </select>
           <button onClick={bulkAssign} disabled={busy || !assignTarget}
-            className="bg-zinc-900 text-white rounded-lg px-3 py-1.5 text-sm disabled:opacity-50">
-            {busy ? "Working…" : "Apply"}
+            style={{ background: "var(--crm-gold)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: (busy || !assignTarget) ? 0.5 : 1 }}>
+            {busy ? "En cours…" : "Appliquer"}
           </button>
-          <span className="border-l border-zinc-300 h-5" />
+          <span style={{ borderLeft: "1px solid var(--crm-gold-border)", height: 20 }} />
           <BatchEnrichButton leadIds={[...selected]} onDone={() => { setSelected(new Set()); refresh(); }} />
-          <button onClick={() => setSelected(new Set())} className="text-sm text-zinc-600 hover:underline">Clear</button>
+          <button onClick={() => setSelected(new Set())} style={{ fontSize: 12, color: "var(--crm-text2)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Effacer</button>
         </div>
       )}
 
       {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-sm text-emerald-800">{successMsg}</div>
+        <div style={{ background: "var(--crm-green-light)", border: "1px solid #A7F3D0", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--crm-green)", fontWeight: 600 }}>{successMsg}</div>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
 
-      {/* ─── Table ─── */}
-      <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-zinc-500 text-xs uppercase tracking-wide">
-            <tr>
+      {/* ─── Lead rows ─── */}
+      <div className="crm-card" style={{ overflow: "hidden", padding: 0 }}>
+
+        {/* Column headers */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: canAssign ? "32px 1fr 1fr auto auto auto" : "1fr 1fr auto auto",
+          gap: 0,
+          padding: "8px 14px",
+          background: "var(--crm-bg-alt)",
+          borderBottom: "1px solid var(--crm-card-border)",
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.8px",
+          textTransform: "uppercase",
+          color: "var(--crm-text3)",
+        }}>
+          {canAssign && <div><input type="checkbox" checked={leads.length > 0 && selected.size === leads.length}
+            ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < leads.length; }}
+            onChange={toggleAll} /></div>}
+          <div>Propriétaire / Immeuble</div>
+          {canAssign && <div>Assigné · Campagne</div>}
+          <div style={{ textAlign: "right" }}>Téléphone</div>
+          <div>Statut</div>
+          {!canAssign && <div>Campagne</div>}
+        </div>
+
+        {loading && (
+          <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--crm-text3)", fontSize: 13 }}>Chargement…</div>
+        )}
+        {!loading && leads.length === 0 && (
+          <div style={{ padding: "48px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 8, color: "var(--crm-text3)" }}>⌖</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--crm-text2)", marginBottom: 4 }}>Aucun lead</div>
+            <div style={{ fontSize: 12, color: "var(--crm-text3)" }}>
+              Aucun lead ne correspond aux filtres actifs.{" "}
+              {canAssign && <Link href="/import" style={{ color: "var(--crm-blue)" }}>Importer un rôle</Link>} pour commencer.
+            </div>
+          </div>
+        )}
+
+        {leads.map((l, idx) => {
+          const detailHref = (canAssign ? `/leads/${l.lead_id}` : `/calls/${l.lead_id}`) as never;
+          const assignedUser = users.find(u => u.user_id === l.assigned_to);
+          const statusCfg = statusConfig(l.status);
+          const borderClass = rowBorderClass(l.priority, l.status);
+          const isSelected = selected.has(l.lead_id);
+
+          return (
+            <div
+              key={l.lead_id}
+              className={`${borderClass} ${isSelected ? "crm-row-selected" : ""}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: canAssign ? "32px 1fr 1fr auto auto" : "1fr auto auto",
+                gap: 0,
+                padding: "10px 14px",
+                borderTop: idx === 0 ? "none" : "1px solid var(--crm-card-border)",
+                alignItems: "center",
+                transition: "background 0.1s",
+                cursor: "pointer",
+              }}
+              onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = "var(--crm-bg)"; }}
+              onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = ""; }}
+            >
               {canAssign && (
-                <th className="p-3 w-10">
-                  <input type="checkbox"
-                    checked={leads.length > 0 && selected.size === leads.length}
-                    ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < leads.length; }}
-                    onChange={toggleAll} />
-                </th>
+                <div onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={isSelected} onChange={() => toggle(l.lead_id)} />
+                </div>
               )}
-              <th className="text-left p-3">Owner</th>
-              <th className="text-left p-3">Property</th>
-              <th className="text-left p-3">Phone</th>
-              <th className="text-left p-3">Status</th>
-              {canAssign && <th className="text-left p-3">Assigned</th>}
-              <th className="text-left p-3">Campaign</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={canAssign ? 7 : 5} className="p-6 text-center text-zinc-400">Loading…</td></tr>
-            )}
-            {!loading && leads.length === 0 && (
-              <tr>
-                <td colSpan={canAssign ? 7 : 5} className="p-10 text-center text-zinc-400">
-                  No leads match the current filters.{" "}
-                  {canAssign && <Link href="/import" className="text-zinc-600 underline">Import a rôle</Link>} to get started.
-                </td>
-              </tr>
-            )}
-            {leads.map(l => {
-              const detailHref = (canAssign ? `/leads/${l.lead_id}` : `/calls/${l.lead_id}`) as never;
-              const assignedUser = users.find(u => u.user_id === l.assigned_to);
-              return (
-                <tr key={l.lead_id}
-                  className={`border-t border-zinc-100 hover:bg-zinc-50 ${selected.has(l.lead_id) ? "bg-blue-50" : ""}`}>
-                  {canAssign && (
-                    <td className="p-3">
-                      <input type="checkbox"
-                        checked={selected.has(l.lead_id)}
-                        onChange={() => toggle(l.lead_id)} />
-                    </td>
-                  )}
-                  <td className="p-3">
-                    <Link href={detailHref} className="font-medium hover:underline">
-                      {l.full_name ?? l.company_name ?? "—"}
-                    </Link>
-                    <div className="text-xs text-zinc-400">{l.contact_kind}</div>
-                  </td>
-                  <td className="p-3">
-                    <div className="max-w-48 truncate">{l.address}</div>
-                    <div className="text-xs text-zinc-400">
-                      {l.city ?? ""}
-                      {l.num_units != null && <> · {l.num_units} units</>}
-                    </div>
-                  </td>
-                  <td className="p-3">
-                    {l.best_phone
-                      ? <span className="font-mono text-xs text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded">{l.best_phone}</span>
-                      : <span className="text-zinc-300 text-xs">—</span>}
-                  </td>
-                  <td className="p-3"><StatusPill status={l.status} /></td>
-                  {canAssign && (
-                    <td className="p-3 text-xs text-zinc-500">
-                      {assignedUser?.display_name ?? <span className="text-zinc-300">unassigned</span>}
-                    </td>
-                  )}
-                  <td className="p-3 text-xs text-zinc-400 max-w-36 truncate">
-                    {l.campaign_name ?? <span className="text-zinc-200">—</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+
+              {/* Owner / Property block */}
+              <div style={{ minWidth: 0 }}>
+                {/* Line 1: name + status pill */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <Link href={detailHref} style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+                    onClick={e => e.stopPropagation()}>
+                    {l.full_name ?? l.company_name ?? "—"}
+                  </Link>
+                  <span className={`crm-pill ${statusCfg.cls}`} style={{ flexShrink: 0 }}>{statusCfg.label}</span>
+                </div>
+                {/* Line 2: address */}
+                <div style={{ fontSize: 12, color: "var(--crm-text2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {l.address}
+                </div>
+                {/* Line 3: city · units */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
+                  {l.city && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>{l.city}</span>}
+                  {l.num_units != null && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>{l.num_units} u.</span>}
+                  {l.campaign_name && !canAssign && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>· {l.campaign_name}</span>}
+                </div>
+              </div>
+
+              {/* Assigned + campaign (admin only) */}
+              {canAssign && (
+                <div style={{ fontSize: 11, color: "var(--crm-text3)", paddingLeft: 8 }}>
+                  {assignedUser
+                    ? <span style={{ fontWeight: 600, color: "var(--crm-text2)" }}>{assignedUser.display_name}</span>
+                    : <span style={{ fontStyle: "italic" }}>non assigné</span>}
+                  {l.campaign_name && <div style={{ marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{l.campaign_name}</div>}
+                </div>
+              )}
+
+              {/* Phone */}
+              <div style={{ textAlign: "right", paddingLeft: 12, flexShrink: 0 }}>
+                {l.best_phone ? (
+                  <a
+                    href={`tel:${l.best_phone.replace(/\D/g, "")}`}
+                    className="crm-phone-link"
+                    onClick={e => e.stopPropagation()}
+                    style={{ justifyContent: "flex-end" }}
+                  >
+                    {formatPhone(l.best_phone)}
+                  </a>
+                ) : (
+                  <span className="crm-no-phone">sans tél.</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
 
         {hasMore && (
-          <div className="border-t border-zinc-100 p-4 flex items-center justify-between bg-zinc-50">
-            <span className="text-sm text-zinc-500">
-              Showing {leads.length} of {total} leads
+          <div style={{ borderTop: "1px solid var(--crm-card-border)", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--crm-bg-alt)" }}>
+            <span style={{ fontSize: 12, color: "var(--crm-text3)" }}>
+              {leads.length} / {total} leads affichés
             </span>
             <button onClick={loadMore} disabled={loadingMore}
-              className="text-sm bg-white border border-zinc-300 rounded-lg px-4 py-1.5 hover:bg-zinc-50 disabled:opacity-50">
-              {loadingMore ? "Loading…" : `Load more (${total - leads.length} remaining)`}
+              style={{ fontSize: 12, background: "#fff", border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "6px 14px", cursor: loadingMore ? "wait" : "pointer", color: "var(--crm-text2)", fontWeight: 600, opacity: loadingMore ? 0.5 : 1 }}>
+              {loadingMore ? "Chargement…" : `Charger la suite (${total - leads.length} restants)`}
             </button>
           </div>
         )}
@@ -346,31 +440,26 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    new: "bg-blue-100 text-blue-800",
-    ready_to_call: "bg-emerald-100 text-emerald-800",
-    in_outreach: "bg-amber-100 text-amber-800",
-    meeting_set: "bg-purple-100 text-purple-800",
-    qualified: "bg-emerald-200 text-emerald-900",
-    no_answer: "bg-zinc-100 text-zinc-600",
-    rejected: "bg-red-100 text-red-800",
-    do_not_contact: "bg-red-200 text-red-900",
-    // Enrichment pipeline
-    needs_enrichment: "bg-sky-100 text-sky-800",
-    needs_human_review: "bg-orange-100 text-orange-800",
-    brave_queued: "bg-sky-50 text-sky-600",
-    unresolved_after_brave: "bg-zinc-100 text-zinc-500",
-    directory_411_queued: "bg-sky-50 text-sky-600",
-    unresolved_after_411: "bg-zinc-100 text-zinc-500",
-    places_queued: "bg-sky-50 text-sky-600",
-    unresolved_after_places: "bg-zinc-100 text-zinc-500",
-    openclaw_queued: "bg-violet-100 text-violet-700",
-    no_contact_found: "bg-red-50 text-red-500",
-  };
-  const label = status.replace(/_/g, " ");
-  return <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${colors[status] ?? "bg-zinc-100 text-zinc-600"}`}>{label}</span>;
+// ── Sub-components ────────────────────────────────────────────────────────
+
+function FilterField({ label, flex, children }: { label: string; flex?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ flex: flex ? 1 : undefined, minWidth: flex ? 180 : undefined }}>
+      <label style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 4 }}>{label}</label>
+      {children}
+    </div>
+  );
 }
+
+const filterSelectStyle: React.CSSProperties = {
+  border: "1px solid var(--crm-card-border)",
+  borderRadius: 8,
+  padding: "7px 10px",
+  fontSize: 12,
+  background: "#fff",
+  color: "var(--crm-text)",
+  outline: "none",
+};
 
 const ENRICH_TYPES = ["find_phone", "verify_phone", "find_email", "find_website", "owner_identity", "property_context"] as const;
 
@@ -392,36 +481,36 @@ function BatchEnrichButton({ leadIds, onDone }: { leadIds: string[]; onDone: () 
     setBusy(false);
     if (!j.ok) { setMsg(`✗ ${j.error}`); return; }
     const c = j.data.counts;
-    setMsg(`✓ ${c.created} created · ${c.skipped} skipped · ${c.failed} failed`);
+    setMsg(`✓ ${c.created} créés · ${c.skipped} ignorés · ${c.failed} échecs`);
     setOpen(false);
     onDone();
   }
 
   return (
-    <div className="relative inline-flex items-center gap-2">
+    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 6 }}>
       <button onClick={() => setOpen(o => !o)}
-        className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-1.5 text-sm">
-        Enrich ▾
+        style={{ background: "var(--crm-blue)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+        Enrichir ▾
       </button>
-      {msg && <span className="text-xs text-zinc-700">{msg}</span>}
+      {msg && <span style={{ fontSize: 11, color: "var(--crm-text2)" }}>{msg}</span>}
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg p-3 z-20 min-w-56">
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Job type</label>
+        <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#fff", border: "1px solid var(--crm-card-border)", borderRadius: 12, boxShadow: "0 8px 28px rgba(0,0,0,.10)", padding: 12, zIndex: 20, minWidth: 220 }}>
+          <label style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 4 }}>Type de job</label>
           <select value={type} onChange={e => setType(e.target.value as typeof ENRICH_TYPES[number])}
-            className="w-full border border-zinc-300 rounded px-2 py-1 text-sm mb-2">
+            style={{ ...filterSelectStyle, width: "100%", marginBottom: 8 }}>
             {ENRICH_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
           </select>
-          <label className="flex items-center gap-2 text-xs text-zinc-700 mb-3">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--crm-text2)", marginBottom: 10, cursor: "pointer" }}>
             <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />
-            Force re-queue even if job exists
+            Forcer même si job existant
           </label>
-          <div className="flex gap-2">
+          <div style={{ display: "flex", gap: 6 }}>
             <button onClick={fire} disabled={busy}
-              className="flex-1 bg-zinc-900 text-white rounded px-2 py-1 text-sm disabled:opacity-50">
-              {busy ? "Sending…" : `Queue ${leadIds.length} job(s)`}
+              style={{ flex: 1, background: "var(--crm-text)", color: "#fff", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}>
+              {busy ? "Envoi…" : `Lancer ${leadIds.length} job(s)`}
             </button>
             <button onClick={() => setOpen(false)}
-              className="border border-zinc-300 rounded px-2 py-1 text-sm">✕</button>
+              style={{ border: "1px solid var(--crm-card-border)", background: "#fff", borderRadius: 8, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>✕</button>
           </div>
         </div>
       )}

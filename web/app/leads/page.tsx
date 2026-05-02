@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import LeadsTable from "@/components/leads-table";
+import PageHeader from "@/components/page-header";
 import Link from "next/link";
 
 export default async function LeadsPage() {
@@ -12,21 +13,23 @@ export default async function LeadsPage() {
 
   return (
     <main className="mx-auto max-w-7xl p-6">
-      <header className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Leads</h1>
-          <p className="text-sm text-zinc-500">
-            {role === "admin" ? "All leads in the system." : "Leads assigned to you."}
-            {" "}Signed in as {user.email}{role === "admin" && <> · <span className="text-zinc-400">admin</span></>}.
-          </p>
-        </div>
-        <nav className="flex items-center gap-2 text-sm">
-          {role === "admin" && <Link href={"/leads/new" as never} className="border border-zinc-300 rounded-lg px-3 py-1.5">+ New lead</Link>}
-          {role === "admin" && <Link href="/import" className="bg-zinc-900 text-white rounded-lg px-3 py-1.5">Import a rôle</Link>}
-          {role === "admin" && <Link href={"/review" as never} className="border border-zinc-300 rounded-lg px-3 py-1.5">Review</Link>}
-          {role === "caller" && <Link href={"/calls/queue" as never} className="bg-zinc-900 text-white rounded-lg px-3 py-1.5">Call queue</Link>}
-        </nav>
-      </header>
+      <PageHeader
+        title="Leads"
+        subtitle={role === "admin" ? "Tous les leads du système." : "Leads qui vous sont assignés."}
+      >
+        {role === "admin" && (
+          <Link href={"/leads/new" as never} className="crm-btn">+ Nouveau lead</Link>
+        )}
+        {role === "admin" && (
+          <Link href="/import" className="crm-btn crm-btn-dark">Import rôle</Link>
+        )}
+        {role === "admin" && (
+          <Link href={"/review" as never} className="crm-btn">Revue</Link>
+        )}
+        {role === "caller" && (
+          <Link href={"/calls/queue" as never} className="crm-btn crm-btn-dark">File d&rsquo;appels</Link>
+        )}
+      </PageHeader>
       <LeadsTable canAssign={role === "admin"} />
     </main>
   );

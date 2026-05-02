@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
 // Grouped status lists — keep in sync with ALL_LEAD_STATUSES in /api/leads/[id]/route.ts
@@ -103,30 +103,38 @@ export default function LeadDossierClient({
 
   if (!canEdit) {
     return (
-      <section className="bg-white rounded-2xl border border-zinc-200 p-4 text-sm">
-        <p className="text-zinc-500">Read-only — admin actions disabled.</p>
+      <section className="crm-card" style={{ padding: 16, fontSize: 13 }}>
+        <p style={{ color: "var(--crm-text3)" }}>Lecture seule — actions admin désactivées.</p>
       </section>
     );
   }
 
+  const inputStyle: React.CSSProperties = {
+    border: "1px solid var(--crm-card-border)",
+    borderRadius: 8,
+    padding: "7px 10px",
+    fontSize: 13,
+    background: "#fff",
+    width: "100%",
+  };
+
   return (
-    <section className="bg-white rounded-2xl border border-zinc-200 p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-700">Actions</h2>
-        {savedTick && <span className="text-xs text-emerald-700">saved ✓</span>}
-        {error && <span className="text-xs text-red-600">{error}</span>}
+    <section className="crm-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--crm-text3)", margin: 0 }}>Actions</h2>
+        {savedTick && <span style={{ fontSize: 11, color: "var(--crm-green)" }}>enregistré ✓</span>}
+        {error && <span style={{ fontSize: 11, color: "var(--crm-red)" }}>{error}</span>}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Field label="Status">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <Field label="Statut">
           <select
             value={status}
             onChange={e => { setStatus(e.target.value); patch({ status: e.target.value }, "status"); }}
             disabled={busy !== null}
-            className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
-            {/* Safety: show current status even if not in grouped list */}
+            style={inputStyle}>
             {!ALL_STATUSES.includes(status as typeof ALL_STATUSES[number]) && (
-              <option value={status}>{status} (current)</option>
+              <option value={status}>{status} (actuel)</option>
             )}
             {STATUS_GROUPS.map(group => (
               <optgroup key={group.label} label={group.label}>
@@ -137,16 +145,16 @@ export default function LeadDossierClient({
             ))}
           </select>
         </Field>
-        <Field label={`Priority (${priority})`}>
+        <Field label={`Priorité (${priority})`}>
           <input
             type="range" min={0} max={100} value={priority}
             onChange={e => setPriority(parseInt(e.target.value, 10))}
             onMouseUp={() => patch({ priority }, "priority")}
             onTouchEnd={() => patch({ priority }, "priority")}
             disabled={busy !== null}
-            className="w-full" />
+            style={{ width: "100%", accentColor: "var(--crm-gold)" }} />
         </Field>
-        <Field label="Assigned to">
+        <Field label="Assigné à">
           <select
             value={assignedTo ?? ""}
             onChange={e => {
@@ -155,60 +163,62 @@ export default function LeadDossierClient({
               patch({ assignedToUserId: v }, "assignment");
             }}
             disabled={busy !== null}
-            className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">— unassigned —</option>
+            style={inputStyle}>
+            <option value="">— non assigné —</option>
             {users.map(u => <option key={u.user_id} value={u.user_id}>{u.display_name} ({u.role})</option>)}
           </select>
         </Field>
       </div>
 
-      <Field label="Lead notes">
+      <Field label="Notes sur le lead">
         <textarea
           value={notes} onChange={e => setNotes(e.target.value)}
           onBlur={() => notes !== initialNotes && patch({ notes }, "notes")}
           rows={3}
-          className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-          placeholder="Anthony's notes on this lead — context, strategy, things to remember." />
+          style={{ ...inputStyle, resize: "vertical" }}
+          placeholder="Contexte, stratégie, points à retenir sur ce lead." />
       </Field>
 
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setFuOpen(o => !o)}
-          className="bg-zinc-100 hover:bg-zinc-200 rounded-lg px-3 py-1.5 text-sm">
-          {fuOpen ? "× Cancel" : "+ Follow-up"}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <button onClick={() => setFuOpen(o => !o)} className="crm-btn">
+          {fuOpen ? "× Annuler" : "+ Suivi"}
         </button>
         <button onClick={() => patch({ status: "qualified" }, "qualify")}
           disabled={busy !== null}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-3 py-1.5 text-sm">
-          Mark qualified
+          className="crm-btn crm-btn-gold" style={{ opacity: busy !== null ? 0.5 : 1 }}>
+          Marquer qualifié
         </button>
         <button onClick={() => patch({ status: "rejected" }, "reject")}
           disabled={busy !== null}
-          className="bg-zinc-700 hover:bg-zinc-800 text-white rounded-lg px-3 py-1.5 text-sm">
-          Mark dead
+          className="crm-btn crm-btn-dark" style={{ opacity: busy !== null ? 0.5 : 1 }}>
+          Mort
         </button>
         <button onClick={() => patch({ status: "do_not_contact" }, "dnc")}
           disabled={busy !== null}
-          className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 text-sm">
-          Do not contact
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            border: "1px solid var(--crm-red)", background: "var(--crm-red-light)",
+            color: "var(--crm-red)", padding: "7px 12px", borderRadius: 10,
+            fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: busy !== null ? 0.5 : 1,
+          }}>
+          Ne pas contacter
         </button>
       </div>
 
       {fuOpen && (
-        <div className="bg-zinc-50 rounded-lg p-3 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Due">
-              <input type="datetime-local" value={fuDate} onChange={e => setFuDate(e.target.value)}
-                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm" />
+        <div style={{ background: "var(--crm-bg-alt)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Échéance">
+              <input type="datetime-local" value={fuDate} onChange={e => setFuDate(e.target.value)} style={inputStyle} />
             </Field>
             <Field label="Note">
-              <input value={fuNote} onChange={e => setFuNote(e.target.value)}
-                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-                placeholder="What to do at that time" />
+              <input value={fuNote} onChange={e => setFuNote(e.target.value)} style={inputStyle}
+                placeholder="Quoi faire à ce moment-là" />
             </Field>
           </div>
-          <button onClick={createFollowUp} disabled={busy === "fu"}
-            className="bg-zinc-900 text-white rounded-lg px-3 py-1.5 text-sm">
-            {busy === "fu" ? "Creating…" : "Create follow-up"}
+          <button onClick={createFollowUp} disabled={busy === "fu"} className="crm-btn crm-btn-dark"
+            style={{ alignSelf: "flex-start", opacity: busy === "fu" ? 0.5 : 1 }}>
+            {busy === "fu" ? "Création…" : "Créer le suivi"}
           </button>
         </div>
       )}
@@ -265,19 +275,24 @@ function EnrichmentSection({
   const reviewed = results.filter(r => r.status !== "unverified");
 
   return (
-    <div className="border-t border-zinc-200 pt-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-700">Enrichment</h3>
-        <div className="relative">
+    <div style={{ borderTop: "1px solid var(--crm-card-border)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h3 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--crm-text3)", margin: 0 }}>Enrichissement</h3>
+        <div style={{ position: "relative" }}>
           <button onClick={() => setShowJobMenu(s => !s)} disabled={busy === "send"}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 text-sm">
-            {busy === "send" ? "Sending…" : "Send to enrichment"}
+            className="crm-btn" style={{ opacity: busy === "send" ? 0.5 : 1, background: "var(--crm-blue-light)", color: "var(--crm-blue)", borderColor: "var(--crm-blue-light)" }}>
+            {busy === "send" ? "Envoi…" : "Envoyer à l'enrichissement"}
           </button>
           {showJobMenu && (
-            <div className="absolute right-0 mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg p-1 z-10 min-w-48">
+            <div style={{
+              position: "absolute", right: 0, marginTop: 4, background: "#fff",
+              border: "1px solid var(--crm-card-border)", borderRadius: 10,
+              boxShadow: "0 6px 20px rgba(0,0,0,.08)", padding: "4px 0", zIndex: 10, minWidth: 180,
+            }}>
               {JOB_TYPES.map(jt => (
                 <button key={jt} onClick={() => sendJob(jt)}
-                  className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 rounded">
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 14px", fontSize: 13, color: "var(--crm-text2)", background: "none", border: "none", cursor: "pointer" }}
+                  className="hover:bg-[var(--crm-bg)]">
                   {jt.replace(/_/g, " ")}
                 </button>
               ))}
@@ -285,16 +300,16 @@ function EnrichmentSection({
           )}
         </div>
       </div>
-      {msg && <p className="text-xs text-zinc-700">{msg}</p>}
+      {msg && <p style={{ fontSize: 11, color: "var(--crm-text2)" }}>{msg}</p>}
 
       {jobs.length > 0 && (
         <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Recent jobs</div>
-          <ul className="text-xs space-y-1">
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 6 }}>Jobs récents</div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 4 }}>
             {jobs.slice(0, 5).map(j => (
-              <li key={j.id} className="flex justify-between">
-                <span className="font-mono">{j.job_type}</span>
-                <span className={j.status === "failed" ? "text-red-600" : j.status === "success" ? "text-emerald-700" : "text-zinc-500"}>
+              <li key={j.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                <span style={{ fontFamily: "monospace", color: "var(--crm-text2)" }}>{j.job_type}</span>
+                <span style={{ color: j.status === "failed" ? "var(--crm-red)" : j.status === "completed" ? "var(--crm-green)" : "var(--crm-text3)" }}>
                   {j.status}{j.error_message ? ` · ${j.error_message}` : ""}
                 </span>
               </li>
@@ -305,30 +320,30 @@ function EnrichmentSection({
 
       {pending.length > 0 && (
         <div>
-          <div className="text-xs uppercase tracking-wide text-amber-700 mb-1">Pending review ({pending.length})</div>
-          <ul className="space-y-2">
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-amber)", marginBottom: 6 }}>En attente de revue ({pending.length})</div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {pending.map(r => (
-              <li key={r.id} className="bg-amber-50 border border-amber-200 rounded p-3">
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex-1">
-                    <div className="text-sm">
-                      <span className="text-xs uppercase tracking-wide rounded px-1 py-0.5 bg-amber-200 text-amber-900 mr-2">{r.kind}</span>
-                      <span className="font-mono">{r.value}</span>
+              <li key={r.id} style={{ background: "var(--crm-amber-light)", border: "1px solid var(--crm-gold-border)", borderRadius: 8, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase", background: "var(--crm-gold-light)", color: "var(--crm-amber)", borderRadius: 4, padding: "2px 6px", marginRight: 6 }}>{r.kind}</span>
+                      <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{r.value}</span>
                     </div>
-                    <div className="text-xs text-zinc-600 mt-1">
+                    <div style={{ fontSize: 11, color: "var(--crm-text2)", marginTop: 4 }}>
                       {r.source}{r.confidence ? ` · conf ${r.confidence}` : ""}
-                      {r.source_url && <> · <a href={r.source_url} target="_blank" rel="noreferrer" className="underline">source</a></>}
+                      {r.source_url && <> · <a href={r.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--crm-blue)", textDecoration: "none" }}>source</a></>}
                     </div>
-                    {r.evidence && <div className="text-xs text-zinc-500 mt-1">{r.evidence}</div>}
+                    {r.evidence && <div style={{ fontSize: 11, color: "var(--crm-text3)", marginTop: 2 }}>{r.evidence}</div>}
                   </div>
-                  <div className="flex flex-col gap-1">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <button onClick={() => reviewResult(r.id, "approve")} disabled={busy === r.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded px-2 py-1 disabled:opacity-50">
-                      {busy === r.id ? "…" : "✓ Approve"}
+                      className="crm-btn crm-btn-gold" style={{ fontSize: 11, padding: "4px 10px", opacity: busy === r.id ? 0.5 : 1 }}>
+                      {busy === r.id ? "…" : "✓ Approuver"}
                     </button>
                     <button onClick={() => reviewResult(r.id, "reject")} disabled={busy === r.id}
-                      className="border border-zinc-300 hover:bg-zinc-100 text-xs rounded px-2 py-1 disabled:opacity-50">
-                      Reject
+                      className="crm-btn" style={{ fontSize: 11, padding: "4px 10px", opacity: busy === r.id ? 0.5 : 1 }}>
+                      Rejeter
                     </button>
                   </div>
                 </div>
@@ -339,12 +354,12 @@ function EnrichmentSection({
       )}
 
       {reviewed.length > 0 && (
-        <details className="text-xs">
-          <summary className="cursor-pointer text-zinc-500">Reviewed results ({reviewed.length})</summary>
-          <ul className="mt-2 space-y-1">
+        <details style={{ fontSize: 11 }}>
+          <summary style={{ cursor: "pointer", color: "var(--crm-text3)" }}>Résultats révisés ({reviewed.length})</summary>
+          <ul style={{ marginTop: 8, listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
             {reviewed.map(r => (
-              <li key={r.id} className="flex justify-between text-zinc-600">
-                <span><span className="text-zinc-400">{r.kind}:</span> <span className="font-mono">{r.value}</span></span>
+              <li key={r.id} style={{ display: "flex", justifyContent: "space-between", color: "var(--crm-text2)" }}>
+                <span><span style={{ color: "var(--crm-text3)" }}>{r.kind}:</span> <span style={{ fontFamily: "monospace" }}>{r.value}</span></span>
                 <span>{r.status}</span>
               </li>
             ))}
@@ -353,7 +368,7 @@ function EnrichmentSection({
       )}
 
       {jobs.length === 0 && results.length === 0 && (
-        <p className="text-xs text-zinc-400">No enrichment activity yet for this lead.</p>
+        <p style={{ fontSize: 11, color: "var(--crm-text3)" }}>Aucune activité d&rsquo;enrichissement pour ce lead.</p>
       )}
     </div>
   );
@@ -362,7 +377,7 @@ function EnrichmentSection({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">{label}</label>
+      <label style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 5 }}>{label}</label>
       {children}
     </div>
   );
