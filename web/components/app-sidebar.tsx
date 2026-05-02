@@ -16,24 +16,25 @@ type NavItem = {
   callerOnly?: boolean;
 };
 
+// Primary nav — Socle V2 lead-calling CRM workflow order
 const PRIMARY_NAV: NavItem[] = [
-  { href: "/",             label: "Tableau de bord", icon: "dashboard", adminOnly: true },
-  { href: "/leads",        label: "Leads",            icon: "leads" },
-  { href: "/calls/queue",  label: "File d'appels",    icon: "calls" },
-  { href: "/follow-ups",   label: "Suivis",           icon: "followups" },
-  { href: "/review",       label: "Revue",            icon: "review",    adminOnly: true },
-  { href: "/phone-review", label: "Tél. revue",       icon: "phone",     adminOnly: true },
-  { href: "/import",       label: "Import rôle",      icon: "import",    adminOnly: true },
-  { href: "/calendar",     label: "Calendrier",       icon: "calendar" },
+  { href: "/",                  label: "Tableau de bord",  icon: "dashboard",   adminOnly: true  },
+  { href: "/leads",             label: "Leads",            icon: "leads"                         },
+  { href: "/import",            label: "Import rôle",      icon: "import",      adminOnly: true  },
+  { href: "/calls/queue",       label: "File d'appels",    icon: "calls"                         },
+  { href: "/review",            label: "Revue",            icon: "review",      adminOnly: true  },
+  { href: "/follow-ups",        label: "Suivis",           icon: "followups"                     },
+  { href: "/admin/enrichment",  label: "Enrichissement",   icon: "enrichment",  adminOnly: true  },
 ];
 
+// Admin-only secondary tools
 const ADMIN_NAV: NavItem[] = [
-  { href: "/admin/users",      label: "Utilisateurs",       icon: "users" },
-  { href: "/admin/enrichment", label: "Enrichissement",     icon: "enrichment" },
-  { href: "/admin/events",     label: "Journal événements", icon: "events" },
-  { href: "/data-health",      label: "Santé données",      icon: "health" },
-  { href: "/properties",       label: "Propriétés",         icon: "properties" },
-  { href: "/contacts",         label: "Contacts",           icon: "contacts" },
+  { href: "/admin/users",   label: "Utilisateurs",       icon: "users"      },
+  { href: "/phone-review",  label: "Tél. revue",         icon: "phone"      },
+  { href: "/admin/events",  label: "Journal événements", icon: "events"     },
+  { href: "/data-health",   label: "Santé données",      icon: "health"     },
+  { href: "/properties",    label: "Propriétés",         icon: "properties" },
+  { href: "/contacts",      label: "Contacts",           icon: "contacts"   },
 ];
 
 type RecentLead = {
