@@ -12,7 +12,7 @@ export default async function LeadsPage() {
   const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <main className="crm-page">
       <PageHeader
         title="Leads"
         subtitle={role === "admin" ? "Tous les leads du système." : "Leads qui vous sont assignés."}

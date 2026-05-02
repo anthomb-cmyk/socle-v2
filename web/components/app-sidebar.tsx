@@ -169,13 +169,13 @@ export default function AppSidebar({
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="crm-sidebar hidden md:flex">
+      {/* Desktop sidebar — shown/hidden via CSS media query (not Tailwind) */}
+      <aside className="crm-sidebar">
         {sidebar}
       </aside>
 
-      {/* Mobile top bar */}
-      <div className="crm-mobile-bar md:hidden">
+      {/* Mobile top bar — shown/hidden via CSS media query (not Tailwind) */}
+      <div className="crm-mobile-bar">
         <button
           className="crm-mobile-hamburger"
           onClick={() => setMobileOpen((o) => !o)}

@@ -97,8 +97,8 @@ body {
 .crm-card {
   background: var(--crm-card);
   border: 1px solid var(--crm-card-border);
-  border-radius: 14px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .crm-card-gold {
@@ -251,8 +251,8 @@ body {
   display: block;
   background: var(--crm-card);
   border: 1px solid var(--crm-card-border);
-  border-radius: 14px;
-  padding: 16px 18px;
+  border-radius: 10px;
+  padding: 14px 16px;
   text-decoration: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -277,7 +277,7 @@ body {
 }
 
 .crm-tile-value {
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--crm-text);
   margin-top: 4px;
@@ -426,6 +426,18 @@ html, body { height: 100%; }
 .crm-sidebar-link--active {
   background: var(--crm-gold-light);
   color: #92400E;
+  position: relative;
+}
+
+.crm-sidebar-link--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--crm-gold);
+  border-radius: 0 3px 3px 0;
 }
 
 .crm-sidebar-link--active:hover {
@@ -610,9 +622,65 @@ html, body { height: 100%; }
   box-shadow: 6px 0 24px rgba(0,0,0,0.14);
 }
 
-/* Mobile content push-down */
+/* ─── Responsive sidebar / mobile bar visibility ─────────────────────────
+   Use pure CSS — not Tailwind responsive classes — because our unlayered
+   .crm-sidebar and .crm-mobile-bar rules win over @layer utilities.
+──────────────────────────────────────────────────────────────────────────── */
+
+/* Desktop (≥768px): show sidebar, hide mobile bar + mobile overlay */
+@media (min-width: 768px) {
+  .crm-mobile-bar        { display: none !important; }
+  .crm-mobile-overlay    { display: none !important; }
+  .crm-sidebar--mobile   { display: none !important; }
+}
+
+/* Mobile (<768px): hide desktop sidebar, show mobile bar, add top padding */
 @media (max-width: 767px) {
-  .crm-main-content {
-    padding-top: 52px;
-  }
+  .crm-sidebar:not(.crm-sidebar--mobile) { display: none !important; }
+  .crm-main-content { padding-top: 52px; }
+}
+
+/* ─── Standard page wrappers ────────────────────────────────────────────────
+   Use .crm-page for full-width pages (dashboard, leads, review).
+   Use .crm-page-narrow for form/queue pages (import, queue, phone-review).
+   Both are LEFT-ALIGNED — no mx-auto centering that creates blank gaps.
+──────────────────────────────────────────────────────────────────────────── */
+.crm-page {
+  padding: 28px 32px;
+}
+
+.crm-page-narrow {
+  padding: 28px 32px;
+  max-width: 880px;
+}
+
+/* ─── Review inbox items ──────────────────────────────────────────────────── */
+.crm-review-item {
+  background: var(--crm-card);
+  border: 1px solid var(--crm-card-border);
+  border-radius: 10px;
+  padding: 11px 15px;
+  transition: box-shadow 0.12s;
+}
+
+.crm-review-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.crm-review-item--urgent {
+  border-left: 4px solid var(--crm-red) !important;
+  background: var(--crm-red-light) !important;
+}
+
+.crm-review-item--high {
+  border-left: 4px solid var(--crm-amber) !important;
+}
+
+.crm-review-item--normal {
+  border-left: 4px solid var(--crm-card-border) !important;
+}
+
+.crm-review-item--low {
+  border-left: 4px solid var(--crm-card-border) !important;
+  opacity: 0.85;
 }

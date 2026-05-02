@@ -100,7 +100,7 @@ export default async function CallQueuePage() {
   const noPhone = 0;
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
+    <main className="crm-page-narrow">
       <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
         <div>
           <h1 className="crm-page-title">File d&rsquo;appels</h1>

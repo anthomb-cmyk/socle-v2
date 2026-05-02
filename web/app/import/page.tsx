@@ -105,7 +105,7 @@ export default function ImportPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
+    <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ marginBottom: 4 }}>
         <h1 className="crm-page-title">Import d&rsquo;un rôle</h1>
         <p className="crm-page-sub">

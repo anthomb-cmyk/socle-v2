@@ -65,7 +65,7 @@ export default async function PhoneReviewPage() {
   const candidates = (data ?? []) as unknown as PhoneCandidate[];
 
   return (
-    <main className="mx-auto max-w-2xl p-6 space-y-6">
+    <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 4 }}>
         <div>
           <h1 className="crm-page-title">Revue téléphonique</h1>

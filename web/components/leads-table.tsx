@@ -305,10 +305,12 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
       {/* ─── Lead rows ─── */}
       <div className="crm-card" style={{ overflow: "hidden", padding: 0 }}>
 
-        {/* Column headers */}
+        {/* Column headers — 5 col (admin) / 3 col (caller) */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: canAssign ? "32px 1fr 1fr auto auto auto" : "1fr 1fr auto auto",
+          gridTemplateColumns: canAssign
+            ? "24px minmax(0,1fr) minmax(0,160px) 130px 90px"
+            : "minmax(0,1fr) 130px 90px",
           gap: 0,
           padding: "8px 14px",
           background: "var(--crm-bg-alt)",
@@ -318,15 +320,21 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
           letterSpacing: "0.8px",
           textTransform: "uppercase",
           color: "var(--crm-text3)",
+          alignItems: "center",
         }}>
-          {canAssign && <div><input type="checkbox" checked={leads.length > 0 && selected.size === leads.length}
-            ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < leads.length; }}
-            onChange={toggleAll} /></div>}
-          <div>Propriétaire / Immeuble</div>
+          {canAssign && (
+            <div>
+              <input type="checkbox"
+                checked={leads.length > 0 && selected.size === leads.length}
+                ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < leads.length; }}
+                onChange={toggleAll}
+              />
+            </div>
+          )}
+          <div>Propriétaire · Immeuble</div>
           {canAssign && <div>Assigné · Campagne</div>}
           <div style={{ textAlign: "right" }}>Téléphone</div>
           <div>Statut</div>
-          {!canAssign && <div>Campagne</div>}
         </div>
 
         {loading && (
@@ -356,9 +364,11 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               className={`${borderClass} ${isSelected ? "crm-row-selected" : ""}`}
               style={{
                 display: "grid",
-                gridTemplateColumns: canAssign ? "32px 1fr 1fr auto auto" : "1fr auto auto",
+                gridTemplateColumns: canAssign
+                  ? "24px minmax(0,1fr) minmax(0,160px) 130px 90px"
+                  : "minmax(0,1fr) 130px 90px",
                 gap: 0,
-                padding: "10px 14px",
+                padding: "11px 14px",
                 borderTop: idx === 0 ? "none" : "1px solid var(--crm-card-border)",
                 alignItems: "center",
                 transition: "background 0.1s",
@@ -367,58 +377,69 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = "var(--crm-bg)"; }}
               onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = ""; }}
             >
+              {/* Col 1 (admin): checkbox */}
               {canAssign && (
                 <div onClick={e => e.stopPropagation()}>
                   <input type="checkbox" checked={isSelected} onChange={() => toggle(l.lead_id)} />
                 </div>
               )}
 
-              {/* Owner / Property block */}
+              {/* Col 2: Owner + Property */}
               <div style={{ minWidth: 0 }}>
-                {/* Line 1: name + status pill */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <Link href={detailHref} style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
-                    onClick={e => e.stopPropagation()}>
-                    {l.full_name ?? l.company_name ?? "—"}
-                  </Link>
-                  <span className={`crm-pill ${statusCfg.cls}`} style={{ flexShrink: 0 }}>{statusCfg.label}</span>
-                </div>
-                {/* Line 2: address */}
-                <div style={{ fontSize: 12, color: "var(--crm-text2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <Link
+                  href={detailHref}
+                  style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {l.full_name ?? l.company_name ?? "—"}
+                </Link>
+                <div style={{ fontSize: 12, color: "var(--crm-text2)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {l.address}
                 </div>
-                {/* Line 3: city · units */}
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 1, flexWrap: "wrap" }}>
                   {l.city && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>{l.city}</span>}
-                  {l.num_units != null && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>{l.num_units} u.</span>}
-                  {l.campaign_name && !canAssign && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>· {l.campaign_name}</span>}
+                  {l.num_units != null && (
+                    <span className="crm-chip crm-chip-units" style={{ fontSize: 10, padding: "1px 5px" }}>{l.num_units} u.</span>
+                  )}
+                  {l.campaign_name && !canAssign && (
+                    <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>· {l.campaign_name}</span>
+                  )}
                 </div>
               </div>
 
-              {/* Assigned + campaign (admin only) */}
+              {/* Col 3 (admin): Assigned + Campaign */}
               {canAssign && (
-                <div style={{ fontSize: 11, color: "var(--crm-text3)", paddingLeft: 8 }}>
+                <div style={{ fontSize: 12, color: "var(--crm-text3)", paddingLeft: 10, minWidth: 0 }}>
                   {assignedUser
-                    ? <span style={{ fontWeight: 600, color: "var(--crm-text2)" }}>{assignedUser.display_name}</span>
-                    : <span style={{ fontStyle: "italic" }}>non assigné</span>}
-                  {l.campaign_name && <div style={{ marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{l.campaign_name}</div>}
+                    ? <div style={{ fontWeight: 600, color: "var(--crm-text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignedUser.display_name}</div>
+                    : <div style={{ fontStyle: "italic", color: "var(--crm-text3)" }}>non assigné</div>}
+                  {l.campaign_name && (
+                    <div style={{ marginTop: 1, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--crm-text3)" }}>
+                      {l.campaign_name}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Phone */}
-              <div style={{ textAlign: "right", paddingLeft: 12, flexShrink: 0 }}>
+              {/* Col 4: Phone */}
+              <div style={{ textAlign: "right", paddingLeft: 8 }}>
                 {l.best_phone ? (
                   <a
                     href={`tel:${l.best_phone.replace(/\D/g, "")}`}
                     className="crm-phone-link"
                     onClick={e => e.stopPropagation()}
-                    style={{ justifyContent: "flex-end" }}
+                    style={{ justifyContent: "flex-end", fontSize: 13 }}
                   >
                     {formatPhone(l.best_phone)}
                   </a>
                 ) : (
                   <span className="crm-no-phone">sans tél.</span>
                 )}
+              </div>
+
+              {/* Col 5: Status pill */}
+              <div style={{ paddingLeft: 8 }}>
+                <span className={`crm-pill ${statusCfg.cls}`}>{statusCfg.label}</span>
               </div>
             </div>
           );
