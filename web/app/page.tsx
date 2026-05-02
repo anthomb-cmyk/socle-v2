@@ -47,56 +47,103 @@ export default async function Home() {
     todayFu: todayFu.count ?? 0,
   };
 
-  return (
-    <main className="mx-auto max-w-5xl p-6 space-y-6">
-      <header style={{ marginBottom: 20 }}>
-        <h1 className="crm-page-title">Tableau de bord</h1>
-        <p className="crm-page-sub">Bonjour, {user.email}.</p>
-      </header>
+  const hasUrgent = c.urgentReviews > 0 || c.overdueFu > 0;
 
-      <section className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Tile href="/review" label="Revues urgentes" value={c.urgentReviews} sub={`${c.openReviews} total ouvert`} highlight={c.urgentReviews > 0} />
+  return (
+    <main style={{ padding: "28px 32px", maxWidth: 1200 }}>
+      {/* ── Page header ── */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 className="crm-page-title">Tableau de bord</h1>
+        <p className="crm-page-sub">Bonjour — voici votre état du jour.</p>
+      </div>
+
+      {/* ── À faire aujourd'hui — urgent banner ── */}
+      {hasUrgent && (
+        <div className="crm-card" style={{
+          borderLeft: "4px solid var(--crm-red)",
+          marginBottom: 20,
+          padding: "16px 20px",
+          background: "var(--crm-red-light)",
+          borderColor: "var(--crm-red)",
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          flexWrap: "wrap",
+        }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-red)", marginBottom: 4 }}>À faire aujourd&rsquo;hui</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--crm-text)" }}>
+              {c.urgentReviews > 0 && <span>{c.urgentReviews} revue{c.urgentReviews > 1 ? "s urgentes" : " urgente"}</span>}
+              {c.urgentReviews > 0 && c.overdueFu > 0 && <span style={{ color: "var(--crm-text3)", margin: "0 8px" }}>·</span>}
+              {c.overdueFu > 0 && <span>{c.overdueFu} suivi{c.overdueFu > 1 ? "s en retard" : " en retard"}</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {c.urgentReviews > 0 && <Link href="/review" className="crm-btn" style={{ borderColor: "var(--crm-red)", color: "var(--crm-red)" }}>Aller à la revue →</Link>}
+            {c.overdueFu > 0 && <Link href={"/follow-ups?bucket=overdue" as never} className="crm-btn">Suivis en retard →</Link>}
+          </div>
+        </div>
+      )}
+
+      {/* ── Stat tiles ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }} className="sm:grid-cols-3 lg:grid-cols-6">
+        <Tile href="/review" label="Revues urgentes" value={c.urgentReviews} sub={`${c.openReviews} ouvertes`} highlight={c.urgentReviews > 0} />
         <Tile href="/follow-ups?bucket=overdue" label="Suivis en retard" value={c.overdueFu} sub={`${c.todayFu} aujourd'hui`} highlight={c.overdueFu > 0} />
         <Tile href="/follow-ups" label="Suivis aujourd'hui" value={c.todayFu} />
         <Tile href="/leads?status=new" label="Nouveaux leads" value={c.newLeads} />
         <Tile href="/leads" label="Leads en cours" value={c.leadsToCall} sub="assignés + actifs" />
         <Tile href="/import" label="Import" value="↗" sub="ajouter un rôle" />
-      </section>
+      </div>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Panel title="Imports récents" empty="Aucun import.">
+      {/* ── Two-column activity section ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="lg:grid-cols-2">
+        <Panel title="Imports récents" empty="Aucun import pour l'instant.">
           {(recentImports.data ?? []).length > 0 && (
-            <ul style={{ fontSize: 13 }}>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {((recentImports.data ?? []) as Array<{ id: string; file_name: string; status: string; properties_created: number; leads_created: number; errors_count: number; created_at: string }>).map(i => (
-                <li key={i.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--crm-card-border)", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <li key={i.id} style={{ padding: "9px 0", borderBottom: "1px solid var(--crm-card-border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.file_name}</div>
-                    <div style={{ fontSize: 11, color: "var(--crm-text3)" }}>{new Date(i.created_at).toLocaleString("fr-CA")} · {i.status}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--crm-text)" }}>{i.file_name}</div>
+                    <div style={{ fontSize: 11, color: "var(--crm-text3)", marginTop: 2 }}>{new Date(i.created_at).toLocaleString("fr-CA")} · <StatusDot status={i.status} /></div>
                   </div>
-                  <div style={{ textAlign: "right", fontSize: 11, color: "var(--crm-text2)", whiteSpace: "nowrap" }}>
-                    {i.properties_created}p · {i.leads_created}l
-                    {i.errors_count > 0 && <span style={{ color: "var(--crm-red)" }}> · {i.errors_count} err</span>}
+                  <div style={{ textAlign: "right", fontSize: 11, color: "var(--crm-text2)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    <span className="crm-chip crm-chip-units">{i.properties_created}p</span>{" "}
+                    <span className="crm-chip crm-chip-year">{i.leads_created}l</span>
+                    {i.errors_count > 0 && <span style={{ color: "var(--crm-red)", marginLeft: 4 }}>{i.errors_count} err</span>}
                   </div>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
-        <Panel title="Erreurs récentes (24h)" empty="Aucune erreur.">
+
+        <Panel title="Erreurs d'automation (24h)" empty="Aucune erreur récente.">
           {(recentFailures.data ?? []).length > 0 && (
-            <ul style={{ fontSize: 13 }}>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {((recentFailures.data ?? []) as Array<{ id: string; source: string; event_type: string; error_message: string | null; occurred_at: string }>).map(e => (
-                <li key={e.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--crm-card-border)" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)" }}>{e.source} · {e.event_type}</div>
-                  <div style={{ fontSize: 13, color: "var(--crm-red)" }}>{e.error_message ?? "(no message)"}</div>
-                  <div style={{ fontSize: 11, color: "var(--crm-text3)" }}>{new Date(e.occurred_at).toLocaleString("fr-CA")}</div>
+                <li key={e.id} style={{ padding: "9px 0", borderBottom: "1px solid var(--crm-card-border)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 2 }}>{e.source} · {e.event_type}</div>
+                  <div style={{ fontSize: 13, color: "var(--crm-red)", fontWeight: 500 }}>{e.error_message ?? "(no message)"}</div>
+                  <div style={{ fontSize: 11, color: "var(--crm-text3)", marginTop: 2 }}>{new Date(e.occurred_at).toLocaleString("fr-CA")}</div>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
-      </section>
+      </div>
     </main>
+  );
+}
+
+function StatusDot({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    completed: "var(--crm-green)",
+    processing: "var(--crm-blue)",
+    failed: "var(--crm-red)",
+    pending: "var(--crm-amber)",
+  };
+  return (
+    <span style={{ color: colors[status] ?? "var(--crm-text3)", fontWeight: 600 }}>{status}</span>
   );
 }
 
@@ -112,8 +159,8 @@ function Tile({ href, label, value, sub, highlight }: { href: string; label: str
 
 function Panel({ title, empty, children }: { title: string; empty: string; children?: React.ReactNode }) {
   return (
-    <div className="crm-card" style={{ padding: "16px 20px" }}>
-      <h2 style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 12 }}>{title}</h2>
+    <div className="crm-card" style={{ padding: "18px 20px" }}>
+      <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 12 }}>{title}</h2>
       {children ?? <p style={{ fontSize: 13, color: "var(--crm-text3)" }}>{empty}</p>}
     </div>
   );

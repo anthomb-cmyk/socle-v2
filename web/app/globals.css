@@ -308,3 +308,311 @@ body {
   border-radius: 999px;
   transition: width 0.3s ease;
 }
+
+/* ─── App Shell (sidebar layout) ────────────────────────────────────────
+   On desktop (≥768px): sidebar is a fixed 260px left column.
+   On mobile:           sidebar hidden, mobile top bar shown instead.
+──────────────────────────────────────────────────────────────────────── */
+html, body { height: 100%; }
+
+.crm-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--crm-bg);
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────────────── */
+.crm-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  height: 100vh;
+  background: var(--crm-card);
+  border-right: 1px solid var(--crm-card-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  z-index: 20;
+}
+
+.crm-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* Logo area */
+.crm-sidebar-logo {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--crm-card-border);
+  flex-shrink: 0;
+}
+
+.crm-sidebar-logo-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--crm-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.crm-sidebar-logo-title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--crm-text);
+  line-height: 1.1;
+}
+
+.crm-sidebar-logo-sub {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--crm-gold);
+  margin-top: 2px;
+  line-height: 1.1;
+}
+
+.crm-sidebar-logo-tagline {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--crm-text3);
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
+/* Nav items */
+.crm-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px 4px;
+  flex-shrink: 0;
+}
+
+.crm-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crm-text2);
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.crm-sidebar-link:hover {
+  background: var(--crm-bg-alt);
+  color: var(--crm-text);
+}
+
+.crm-sidebar-link--active {
+  background: var(--crm-gold-light);
+  color: #92400E;
+}
+
+.crm-sidebar-link--active:hover {
+  background: var(--crm-gold-light);
+  filter: brightness(0.97);
+}
+
+.crm-sidebar-link--sub {
+  font-size: 12px;
+  padding: 7px 11px;
+  font-weight: 500;
+}
+
+.crm-sidebar-divider {
+  height: 1px;
+  background: var(--crm-card-border);
+  margin: 6px 10px;
+}
+
+.crm-sidebar-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--crm-text3);
+  padding: 6px 12px 2px;
+}
+
+/* Recent leads */
+.crm-sidebar-recent {
+  padding: 8px 10px;
+  border-top: 1px solid var(--crm-card-border);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.crm-sidebar-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  text-decoration: none;
+  transition: background 0.1s;
+}
+
+.crm-sidebar-recent-item:hover {
+  background: var(--crm-bg-alt);
+}
+
+.crm-sidebar-recent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--crm-card-border);
+}
+
+.crm-sidebar-recent-dot.hot  { background: var(--crm-red); }
+.crm-sidebar-recent-dot.warm { background: var(--crm-gold); }
+.crm-sidebar-recent-dot.cold { background: var(--crm-blue); }
+
+.crm-sidebar-recent-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--crm-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* User card (bottom of sidebar) */
+.crm-sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--crm-card-border);
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.crm-sidebar-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--crm-gold-light);
+  color: #92400E;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--crm-gold-border);
+}
+
+.crm-sidebar-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.crm-sidebar-user-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--crm-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-sidebar-user-role {
+  font-size: 10px;
+  color: var(--crm-text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* Main content area */
+.crm-main-content {
+  flex: 1;
+  overflow-y: auto;
+  height: 100vh;
+  background: var(--crm-bg);
+  min-width: 0;
+}
+
+/* Mobile top bar */
+.crm-mobile-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  background: var(--crm-card);
+  border-bottom: 1px solid var(--crm-card-border);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  z-index: 90;
+}
+
+.crm-mobile-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crm-mobile-hamburger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4.5px;
+  padding: 4px;
+}
+
+.crm-mobile-hamburger span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--crm-text2);
+  border-radius: 2px;
+}
+
+.crm-mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 99;
+}
+
+.crm-sidebar--mobile {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  height: 100vh;
+  box-shadow: 6px 0 24px rgba(0,0,0,0.14);
+}
+
+/* Mobile content push-down */
+@media (max-width: 767px) {
+  .crm-main-content {
+    padding-top: 52px;
+  }
+}
