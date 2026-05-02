@@ -1,111 +1,122 @@
-// Read-only calendar / schedule view.
-// Shows pending follow-ups grouped by day for the next 14 days, plus
-// overdue (past) at the top. No editing here — go to /follow-ups for that.
-
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
+import CalendarClient from "./CalendarClient";
+
+export type CalendarFollowUp = {
+  id: string; lead_id: string | null; due_at: string; note: string;
+  priority: number; status: string; source: string | null;
+  lead: {
+    full_name: string | null; company_name: string | null;
+    address: string; city: string | null; best_phone: string | null;
+  } | null;
+};
 
 export default async function CalendarPage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const role = (user.app_metadata?.role ?? "caller") as string;
+  const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
 
   const sb = createSupabaseAdminClient();
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-  const horizon = new Date(todayStart); horizon.setDate(horizon.getDate() + 14);
+  const todayEnd   = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
+  // Show up to 30 days ahead
+  const windowEnd  = new Date(todayStart); windowEnd.setDate(windowEnd.getDate() + 30);
 
-  let q = sb.from("follow_ups")
-    .select("id, due_at, note, status, priority, lead_id, sync_status")
+  // Fetch pending follow-ups (overdue + next 30 days) in one query
+  let q = sb
+    .from("follow_ups")
+    .select("id, lead_id, due_at, note, priority, status, source")
     .eq("status", "pending")
-    .lt("due_at", horizon.toISOString())
-    .order("due_at", { ascending: true });
+    .lte("due_at", windowEnd.toISOString())
+    .order("due_at", { ascending: true })
+    .limit(500);
+
   if (role !== "admin") q = q.eq("assigned_to", user.id);
 
-  const { data } = await q;
-  const fups = (data ?? []) as Array<{ id: string; due_at: string; note: string | null; status: string; priority: number; lead_id: string | null; sync_status: string | null }>;
+  const { data: rawFu } = await q;
+  const rows = (rawFu ?? []) as Array<{
+    id: string; lead_id: string | null; due_at: string; note: string;
+    priority: number; status: string; source: string | null;
+  }>;
 
-  // Hydrate lead info
-  const leadIds = [...new Set(fups.map(f => f.lead_id).filter(Boolean) as string[])];
-  let leadMap: Record<string, { full_name: string | null; company_name: string | null; address: string; city: string | null }> = {};
+  // Hydrate with lead info
+  const leadIds = [...new Set(rows.map(r => r.lead_id).filter(Boolean) as string[])];
+  let leadInfo: Record<string, CalendarFollowUp["lead"]> = {};
   if (leadIds.length > 0) {
-    const { data: leads } = await sb.from("leads_view")
-      .select("lead_id, full_name, company_name, address, city")
+    const { data: leads } = await sb
+      .from("leads_view")
+      .select("lead_id, full_name, company_name, address, city, best_phone")
       .in("lead_id", leadIds);
-    leadMap = Object.fromEntries(((leads ?? []) as Array<{ lead_id: string; full_name: string | null; company_name: string | null; address: string; city: string | null }>).map(l => [l.lead_id, l]));
+    leadInfo = Object.fromEntries(
+      ((leads ?? []) as Array<{ lead_id: string } & NonNullable<CalendarFollowUp["lead"]>>)
+        .map(l => [l.lead_id, { full_name: l.full_name, company_name: l.company_name, address: l.address, city: l.city, best_phone: l.best_phone }])
+    );
   }
 
-  // Bucket by day key (YYYY-MM-DD in local time)
-  function dayKey(d: Date) { return d.toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }); }
-  const buckets = new Map<string, typeof fups>();
-  for (const f of fups) {
+  const followUps: CalendarFollowUp[] = rows.map(r => ({
+    ...r,
+    lead: r.lead_id ? (leadInfo[r.lead_id] ?? null) : null,
+  }));
+
+  const overdue  = followUps.filter(f => new Date(f.due_at) < todayStart);
+  const todayFu  = followUps.filter(f => {
     const d = new Date(f.due_at);
-    const key = d < todayStart ? "OVERDUE" : dayKey(d);
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key)!.push(f);
+    return d >= todayStart && d < todayEnd;
+  });
+  const upcoming = followUps.filter(f => new Date(f.due_at) >= todayEnd);
+
+  // Group upcoming by YYYY-MM-DD date key
+  const upcomingByDate: Record<string, CalendarFollowUp[]> = {};
+  for (const f of upcoming) {
+    const key = f.due_at.slice(0, 10);
+    if (!upcomingByDate[key]) upcomingByDate[key] = [];
+    upcomingByDate[key].push(f);
   }
 
-  // Order keys: OVERDUE first, then chronological days
-  const orderedKeys = [
-    ...(buckets.has("OVERDUE") ? ["OVERDUE"] : []),
-    ...[...buckets.keys()].filter(k => k !== "OVERDUE").sort(),
-  ];
+  const total = overdue.length + todayFu.length + upcoming.length;
 
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Calendar</h1>
-          <p className="text-sm text-zinc-500">Next 14 days · {fups.length} pending follow-up{fups.length === 1 ? "" : "s"}.</p>
-        </div>
-        <Link href="/follow-ups" className="border border-zinc-300 rounded-lg px-3 py-1.5 text-sm">Manage follow-ups →</Link>
-      </header>
+    <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
 
-      {fups.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center text-zinc-500 text-sm">
-          No follow-ups scheduled in the next 14 days. 🎉
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
+        <div>
+          <h1 className="crm-page-title">Calendrier</h1>
+          <p className="crm-page-sub">
+            {total === 0
+              ? "Aucun suivi prévu dans les 30 prochains jours."
+              : <>
+                  {total} suivi{total > 1 ? "s" : ""} en attente
+                  {overdue.length > 0 && <> &middot; <strong style={{ color: "var(--crm-red)" }}>{overdue.length} en retard</strong></>}
+                  {todayFu.length > 0 && <> &middot; <strong style={{ color: "var(--crm-amber)" }}>{todayFu.length} aujourd&rsquo;hui</strong></>}
+                  {upcoming.length > 0 && <> &middot; {upcoming.length} à venir</>}
+                </>
+            }
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/follow-ups" className="crm-btn">Vue liste</Link>
+          <Link href="/leads" className="crm-btn crm-btn-dark">Leads</Link>
+        </div>
+      </div>
+
+      {total === 0 ? (
+        <div className="crm-card">
+          <div className="crm-empty-state">
+            <span className="crm-empty-state-icon">🎉</span>
+            <p className="crm-empty-state-title">Calendrier vide</p>
+            <p className="crm-empty-state-sub">Aucun suivi prévu dans les 30 prochains jours. Bon travail !</p>
+          </div>
         </div>
       ) : (
-        <div className="space-y-5">
-          {orderedKeys.map(key => {
-            const items = buckets.get(key)!;
-            const isOverdue = key === "OVERDUE";
-            const headerLabel = isOverdue ? "Overdue" : new Date(key + "T12:00:00").toLocaleDateString("fr-CA", { weekday: "long", month: "long", day: "numeric" });
-            return (
-              <section key={key}>
-                <h2 className={`text-sm uppercase tracking-wide mb-2 ${isOverdue ? "text-red-700" : "text-zinc-500"}`}>{headerLabel} ({items.length})</h2>
-                <ul className="space-y-1.5">
-                  {items.map(f => {
-                    const d = new Date(f.due_at);
-                    const time = d.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" });
-                    const lead = f.lead_id ? leadMap[f.lead_id] : null;
-                    return (
-                      <li key={f.id} className={`bg-white border rounded-xl p-3 ${isOverdue ? "border-red-200" : "border-zinc-200"}`}>
-                        <div className="flex justify-between items-start gap-3">
-                          <div className="flex-1">
-                            <div className="text-sm">
-                              <span className="font-mono text-zinc-500 mr-2">{time}</span>
-                              <span className="font-medium">{lead?.full_name ?? lead?.company_name ?? "—"}</span>
-                              {lead?.city && <span className="text-zinc-500"> · {lead.city}</span>}
-                            </div>
-                            {f.note && <div className="text-xs text-zinc-700 mt-1 whitespace-pre-wrap">{f.note}</div>}
-                            <div className="text-xs text-zinc-400 mt-1 flex gap-3">
-                              <span>priority {f.priority}</span>
-                              {f.sync_status && f.sync_status !== "unsynced" && <span>sync: {f.sync_status}</span>}
-                              {f.lead_id && <Link href={`/calls/${f.lead_id}` as never} className="underline">Open lead →</Link>}
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
+        <CalendarClient
+          overdue={overdue}
+          today={todayFu}
+          upcomingByDate={upcomingByDate}
+        />
       )}
     </main>
   );

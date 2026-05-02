@@ -8,6 +8,16 @@ type FollowUp = {
   lead: { full_name: string | null; company_name: string | null; address: string; city: string | null; best_phone: string | null } | null;
 };
 
+function priorityColor(p: number): string {
+  if (p >= 80) return "var(--crm-red)";
+  if (p >= 50) return "var(--crm-gold)";
+  return "var(--crm-text3)";
+}
+
+function fmtDue(iso: string) {
+  return new Date(iso).toLocaleString("fr-CA", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function FollowUpsList() {
   const [overdue, setOverdue] = useState<FollowUp[]>([]);
   const [today, setToday] = useState<FollowUp[]>([]);
@@ -40,8 +50,9 @@ export default function FollowUpsList() {
     if (!j.ok) { setError(j.error); return; }
     refresh();
   }
+
   async function cancel(id: string) {
-    if (!confirm("Cancel this follow-up?")) return;
+    if (!confirm("Annuler ce suivi ?")) return;
     setBusyId(id); setError(null);
     const r = await fetch(`/api/follow-ups/${id}`, { method: "DELETE" });
     const j = await r.json();
@@ -50,58 +61,133 @@ export default function FollowUpsList() {
     refresh();
   }
 
-  if (loading) return <p className="text-zinc-500 text-sm">Loading…</p>;
-
-  const sections = [
-    { label: "Overdue", items: overdue, color: "border-red-200" },
-    { label: "Today", items: today, color: "border-amber-200" },
-    { label: "Upcoming", items: upcoming, color: "border-zinc-200" },
-  ];
+  if (loading) {
+    return (
+      <div className="crm-empty-state">
+        <span className="crm-empty-state-icon" style={{ fontSize: 18, opacity: 0.4 }}>⟳</span>
+        <p className="crm-empty-state-title">Chargement des suivis…</p>
+      </div>
+    );
+  }
 
   const total = overdue.length + today.length + upcoming.length;
   if (total === 0) {
-    return <p className="text-sm text-zinc-500">No follow-ups pending. 🎉</p>;
+    return (
+      <div className="crm-card">
+        <div className="crm-empty-state">
+          <span className="crm-empty-state-icon">🎉</span>
+          <p className="crm-empty-state-title">Aucun suivi en attente</p>
+          <p className="crm-empty-state-sub">Tout est à jour. Bon travail !</p>
+        </div>
+      </div>
+    );
   }
 
+  const sections: Array<{ label: string; fr: string; items: FollowUp[]; accent: string; bg: string }> = [
+    { label: "overdue",  fr: "En retard",      items: overdue,  accent: "var(--crm-red)",   bg: "#FFF5F3" },
+    { label: "today",    fr: "Aujourd'hui",     items: today,    accent: "var(--crm-amber)", bg: "#FFFBF0" },
+    { label: "upcoming", fr: "À venir",         items: upcoming, accent: "var(--crm-blue)",  bg: "var(--crm-card)" },
+  ];
+
   return (
-    <div className="space-y-6">
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {error && (
+        <div style={{ background: "var(--crm-red-light)", border: "1px solid #FFCDD2", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--crm-red)", fontWeight: 600 }}>
+          {error}
+        </div>
+      )}
       {sections.filter(s => s.items.length > 0).map(s => (
         <section key={s.label}>
-          <h2 className="text-sm uppercase tracking-wide text-zinc-500 mb-2">{s.label} ({s.items.length})</h2>
-          <ul className="space-y-2">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "1px", textTransform: "uppercase", color: "var(--crm-text3)" }}>{s.fr}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, background: s.label === "overdue" ? "var(--crm-red-light)" : "var(--crm-bg-alt)", color: s.label === "overdue" ? "var(--crm-red)" : "var(--crm-text2)", borderRadius: 999, padding: "1px 8px" }}>{s.items.length}</span>
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {s.items.map(f => (
-              <li key={f.id} className={`bg-white border ${s.color} rounded-2xl p-4`}>
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {f.lead?.full_name ?? f.lead?.company_name ?? "—"}
-                      {f.lead?.city && <span className="text-zinc-500 font-normal"> · {f.lead.city}</span>}
-                    </div>
-                    <p className="text-sm text-zinc-700 mt-1 whitespace-pre-wrap">{f.note}</p>
-                    <div className="text-xs text-zinc-500 mt-2 flex gap-3">
-                      <span>📅 {new Date(f.due_at).toLocaleString("fr-CA", { dateStyle: "short", timeStyle: "short" })}</span>
-                      <span>priority {f.priority}</span>
-                      {f.source && <span>via {f.source}</span>}
-                      {f.lead_id && <Link href={`/calls/${f.lead_id}` as never} className="underline">Open lead →</Link>}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => complete(f.id)} disabled={busyId === f.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded-lg px-3 py-1.5 disabled:opacity-50">
-                      {busyId === f.id ? "…" : "✓ Done"}
-                    </button>
-                    <button onClick={() => cancel(f.id)} disabled={busyId === f.id}
-                      className="border border-zinc-300 hover:bg-zinc-100 text-xs rounded-lg px-3 py-1.5 disabled:opacity-50">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </li>
+              <FollowUpCard
+                key={f.id}
+                f={f}
+                accent={s.accent}
+                bg={s.bg}
+                busy={busyId === f.id}
+                onComplete={() => complete(f.id)}
+                onCancel={() => cancel(f.id)}
+              />
             ))}
           </ul>
         </section>
       ))}
     </div>
+  );
+}
+
+function FollowUpCard({ f, accent, bg, busy, onComplete, onCancel }: {
+  f: FollowUp; accent: string; bg: string; busy: boolean;
+  onComplete: () => void; onCancel: () => void;
+}) {
+  const owner = f.lead?.full_name ?? f.lead?.company_name ?? "—";
+
+  return (
+    <li style={{
+      background: bg,
+      border: `1px solid var(--crm-card-border)`,
+      borderLeft: `4px solid ${accent}`,
+      borderRadius: 10,
+      padding: "13px 16px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 12,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Owner + city */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <span style={{ fontWeight: 800, fontSize: 14, color: "var(--crm-text)" }}>{owner}</span>
+          {f.lead?.city && (
+            <span style={{ fontSize: 11, color: "var(--crm-text3)", fontWeight: 500 }}>{f.lead.city}</span>
+          )}
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: priorityColor(f.priority), flexShrink: 0, marginLeft: "auto" }} title={`Priorité ${f.priority}`} />
+        </div>
+
+        {/* Note */}
+        {f.note && (
+          <p style={{ fontSize: 13, color: "var(--crm-text2)", margin: "0 0 8px", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{f.note}</p>
+        )}
+
+        {/* Meta row */}
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "var(--crm-text3)", fontWeight: 500 }}>📅 {fmtDue(f.due_at)}</span>
+          {f.lead?.best_phone && (
+            <a href={`tel:${f.lead.best_phone.replace(/\D/g, "")}`} className="crm-phone-link" style={{ fontSize: 12 }}>
+              {f.lead.best_phone}
+            </a>
+          )}
+          {f.source && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>via {f.source}</span>}
+          {f.lead_id && (
+            <Link href={`/leads/${f.lead_id}` as never} className="crm-open-lead-link">
+              Ouvrir →
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+        <button
+          onClick={onComplete}
+          disabled={busy}
+          style={{ background: "var(--crm-green)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.5 : 1, whiteSpace: "nowrap" }}
+        >
+          {busy ? "…" : "✓ Fait"}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          style={{ background: "#fff", color: "var(--crm-text2)", border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.5 : 1 }}
+        >
+          Annuler
+        </button>
+      </div>
+    </li>
   );
 }
