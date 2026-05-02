@@ -182,10 +182,19 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
       {/* ─── Filter bar ─── */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+      <div style={{
+        background: "var(--crm-card)",
+        border: "1px solid var(--crm-card-border)",
+        borderRadius: 10,
+        padding: "12px 14px",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        alignItems: "flex-end",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}>
         <FilterField label="Campagne">
-          <select value={campaignId} onChange={e => setCampaignId(e.target.value)}
-            style={filterSelectStyle}>
+          <select value={campaignId} onChange={e => setCampaignId(e.target.value)} style={filterSelectStyle}>
             <option value="">Toutes les campagnes</option>
             {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -213,13 +222,10 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               <option value="needs_enrichment">Enrichissement</option>
               <option value="needs_human_review">À vérifier</option>
               <option value="phone_verified">Tél. vérifié</option>
-              <option value="brave_queued">brave_queued</option>
-              <option value="unresolved_after_brave">non résolu (brave)</option>
-              <option value="directory_411_queued">directory_411_queued</option>
-              <option value="unresolved_after_411">non résolu (411)</option>
-              <option value="places_queued">places_queued</option>
-              <option value="unresolved_after_places">non résolu (places)</option>
-              <option value="openclaw_queued">openclaw_queued</option>
+              <option value="brave_queued">Brave…</option>
+              <option value="directory_411_queued">411…</option>
+              <option value="places_queued">Places…</option>
+              <option value="openclaw_queued">OpenClaw…</option>
               <option value="no_contact_found">Introuvable</option>
             </optgroup>
           </select>
@@ -234,12 +240,6 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
             </select>
           </FilterField>
         )}
-        <FilterField label=" ">
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--crm-text2)", fontWeight: 600, cursor: "pointer", paddingBottom: 1 }}>
-            <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} />
-            Avec tél.
-          </label>
-        </FilterField>
         <FilterField label="Recherche" flex>
           <form onSubmit={e => { e.preventDefault(); setQ(qInput); }} style={{ display: "flex", gap: 4 }}>
             <input value={qInput} onChange={e => setQInput(e.target.value)}
@@ -247,15 +247,24 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               style={{ ...filterSelectStyle, flex: 1, minWidth: 180 }} />
             {qInput && (
               <button type="button" onClick={() => { setQInput(""); setQ(""); }}
-                style={{ padding: "0 8px", color: "var(--crm-text3)", background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+                style={{ padding: "0 8px", color: "var(--crm-text3)", background: "none", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>
+                ×
+              </button>
             )}
           </form>
         </FilterField>
-        <div style={{ fontSize: 12, color: "var(--crm-text3)", whiteSpace: "nowrap", paddingBottom: 2 }}>
-          {total} lead{total !== 1 ? "s" : ""}
-          {phoneReady > 0 && !hasPhone && (
-            <span style={{ marginLeft: 6, color: "var(--crm-green)", fontWeight: 700 }}>· {phoneReady} appelables</span>
-          )}
+        {/* Quick filters */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--crm-text2)", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} />
+            Avec tél.
+          </label>
+          <div style={{ fontSize: 12, color: "var(--crm-text3)", whiteSpace: "nowrap" }}>
+            <strong style={{ color: "var(--crm-text2)" }}>{total}</strong> lead{total !== 1 ? "s" : ""}
+            {phoneReady > 0 && !hasPhone && (
+              <span style={{ marginLeft: 6, color: "var(--crm-green)", fontWeight: 700 }}>· {phoneReady} appelables</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -309,15 +318,15 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
         <div style={{
           display: "grid",
           gridTemplateColumns: canAssign
-            ? "24px minmax(0,1fr) minmax(0,160px) 130px 90px"
-            : "minmax(0,1fr) 130px 90px",
+            ? "28px minmax(0,1fr) minmax(0,160px) 150px 100px"
+            : "minmax(0,1fr) 150px 100px",
           gap: 0,
-          padding: "8px 14px",
+          padding: "9px 16px",
           background: "var(--crm-bg-alt)",
           borderBottom: "1px solid var(--crm-card-border)",
           fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.8px",
+          fontWeight: 800,
+          letterSpacing: "0.9px",
           textTransform: "uppercase",
           color: "var(--crm-text3)",
           alignItems: "center",
@@ -338,16 +347,19 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
         </div>
 
         {loading && (
-          <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--crm-text3)", fontSize: 13 }}>Chargement…</div>
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--crm-text3)", fontSize: 13 }}>
+            <div style={{ marginBottom: 6, fontSize: 18, opacity: 0.4 }}>⟳</div>
+            Chargement des leads…
+          </div>
         )}
         {!loading && leads.length === 0 && (
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 28, marginBottom: 8, color: "var(--crm-text3)" }}>⌖</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--crm-text2)", marginBottom: 4 }}>Aucun lead</div>
-            <div style={{ fontSize: 12, color: "var(--crm-text3)" }}>
-              Aucun lead ne correspond aux filtres actifs.{" "}
-              {canAssign && <Link href="/import" style={{ color: "var(--crm-blue)" }}>Importer un rôle</Link>} pour commencer.
-            </div>
+          <div className="crm-empty-state">
+            <span className="crm-empty-state-icon">⌖</span>
+            <p className="crm-empty-state-title">Aucun lead trouvé</p>
+            <p className="crm-empty-state-sub">
+              Aucun lead ne correspond aux filtres actifs.
+              {canAssign && <> <Link href="/import" style={{ color: "var(--crm-blue)" }}>Importer un rôle</Link> pour commencer.</>}
+            </p>
           </div>
         )}
 
@@ -365,10 +377,10 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               style={{
                 display: "grid",
                 gridTemplateColumns: canAssign
-                  ? "24px minmax(0,1fr) minmax(0,160px) 130px 90px"
-                  : "minmax(0,1fr) 130px 90px",
+                  ? "28px minmax(0,1fr) minmax(0,160px) 150px 100px"
+                  : "minmax(0,1fr) 150px 100px",
                 gap: 0,
-                padding: "11px 14px",
+                padding: "13px 16px",
                 borderTop: idx === 0 ? "none" : "1px solid var(--crm-card-border)",
                 alignItems: "center",
                 transition: "background 0.1s",
@@ -388,18 +400,18 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               <div style={{ minWidth: 0 }}>
                 <Link
                   href={detailHref}
-                  style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}
+                  style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", lineHeight: 1.3 }}
                   onClick={e => e.stopPropagation()}
                 >
                   {l.full_name ?? l.company_name ?? "—"}
                 </Link>
-                <div style={{ fontSize: 12, color: "var(--crm-text2)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 12, color: "var(--crm-text2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {l.address}
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 1, flexWrap: "wrap" }}>
-                  {l.city && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>{l.city}</span>}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
+                  {l.city && <span style={{ fontSize: 11, color: "var(--crm-text3)", fontWeight: 500 }}>{l.city}</span>}
                   {l.num_units != null && (
-                    <span className="crm-chip crm-chip-units" style={{ fontSize: 10, padding: "1px 5px" }}>{l.num_units} u.</span>
+                    <span className="crm-chip crm-chip-units" style={{ fontSize: 10, padding: "1px 6px" }}>{l.num_units}&thinsp;u.</span>
                   )}
                   {l.campaign_name && !canAssign && (
                     <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>· {l.campaign_name}</span>
@@ -409,12 +421,16 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
 
               {/* Col 3 (admin): Assigned + Campaign */}
               {canAssign && (
-                <div style={{ fontSize: 12, color: "var(--crm-text3)", paddingLeft: 10, minWidth: 0 }}>
-                  {assignedUser
-                    ? <div style={{ fontWeight: 600, color: "var(--crm-text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignedUser.display_name}</div>
-                    : <div style={{ fontStyle: "italic", color: "var(--crm-text3)" }}>non assigné</div>}
+                <div style={{ fontSize: 12, paddingLeft: 12, minWidth: 0 }}>
+                  {assignedUser ? (
+                    <div style={{ fontWeight: 700, color: "var(--crm-text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {assignedUser.display_name}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "var(--crm-text3)", fontStyle: "italic" }}>non assigné</div>
+                  )}
                   {l.campaign_name && (
-                    <div style={{ marginTop: 1, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--crm-text3)" }}>
+                    <div style={{ marginTop: 2, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--crm-text3)" }}>
                       {l.campaign_name}
                     </div>
                   )}
@@ -446,13 +462,12 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
         })}
 
         {hasMore && (
-          <div style={{ borderTop: "1px solid var(--crm-card-border)", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--crm-bg-alt)" }}>
-            <span style={{ fontSize: 12, color: "var(--crm-text3)" }}>
-              {leads.length} / {total} leads affichés
+          <div style={{ borderTop: "1px solid var(--crm-card-border)", padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--crm-bg-alt)", borderRadius: "0 0 10px 10px" }}>
+            <span style={{ fontSize: 12, color: "var(--crm-text3)", fontWeight: 500 }}>
+              <strong style={{ color: "var(--crm-text2)" }}>{leads.length}</strong> / {total} leads affichés
             </span>
-            <button onClick={loadMore} disabled={loadingMore}
-              style={{ fontSize: 12, background: "#fff", border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "6px 14px", cursor: loadingMore ? "wait" : "pointer", color: "var(--crm-text2)", fontWeight: 600, opacity: loadingMore ? 0.5 : 1 }}>
-              {loadingMore ? "Chargement…" : `Charger la suite (${total - leads.length} restants)`}
+            <button onClick={loadMore} disabled={loadingMore} className="crm-btn" style={{ opacity: loadingMore ? 0.5 : 1, cursor: loadingMore ? "wait" : "pointer" }}>
+              {loadingMore ? "Chargement…" : `Charger la suite · ${total - leads.length} restants`}
             </button>
           </div>
         )}
