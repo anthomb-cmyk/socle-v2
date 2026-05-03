@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     contact_id:  lead.contact_id,
     workflow_id: "force_openclaw_v3",
     job_type:    "find_phone",
-    status:      "processing",
+    status:      "running",
     started_at:  new Date().toISOString(),
     raw_input:   {
       leadId:        lead.id,
@@ -172,24 +172,32 @@ export async function POST(request: Request) {
   });
 
   // ── Dispatch ───────────────────────────────────────────────────────────────
-  const { dispatched, reason } = await requestOpenclawDeepSearch(ctx, []);
+  let dispatched = false;
+  let dispatchReason: string | null = null;
+
+  try {
+    const result = await requestOpenclawDeepSearch(ctx, []);
+    dispatched = result.dispatched;
+    dispatchReason = result.reason ?? null;
+  } catch (err) {
+    dispatched = false;
+    dispatchReason = (err as Error).message ?? "requestOpenclawDeepSearch threw unexpectedly";
+  }
 
   if (!dispatched) {
-    // Webhook not configured or call failed — mark unresolved
+    // Webhook not configured, call failed, or threw — always mark unresolved so job never stays stuck
+    const errMsg = dispatchReason ?? "OPENCLAW_WEBHOOK_URL not configured";
     await sb.from("leads").update({ status: "unresolved_after_openclaw" }).eq("id", lead.id);
     await sb.from("enrichment_events").insert({
       lead_id:    lead.id,
       event_type: "unresolved_after_openclaw",
       stage:      "openclaw",
-      payload:    {
-        reason:  reason ?? "OPENCLAW_WEBHOOK_URL not configured",
-        source:  "admin_force_openclaw",
-      },
+      payload:    { reason: errMsg, source: "admin_force_openclaw" },
     });
     await sb.from("enrichment_jobs").update({
       status:        "failed",
       completed_at:  new Date().toISOString(),
-      error_message: reason ?? "OPENCLAW_WEBHOOK_URL not configured",
+      error_message: errMsg,
     }).eq("id", enrichmentJobId);
 
     return NextResponse.json({
@@ -198,19 +206,16 @@ export async function POST(request: Request) {
         outcome:  "webhook_missing",
         leadId:   lead.id,
         status:   "unresolved_after_openclaw",
-        reason:   reason ?? "OPENCLAW_WEBHOOK_URL not configured",
-        message:  "OpenClaw webhook not configured. Lead marked unresolved_after_openclaw. Set OPENCLAW_WEBHOOK_URL in Railway env vars.",
+        reason:   errMsg,
+        message:  "OpenClaw dispatch failed. Lead marked unresolved_after_openclaw. Set OPENCLAW_WEBHOOK_URL in Railway env vars.",
       },
     });
   }
 
   // ── Dispatched ────────────────────────────────────────────────────────────
-  // Lead stays openclaw_researching until callback arrives at /api/enrichment/openclaw-callback
-  await sb.from("enrichment_jobs").update({
-    status: "processing",
-    // completed_at intentionally omitted — job finishes at callback
-  }).eq("id", enrichmentJobId);
-
+  // Job stays "running" until callback arrives at /api/enrichment/openclaw-callback.
+  // Dashboard stuck heuristic: running > 60 min → shows as stuck.
+  // completed_at intentionally omitted here — set by openclaw-callback route.
   return NextResponse.json({
     ok: true,
     data: {
@@ -218,7 +223,7 @@ export async function POST(request: Request) {
       leadId:          lead.id,
       enrichmentJobId,
       status:          "openclaw_researching",
-      message:         "OpenClaw dispatched. Lead set to openclaw_researching — check /admin/events for callback.",
+      message:         "OpenClaw dispatched. Lead set to openclaw_researching — check /admin/enrichment for callback.",
     },
   });
 }

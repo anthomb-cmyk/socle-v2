@@ -16,7 +16,7 @@ type Result = {
   confidence: number; evidence: string | null; status: string; created_at: string;
 };
 
-const STATUSES = ["", "pending", "running", "success", "failed", "skipped", "cancelled"] as const;
+const STATUSES = ["", "pending", "running", "processing", "success", "failed", "skipped", "cancelled"] as const;
 const JOB_TYPES = ["", "find_phone", "verify_phone", "find_email", "find_website", "owner_identity", "property_context", "general_research"] as const;
 
 export default function EnrichmentDashboard() {
@@ -79,13 +79,16 @@ export default function EnrichmentDashboard() {
     cancelled: jobs.filter(j => j.status === "cancelled").length,
   };
 
-  // Stuck heuristic: pending > 30 min OR running > 60 min
+  // Stuck heuristic:
+  //   pending    > 30 min  → never picked up by n8n
+  //   running    > 60 min  → n8n picked up but no callback
+  //   processing > 60 min  → force-openclaw dispatched, n8n never called back
   const now = Date.now();
   const stuckJobs = jobs.filter(j => {
     if (j.status === "pending") {
       return now - new Date(j.created_at).getTime() > 30 * 60_000;
     }
-    if (j.status === "running" && j.started_at) {
+    if ((j.status === "running" || j.status === "processing") && j.started_at) {
       return now - new Date(j.started_at).getTime() > 60 * 60_000;
     }
     return false;
@@ -204,7 +207,7 @@ export default function EnrichmentDashboard() {
                       <button onClick={() => action(j.id, "retry")} disabled={busy === j.id}
                         className="text-xs underline text-zinc-700 mr-2 disabled:opacity-50">Retry</button>
                     )}
-                    {(j.status === "pending" || j.status === "running") && (
+                    {(j.status === "pending" || j.status === "running" || j.status === "processing") && (
                       <button onClick={() => action(j.id, "cancel")} disabled={busy === j.id}
                         className="text-xs underline text-red-700 disabled:opacity-50">Cancel</button>
                     )}
@@ -233,12 +236,14 @@ function Tile({ label, n, highlight, negative }: { label: string; n: number; hig
 
 function JobStatusPill({ s }: { s: string }) {
   const c: Record<string, string> = {
-    pending: "bg-blue-100 text-blue-800",
-    running: "bg-amber-100 text-amber-800",
-    success: "bg-emerald-100 text-emerald-800",
-    failed: "bg-red-100 text-red-800",
-    cancelled: "bg-zinc-200 text-zinc-700",
-    skipped: "bg-zinc-100 text-zinc-500",
+    pending:    "bg-blue-100 text-blue-800",
+    running:    "bg-amber-100 text-amber-800",
+    processing: "bg-purple-100 text-purple-800",
+    success:    "bg-emerald-100 text-emerald-800",
+    completed:  "bg-emerald-100 text-emerald-800",
+    failed:     "bg-red-100 text-red-800",
+    cancelled:  "bg-zinc-200 text-zinc-700",
+    skipped:    "bg-zinc-100 text-zinc-500",
   };
   return <span className={`text-xs uppercase tracking-wide rounded px-1.5 py-0.5 ${c[s] ?? "bg-zinc-100"}`}>{s}</span>;
 }

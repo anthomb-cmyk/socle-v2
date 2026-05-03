@@ -26,3 +26,6 @@ ALTER TYPE enrichment_event_type ADD VALUE IF NOT EXISTS 'openclaw_dispatched';
 
 -- Fired when OpenClaw POSTs back to /api/enrichment/openclaw-callback
 ALTER TYPE enrichment_event_type ADD VALUE IF NOT EXISTS 'openclaw_callback_received';
+
+-- Fired when OpenClaw finds nothing OR webhook is unreachable — lead fully unresolved
+ALTER TYPE enrichment_event_type ADD VALUE IF NOT EXISTS 'unresolved_after_openclaw';
