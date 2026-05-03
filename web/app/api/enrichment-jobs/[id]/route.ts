@@ -7,7 +7,8 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 const Patch = z.object({
-  status: z.enum(["pending", "running", "success", "failed", "skipped", "cancelled"]).optional(),
+  // Must match the DB enum job_status: pending|preview|confirmed|processing|completed|failed|cancelled
+  status: z.enum(["pending", "preview", "confirmed", "processing", "completed", "failed", "cancelled"]).optional(),
   error_message: z.string().nullable().optional(),
   raw_output: z.unknown().optional(),
   cost_usd: z.number().nonnegative().optional(),
@@ -44,8 +45,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   const update: Record<string, unknown> = {};
   if (body.status !== undefined) {
     update.status = body.status;
-    if (body.status === "running" && !update.started_at) update.started_at = new Date().toISOString();
-    if (["success", "failed", "skipped", "cancelled"].includes(body.status)) update.completed_at = new Date().toISOString();
+    if (body.status === "processing" && !update.started_at) update.started_at = new Date().toISOString();
+    if (["completed", "failed", "cancelled"].includes(body.status)) update.completed_at = new Date().toISOString();
   }
   if (body.error_message !== undefined) update.error_message = body.error_message;
   if (body.raw_output !== undefined) update.raw_output = body.raw_output;

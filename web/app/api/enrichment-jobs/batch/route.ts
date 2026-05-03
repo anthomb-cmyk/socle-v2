@@ -13,7 +13,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 const JOB_TYPES = ["find_phone", "verify_phone", "find_email", "find_website", "owner_identity", "property_context", "general_research"] as const;
-const NON_TERMINAL = ["pending", "running"] as const;
+const NON_TERMINAL = ["pending", "processing"] as const;
 
 const Body = z.object({
   leadIds: z.array(z.string().uuid()).min(1).max(500),
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
           }),
         });
         if (r.ok) {
-          await sb.from("enrichment_jobs").update({ status: "running", started_at: new Date().toISOString() }).eq("id", jobId);
+          await sb.from("enrichment_jobs").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", jobId);
         }
       } catch {
         // swallow — job stays pending

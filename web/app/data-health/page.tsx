@@ -54,7 +54,7 @@ export default async function DataHealthPage() {
     sb.from("enrichment_jobs").select("id", { count: "exact", head: true })
       .eq("status", "pending").lt("created_at", new Date(Date.now() - 30 * 60_000).toISOString()),
     sb.from("enrichment_jobs").select("id", { count: "exact", head: true })
-      .eq("status", "running").lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString()),
+      .eq("status", "processing").lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString()),
     sb.from("enrichment_results").select("id", { count: "exact", head: true }).eq("status", "unverified"),
   ]);
 

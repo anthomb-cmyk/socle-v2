@@ -64,7 +64,7 @@ export async function POST(request: Request) {
         webhookError = `Webhook returned ${r.status}`;
       } else {
         webhookCalled = true;
-        await sb.from("enrichment_jobs").update({ status: "running", started_at: new Date().toISOString() }).eq("id", jobId);
+        await sb.from("enrichment_jobs").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", jobId);
       }
     } catch (err) {
       webhookError = (err as Error).message;

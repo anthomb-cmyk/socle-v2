@@ -254,7 +254,7 @@ function EnrichmentSection({
     if (!j.ok) { setMsg(`✗ ${j.error}`); return; }
     setMsg(`✓ Job created (${jobType}). ${j.data.message}`);
     // Refresh jobs list optimistically
-    setJobs([{ id: j.data.jobId, job_type: jobType, status: j.data.webhookCalled ? "running" : "pending", started_at: null, completed_at: null, error_message: null, created_at: new Date().toISOString() }, ...jobs]);
+    setJobs([{ id: j.data.jobId, job_type: jobType, status: j.data.webhookCalled ? "processing" : "pending", started_at: null, completed_at: null, error_message: null, created_at: new Date().toISOString() }, ...jobs]);
     router.refresh();
   }
 

@@ -19,7 +19,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     status: string; attempts: number; max_attempts: number;
   } | null;
   if (!job) return NextResponse.json({ ok: false, error: "Job not found" }, { status: 404 });
-  if (job.status === "running" || job.status === "pending") {
+  if (job.status === "processing" || job.status === "pending") {
     return NextResponse.json({ ok: false, error: `Job is ${job.status} — cancel first if you want to retry from a clean slate.` }, { status: 409 });
   }
 
@@ -45,7 +45,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       });
       if (r.ok) {
         webhookCalled = true;
-        await sb.from("enrichment_jobs").update({ status: "running", started_at: new Date().toISOString() }).eq("id", id);
+        await sb.from("enrichment_jobs").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", id);
       } else {
         webhookError = `Webhook returned ${r.status}`;
       }

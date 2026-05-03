@@ -293,11 +293,11 @@ export async function GET() {
     sb.from("enrichment_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
     sb.from("enrichment_results").select("id", { count: "exact", head: true }),
     sb.from("enrichment_results").select("id", { count: "exact", head: true }).eq("status", "unverified"),
-    // Stuck jobs (pending > 30m OR running > 60m).
+    // Stuck jobs (pending > 30m OR processing > 60m).
     sb.from("enrichment_jobs").select("id", { count: "exact", head: true })
       .eq("status", "pending").lt("created_at", new Date(Date.now() - 30 * 60_000).toISOString()),
     sb.from("enrichment_jobs").select("id", { count: "exact", head: true })
-      .eq("status", "running").lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString()),
+      .eq("status", "processing").lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString()),
     // Import pipeline: unassigned leads + stuck preview jobs
     sb.from("leads").select("id", { count: "exact", head: true })
       .eq("status", "new").is("assigned_to", null),

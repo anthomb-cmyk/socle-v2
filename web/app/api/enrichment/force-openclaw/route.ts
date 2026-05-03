@@ -11,8 +11,12 @@
 // Outcomes:
 //   openclaw_dispatched   → lead status = openclaw_researching
 //                           event: openclaw_dispatched
-//   webhook_missing       → lead status = unresolved_after_openclaw
+//   webhook_missing       → OPENCLAW_WEBHOOK_URL env var not set
+//                           lead status = unresolved_after_openclaw
 //                           event: unresolved_after_openclaw (reason: no webhook URL)
+//   webhook_failed        → URL set but fetch threw or non-2xx
+//                           lead status = unresolved_after_openclaw
+//                           event: unresolved_after_openclaw (reason: <error>)
 //   already_has_phone     → skipped, 200 ok with explanation
 //   already_researching   → 400, lead is already in openclaw_researching
 
@@ -112,7 +116,7 @@ export async function POST(request: Request) {
     contact_id:  lead.contact_id,
     workflow_id: "force_openclaw_v3",
     job_type:    "find_phone",
-    status:      "running",
+    status:      "processing",
     started_at:  new Date().toISOString(),
     raw_input:   {
       leadId:        lead.id,
@@ -172,27 +176,42 @@ export async function POST(request: Request) {
   });
 
   // ── Dispatch ───────────────────────────────────────────────────────────────
+  // Pre-check the env var so we can distinguish "URL not configured" (webhook_missing)
+  // from "URL set but fetch errored" (webhook_failed).
+  const webhookConfigured = !!process.env.OPENCLAW_WEBHOOK_URL;
+
   let dispatched = false;
   let dispatchReason: string | null = null;
 
-  try {
-    const result = await requestOpenclawDeepSearch(ctx, []);
-    dispatched = result.dispatched;
-    dispatchReason = result.reason ?? null;
-  } catch (err) {
-    dispatched = false;
-    dispatchReason = (err as Error).message ?? "requestOpenclawDeepSearch threw unexpectedly";
+  if (!webhookConfigured) {
+    dispatchReason = "OPENCLAW_WEBHOOK_URL not configured";
+  } else {
+    try {
+      const result = await requestOpenclawDeepSearch(ctx, []);
+      dispatched = result.dispatched;
+      dispatchReason = result.reason ?? null;
+    } catch (err) {
+      dispatched = false;
+      dispatchReason = (err as Error).message ?? "requestOpenclawDeepSearch threw unexpectedly";
+    }
   }
 
   if (!dispatched) {
-    // Webhook not configured, call failed, or threw — always mark unresolved so job never stays stuck
-    const errMsg = dispatchReason ?? "OPENCLAW_WEBHOOK_URL not configured";
+    // Either webhook_missing (env var unset) or webhook_failed (URL set but fetch failed/threw)
+    const outcome: "webhook_missing" | "webhook_failed" = webhookConfigured
+      ? "webhook_failed"
+      : "webhook_missing";
+    const errMsg = dispatchReason ?? "OpenClaw dispatch failed for unknown reason";
+    const userMessage = outcome === "webhook_missing"
+      ? "OPENCLAW_WEBHOOK_URL is not set. Lead marked unresolved_after_openclaw. Set the env var in Railway and retry."
+      : `OpenClaw webhook fetch failed: ${errMsg}. Lead marked unresolved_after_openclaw. Check the OpenClaw n8n workflow / network reachability and retry.`;
+
     await sb.from("leads").update({ status: "unresolved_after_openclaw" }).eq("id", lead.id);
     await sb.from("enrichment_events").insert({
       lead_id:    lead.id,
       event_type: "unresolved_after_openclaw",
       stage:      "openclaw",
-      payload:    { reason: errMsg, source: "admin_force_openclaw" },
+      payload:    { outcome, reason: errMsg, source: "admin_force_openclaw" },
     });
     await sb.from("enrichment_jobs").update({
       status:        "failed",
@@ -203,18 +222,19 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       data: {
-        outcome:  "webhook_missing",
+        outcome,
         leadId:   lead.id,
+        enrichmentJobId,
         status:   "unresolved_after_openclaw",
         reason:   errMsg,
-        message:  "OpenClaw dispatch failed. Lead marked unresolved_after_openclaw. Set OPENCLAW_WEBHOOK_URL in Railway env vars.",
+        message:  userMessage,
       },
     });
   }
 
   // ── Dispatched ────────────────────────────────────────────────────────────
-  // Job stays "running" until callback arrives at /api/enrichment/openclaw-callback.
-  // Dashboard stuck heuristic: running > 60 min → shows as stuck.
+  // Job stays "processing" until callback arrives at /api/enrichment/openclaw-callback.
+  // Dashboard stuck heuristic: processing > 60 min → shows as stuck.
   // completed_at intentionally omitted here — set by openclaw-callback route.
   return NextResponse.json({
     ok: true,
