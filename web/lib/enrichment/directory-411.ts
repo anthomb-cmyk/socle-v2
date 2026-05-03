@@ -1,15 +1,18 @@
-// Stage 2 — 411 / Directory Lookup
+// Stage — 411 / Directory Lookup (stub)
 //
-// Searches a phone directory for the owner by name + city.
-// Currently a stub — wire up a real directory API by setting:
-//   DIRECTORY_411_API_URL  e.g. https://api.canada411.com/v1/...
-//   DIRECTORY_411_API_KEY
+// ⚠️  NOT WIRED INTO THE ACTIVE PIPELINE.
+// The v2 pipeline uses address_search → company_search → b2bhint → openclaw.
+// This module is retained as a future hook for Canada411 / Pages Jaunes APIs
+// once a subscription is confirmed.
 //
-// ⚠️  CREDENTIAL NEEDED: Choose and configure a 411/directory API.
-//     Recommended options for Quebec:
-//       • Canada411 (Rogers) — https://www.canada411.ca
-//       • Pages Jaunes API   — https://developer.pagesjaunes.ca
-//     When configured, replace the stub body below with real API calls.
+// To activate: set DIRECTORY_411_API_URL + DIRECTORY_411_API_KEY,
+// then insert a call to runDirectorySearch() between company_search and b2bhint
+// in pipeline.ts.
+//
+// Credential options for Québec:
+//   • Canada411 (Rogers) — https://www.canada411.ca
+//   • Pages Jaunes API   — https://developer.pagesjaunes.ca
+//   • AnnuaireQC         — local Québec directory
 
 import type { LeadContext, StageResult } from "./types";
 
@@ -18,33 +21,30 @@ export async function runDirectorySearch(ctx: LeadContext): Promise<StageResult>
   const apiKey = process.env.DIRECTORY_411_API_KEY;
 
   if (!apiUrl || !apiKey) {
-    // Not configured — skip this stage cleanly
     return {
       found: false,
       reason: "DIRECTORY_411_API_URL / DIRECTORY_411_API_KEY not configured — stage skipped",
     };
   }
 
-  // ── STUB ── Replace with real implementation once credentials are set.
+  // ── STUB ── Replace with real implementation when credentials are available.
   //
-  // Search targets (in order of specificity):
-  //   1. contact full name + mailing city + mailing postal
-  //   2. contact full name + property city
-  //   3. company name + mailing city
-  //   4. company name + property city
-  //   5. secondary contact name + city
+  // Search order (most specific first):
+  //   1. company name + mailing city + mailing postal
+  //   2. company name + property city
+  //   3. contact full name + mailing city
+  //   4. secondary name + city
   //
-  // For each result:
-  //   - extract E.164 phone
-  //   - compare name/address similarity → derive confidence
-  //   - assign source_label = "canada411" or "pages_jaunes"
-  //   - assign initial_confidence = 70 (directory is more authoritative than web search)
+  // For each result extract:
+  //   phoneRaw, phoneE164, candidateName, candidateAddress
+  //   confidence = 70 (directory more authoritative than web search)
+  //   matchedOn: "company_name" | "director_name"
   //
   // Example skeleton:
   //
   // const searchName = ctx.companyName ?? ctx.fullName ?? "";
   // const searchCity = ctx.mailingCity ?? ctx.propertyCity ?? "";
-  // const r = await fetch(`${apiUrl}/person?name=${encodeURIComponent(searchName)}&city=${encodeURIComponent(searchCity)}`, {
+  // const r = await fetch(`${apiUrl}/business?name=${encodeURIComponent(searchName)}&city=${encodeURIComponent(searchCity)}`, {
   //   headers: { "X-Api-Key": apiKey },
   // });
   // const data = await r.json();
@@ -52,17 +52,23 @@ export async function runDirectorySearch(ctx: LeadContext): Promise<StageResult>
   //   return {
   //     found: true,
   //     candidates: data.results.map((item: unknown) => ({
-  //       phoneRaw: ...,
-  //       phoneE164: ...,
-  //       stage: "directory_411" as const,
-  //       sourceLabel: "canada411",
-  //       sourceUrl: item.profileUrl ?? null,
-  //       snippet: `${item.name} — ${item.address}`,
+  //       phoneRaw:          item.phone,
+  //       phoneE164:         item.phone_e164 ?? null,
+  //       stage:             "company_search" as const,
+  //       matchedOn:         "company_name" as const,
+  //       sourceLabel:       "canada411",
+  //       sourceUrl:         item.profile_url ?? null,
+  //       snippet:           `${item.name} — ${item.address}`,
+  //       searchQuery:       searchName,
+  //       candidateName:     item.name,
+  //       candidateAddress:  item.address,
+  //       relatedEntityName: null,
+  //       relatedEntityType: null,
   //       initialConfidence: 70,
   //     })),
   //   };
   // }
 
-  void ctx; // suppress unused warning until implemented
+  void ctx;
   return { found: false, reason: "directory 411 stub — not yet implemented" };
 }

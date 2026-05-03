@@ -1,13 +1,15 @@
 // POST /api/enrichment/start
 //
-// Kicks off the multi-stage phone enrichment pipeline for a single lead.
-// Runs stages 1-3 synchronously (Brave → 411 → Place API), dispatches stage 4
-// (OpenClaw) asynchronously if needed.
+// Kicks off the address-first phone enrichment pipeline (v2) for one lead.
+// Accepts: { leadId: uuid }
 //
-// Body: { leadId: uuid }
+// Phone gate (Stage 0):
+//   Checks leads_view.best_phone — if any phone already exists (from import or
+//   prior enrichment), skip enrichment and return skipped=true.
+//   This is stricter than the old gate which only checked for "verified" phones.
 //
-// The route assembles LeadContext from the DB (joins leads → properties → contacts)
-// and calls runEnrichmentPipeline().
+// Runs stages 1-3 synchronously (address → company → b2bhint),
+// dispatches stage 4 (OpenClaw) asynchronously if all else fails.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -23,17 +25,43 @@ const Body = z.object({
   leadId: z.string().uuid(),
 });
 
+// Row shape returned by leads join
+type LeadRow = {
+  id:         string;
+  contact_id: string;
+  status:     string;
+  properties: {
+    address:    string;
+    city:       string | null;
+    matricule:  string | null;
+    num_units:  number | null;
+  } | null;
+  contacts: {
+    id:              string;
+    full_name:       string | null;
+    company_name:    string | null;
+    mailing_address: string | null;
+    mailing_city:    string | null;
+    mailing_postal:  string | null;
+  } | null;
+};
+
 export async function POST(request: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
   let body;
   try { body = Body.parse(await request.json()); }
-  catch (err) { return NextResponse.json({ ok: false, error: "Bad input", errors: (err as z.ZodError).issues }, { status: 400 }); }
+  catch (err) {
+    return NextResponse.json(
+      { ok: false, error: "Bad input", errors: (err as z.ZodError).issues },
+      { status: 400 },
+    );
+  }
 
   const sb = createSupabaseAdminClient();
 
-  // Load full lead context in one query
+  // ── Load lead context ───────────────────────────────────────────────────
   const { data: leadRaw } = await sb
     .from("leads")
     .select(`
@@ -47,68 +75,90 @@ export async function POST(request: Request) {
     .eq("id", body.leadId)
     .single();
 
-  type LeadRow = {
-    id: string;
-    contact_id: string;
-    status: string;
-    properties: { address: string; city: string | null; matricule: string | null; num_units: number | null } | null;
-    contacts: { id: string; full_name: string | null; company_name: string | null; mailing_address: string | null; mailing_city: string | null; mailing_postal: string | null } | null;
-  };
   const lead = leadRaw as LeadRow | null;
-  if (!lead) return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
+  if (!lead) {
+    return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
+  }
 
-  // Skip if already has a verified phone
-  const { data: phoneCheck } = await sb
-    .from("phones")
-    .select("id")
-    .eq("contact_id", lead.contact_id)
-    .eq("status", "verified")
-    .limit(1);
-  if ((phoneCheck ?? []).length > 0) {
+  // ── Stage 0: Existing phone gate ────────────────────────────────────────
+  // Check leads_view.best_phone — any phone in DB (imported OR previously found)
+  // prevents re-enrichment. Callers are expected to have the phone already.
+  const { data: viewRow } = await sb
+    .from("leads_view")
+    .select("best_phone")
+    .eq("lead_id", lead.id)
+    .single();
+
+  if (viewRow && (viewRow as { best_phone: string | null }).best_phone) {
+    // Phone already exists — mark ready_to_call if not already
+    if (!["ready_to_call", "in_outreach", "meeting_set", "qualified"].includes(lead.status)) {
+      await sb.from("leads").update({ status: "ready_to_call" }).eq("id", lead.id);
+      await sb.from("enrichment_events").insert({
+        lead_id:    lead.id,
+        event_type: "existing_phone_found",
+        stage:      null,
+        payload:    { best_phone: (viewRow as { best_phone: string }).best_phone, skipped: true },
+      });
+    }
     return NextResponse.json({
-      ok: false,
-      error: "Lead already has a verified phone — enrichment not needed",
+      ok: true,
       skipped: true,
+      data: {
+        message: "Lead already has a phone number — enrichment skipped.",
+        bestPhone: (viewRow as { best_phone: string }).best_phone,
+        leadStatus: "ready_to_call",
+      },
     });
   }
 
-  // Skip if already actively running
-  const activeStatuses = ["enrichment_running", "needs_human_review", "openclaw_queued"];
+  // ── Guard: skip if already actively running ─────────────────────────────
+  const activeStatuses = [
+    "enrichment_running",
+    "searching_address",
+    "searching_company",
+    "searching_b2bhint",
+    "openclaw_reviewing",
+    "needs_phone_review",
+  ];
   if (activeStatuses.includes(lead.status)) {
     return NextResponse.json({
       ok: false,
-      error: `Lead is already in status '${lead.status}' — not starting new pipeline run`,
+      error: `Lead is already in status '${lead.status}' — not starting new pipeline run.`,
       skipped: true,
     });
   }
 
-  // Create an enrichment job to anchor the run
+  // ── Create enrichment job ───────────────────────────────────────────────
   const { data: jobRow, error: jobErr } = await sb.from("enrichment_jobs").insert({
-    lead_id: lead.id,
-    contact_id: lead.contact_id,
-    workflow_id: "pipeline_v2",
-    job_type: "find_phone",
-    status: "processing",
-    started_at: new Date().toISOString(),
-    raw_input: { leadId: lead.id, contactId: lead.contact_id, pipeline: "multi_stage_v2" },
+    lead_id:     lead.id,
+    contact_id:  lead.contact_id,
+    workflow_id: "pipeline_v2_address_first",
+    job_type:    "find_phone",
+    status:      "processing",
+    started_at:  new Date().toISOString(),
+    raw_input:   { leadId: lead.id, contactId: lead.contact_id, pipeline: "address_first_v2" },
   }).select("id").single();
+
   if (jobErr || !jobRow) {
-    return NextResponse.json({ ok: false, error: jobErr?.message ?? "job insert failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: jobErr?.message ?? "job insert failed" },
+      { status: 500 },
+    );
   }
   const enrichmentJobId = (jobRow as { id: string }).id;
 
-  // Set lead to enrichment_pending
+  // Mark pending
   await sb.from("leads").update({ status: "enrichment_pending" }).eq("id", lead.id);
 
-  // Build LeadContext
-  // Detect secondary contact name from full_name parsing: "A / B" or "A et B"
+  // ── Build LeadContext ───────────────────────────────────────────────────
+  // Split "Francis Morin / Jean Tremblay" or "A et B" → primary + secondary
   const rawFullName = lead.contacts?.full_name ?? null;
   let primaryName: string | null = null;
   let secondaryName: string | null = null;
   if (rawFullName) {
     const sep = rawFullName.match(/\s*[\/|]\s*|\s+et\s+|\s+and\s+/i);
     if (sep?.index !== undefined) {
-      primaryName = rawFullName.slice(0, sep.index).trim() || null;
+      primaryName   = rawFullName.slice(0, sep.index).trim() || null;
       secondaryName = rawFullName.slice(sep.index + sep[0].length).trim() || null;
     } else {
       primaryName = rawFullName;
@@ -116,65 +166,67 @@ export async function POST(request: Request) {
   }
 
   const ctx: LeadContext = {
-    leadId: lead.id,
-    contactId: lead.contact_id,
+    leadId:          lead.id,
+    contactId:       lead.contact_id,
     enrichmentJobId,
-    fullName: primaryName,
-    companyName: lead.contacts?.company_name ?? null,
+    fullName:        primaryName,
+    companyName:     lead.contacts?.company_name ?? null,
     secondaryName,
     propertyAddress: lead.properties?.address ?? null,
-    propertyCity: lead.properties?.city ?? null,
-    mailingAddress: lead.contacts?.mailing_address ?? null,
-    mailingCity: lead.contacts?.mailing_city ?? null,
-    mailingPostal: lead.contacts?.mailing_postal ?? null,
-    matricule: lead.properties?.matricule ?? null,
-    numUnits: lead.properties?.num_units ?? null,
+    propertyCity:    lead.properties?.city ?? null,
+    mailingAddress:  lead.contacts?.mailing_address ?? null,
+    mailingCity:     lead.contacts?.mailing_city ?? null,
+    mailingPostal:   lead.contacts?.mailing_postal ?? null,
+    matricule:       lead.properties?.matricule ?? null,
+    numUnits:        lead.properties?.num_units ?? null,
   };
 
-  // Run pipeline
+  // ── Run pipeline ────────────────────────────────────────────────────────
   let result: Awaited<ReturnType<typeof runEnrichmentPipeline>>;
   try {
     result = await runEnrichmentPipeline(sb, ctx);
   } catch (err) {
-    // Mark job failed
     await sb.from("enrichment_jobs").update({
-      status: "failed",
-      completed_at: new Date().toISOString(),
+      status:        "failed",
+      completed_at:  new Date().toISOString(),
       error_message: (err as Error).message,
     }).eq("id", enrichmentJobId);
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
   }
 
-  // Mark job status
-  const jobStatus = result.foundCandidates
-    ? "completed"
-    : result.openclawDispatched
-      ? "processing"   // still waiting for OpenClaw callback
-      : "failed";
+  // ── Update job record ───────────────────────────────────────────────────
+  const jobStatus =
+    result.outcome === "openclaw_dispatched" ? "processing"
+    : result.outcome === "unresolved"         ? "failed"
+    :                                           "completed";
 
   await sb.from("enrichment_jobs").update({
-    status: jobStatus,
+    status:       jobStatus,
     completed_at: result.openclawDispatched ? undefined : new Date().toISOString(),
     raw_output: {
-      stageReached: result.stageReached,
-      candidateIds: result.candidateIds,
+      outcome:            result.outcome,
+      stageReached:       result.stageReached,
+      candidateIds:       result.candidateIds,
       openclawDispatched: result.openclawDispatched,
     },
   }).eq("id", enrichmentJobId);
 
+  // ── Response ────────────────────────────────────────────────────────────
+  const messages: Record<string, string> = {
+    solved:             `Phone auto-attached (high confidence) at stage '${result.stageReached}'. Lead is ready_to_call.`,
+    review:             `${result.candidateIds.length} candidate(s) queued for phone review at stage '${result.stageReached}'.`,
+    openclaw_dispatched: "All direct stages exhausted. OpenClaw deep search dispatched — awaiting callback.",
+    unresolved:         "No candidates found after all stages. Lead marked unresolved_after_all_sources.",
+  };
+
   return NextResponse.json({
-    ok: true,
+    ok:   true,
     data: {
       enrichmentJobId,
-      stageReached: result.stageReached,
-      foundCandidates: result.foundCandidates,
+      outcome:        result.outcome,
+      stageReached:   result.stageReached,
       candidateCount: result.candidateIds.length,
-      openclawDispatched: result.openclawDispatched,
-      message: result.foundCandidates
-        ? `Found ${result.candidateIds.length} candidate(s) at stage '${result.stageReached}'. Check phone review queue.`
-        : result.openclawDispatched
-          ? "All direct stages exhausted. OpenClaw deep search dispatched — check back when callback arrives."
-          : "No candidates found after all stages. Lead marked unresolved_after_all_sources.",
+      message:        messages[result.outcome] ?? result.outcome,
     },
   });
 }
