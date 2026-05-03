@@ -182,7 +182,6 @@ async function routeStageResult(
   sb: SupabaseClient,
   ctx: LeadContext,
   candidates: PhoneCandidate[],
-  stage: PipelineStage,
 ): Promise<{ outcome: StageOutcome; candidateIds: string[] }> {
   if (candidates.length === 0) return { outcome: "continue", candidateIds: [] };
 
@@ -242,7 +241,6 @@ export async function runEnrichmentPipeline(
   openclawDispatched: boolean;
 }> {
   const allCandidateIds: string[] = [];
-  let openclawDispatched = false;
 
   await setLeadStatus(sb, ctx.leadId, "enrichment_running");
   await logEvent(sb, ctx.leadId, "enrichment_started", null, {
@@ -273,7 +271,7 @@ export async function runEnrichmentPipeline(
 
   if (addressResult.found) {
     const { outcome, candidateIds } = await routeStageResult(
-      sb, ctx, addressResult.candidates, "address_search",
+      sb, ctx, addressResult.candidates,
     );
     allCandidateIds.push(...candidateIds);
     if (outcome === "solved" || outcome === "review") {
@@ -304,7 +302,7 @@ export async function runEnrichmentPipeline(
 
   if (companyResult.found) {
     const { outcome, candidateIds } = await routeStageResult(
-      sb, ctx, companyResult.candidates, "company_search",
+      sb, ctx, companyResult.candidates,
     );
     allCandidateIds.push(...candidateIds);
     if (outcome === "solved" || outcome === "review") {
@@ -326,7 +324,6 @@ export async function runEnrichmentPipeline(
   });
 
   const { dispatched, reason } = await requestOpenclawDeepSearch(ctx, allCandidateIds);
-  openclawDispatched = dispatched;
 
   if (!dispatched) {
     // OpenClaw not configured — fully unresolved

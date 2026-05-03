@@ -413,7 +413,7 @@ function W7EnrichmentTest() {
                     <span>matched on: {c.matchedOn ?? "—"}</span>
                     <span>source: {c.sourceLabel}</span>
                   </div>
-                  {c.searchQuery && <div className="text-zinc-500">query: "{c.searchQuery}"</div>}
+                  {c.searchQuery && <div className="text-zinc-500">query: &quot;{c.searchQuery}&quot;</div>}
                   {c.snippet && <div className="text-zinc-500 truncate">snippet: {c.snippet.slice(0, 120)}</div>}
                   {c.sourceUrl && <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Source →</a>}
                 </div>

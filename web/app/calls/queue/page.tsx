@@ -97,7 +97,7 @@ export default async function CallQueuePage() {
 
   // All visible leads already have a verified phone (enforced by query above)
   const phoneReady = leads.length;
-  const noPhone = 0;
+  // noPhone removed — all visible leads enforced to have a phone by query above
 
   return (
     <main className="crm-page-narrow">
