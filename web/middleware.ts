@@ -32,7 +32,8 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = request.nextUrl.pathname.startsWith("/auth")
     || request.nextUrl.pathname === "/login"
     || request.nextUrl.pathname === "/api/health"
-    || request.nextUrl.pathname.startsWith("/api/n8n"); // machine-to-machine; uses Bearer token auth
+    || request.nextUrl.pathname.startsWith("/api/n8n")          // machine-to-machine; uses Bearer token auth
+    || request.nextUrl.pathname === "/api/enrichment/openclaw-callback"; // n8n callback; uses N8N_SHARED_KEY Bearer auth
 
   if (isProtected && !user && !isAuthRoute) {
     const url = request.nextUrl.clone();
