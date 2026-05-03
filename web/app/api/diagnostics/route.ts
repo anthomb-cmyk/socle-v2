@@ -146,41 +146,104 @@ export async function GET() {
   }
 
   // ─── 4e. Migration 0007: phone_candidates + enrichment_events ──────────
-  const m0007 = await sb.from("phone_candidates").select("id", { count: "exact", head: true });
-  if (m0007.error) {
-    checks.push({
-      id: "migration_0007",
-      label: "Migration 0007 (phone_candidates + enrichment_events)",
-      status: "fail",
-      detail: m0007.error.message,
-      fix: "Paste supabase/migrations/0007_phone_pipeline.sql into the Supabase SQL editor and click Run.",
-    });
-  } else {
-    checks.push({ id: "migration_0007", label: "Migration 0007 (phone_candidates + enrichment_events)", status: "ok", detail: `phone_candidates reachable (${m0007.count ?? 0} rows)` });
+  // Probes: both tables exist + key columns present on each.
+  const [m0007pc, m0007ee, m0007pcCols, m0007eeCols] = await Promise.all([
+    sb.from("phone_candidates").select("id", { count: "exact", head: true }),
+    sb.from("enrichment_events").select("id", { count: "exact", head: true }),
+    sb.from("phone_candidates").select("id, phone_raw, phone_e164, stage, initial_confidence, candidate_status, source_label, source_url, snippet").limit(1),
+    sb.from("enrichment_events").select("id, lead_id, event_type, stage, candidate_id, payload").limit(1),
+  ]);
+  {
+    const missingTables: string[] = [];
+    const missingCols: string[] = [];
+    if (m0007pc.error) missingTables.push("phone_candidates");
+    if (m0007ee.error) missingTables.push("enrichment_events");
+    if (!m0007pc.error && m0007pcCols.error) missingCols.push(`phone_candidates columns: ${m0007pcCols.error.message}`);
+    if (!m0007ee.error && m0007eeCols.error) missingCols.push(`enrichment_events columns: ${m0007eeCols.error.message}`);
+    const allBad = missingTables.length + missingCols.length;
+    if (allBad > 0) {
+      checks.push({
+        id: "migration_0007",
+        label: "Migration 0007 (phone_candidates + enrichment_events)",
+        status: "fail",
+        detail: [...missingTables.map(t => `missing table: ${t}`), ...missingCols].join("; "),
+        fix: "Paste supabase/migrations/0007_phone_pipeline.sql into the Supabase SQL editor and click Run.",
+      });
+    } else {
+      checks.push({
+        id: "migration_0007",
+        label: "Migration 0007 (phone_candidates + enrichment_events)",
+        status: "ok",
+        detail: `phone_candidates (${m0007pc.count ?? 0} rows) + enrichment_events (${m0007ee.count ?? 0} rows) — key columns confirmed`,
+      });
+    }
   }
 
   // ─── 4f. Migration 0008: address-first pipeline v2 ────────────────────
-  // Probes for matched_on column AND auto_attached enum value (both added by 0008).
-  const m0008col = await sb.from("phone_candidates").select("id, matched_on").limit(1);
-  const m0008enum = await sb.from("phone_candidates").select("id", { count: "exact", head: true }).eq("candidate_status", "auto_attached" as never);
-  if (m0008col.error) {
-    checks.push({
-      id: "migration_0008",
-      label: "Migration 0008 — W7 pipeline v2",
-      status: "fail",
-      detail: "matched_on column missing on phone_candidates",
-      fix: "Paste supabase/migrations/0008_pipeline_v2_stages.sql into the Supabase SQL editor and click Run.",
-    });
-  } else if (m0008enum.error && m0008enum.error.code === "22P02") {
-    checks.push({
-      id: "migration_0008",
-      label: "Migration 0008 — W7 pipeline v2",
-      status: "fail",
-      detail: "candidate_status enum is missing 'auto_attached' — pipeline.ts will fail at runtime",
-      fix: "Paste supabase/migrations/0008_pipeline_v2_stages.sql into the Supabase SQL editor and click Run.",
-    });
-  } else {
-    checks.push({ id: "migration_0008", label: "Migration 0008 — W7 pipeline v2", status: "ok", detail: "matched_on column + auto_attached enum value present" });
+  // Probes: matched_on + new evidence columns on phone_candidates; auto_attached enum;
+  // searching_address lead_status enum value.
+  const [m0008col, m0008newCols, m0008enum, m0008status] = await Promise.all([
+    sb.from("phone_candidates").select("id, matched_on").limit(1),
+    sb.from("phone_candidates").select("id, candidate_name, candidate_address, search_query, related_entity_name, related_entity_type").limit(1),
+    sb.from("phone_candidates").select("id", { count: "exact", head: true }).eq("candidate_status", "auto_attached" as never),
+    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "searching_address" as never),
+  ]);
+  {
+    const failing: string[] = [];
+    if (m0008col.error) failing.push("matched_on column missing on phone_candidates");
+    if (!m0008col.error && m0008newCols.error) failing.push(`evidence columns missing: ${m0008newCols.error.message}`);
+    if (m0008enum.error?.code === "22P02") failing.push("candidate_status enum missing 'auto_attached'");
+    if (m0008status.error?.code === "22P02") failing.push("lead_status enum missing 'searching_address'");
+    if (failing.length > 0) {
+      checks.push({
+        id: "migration_0008",
+        label: "Migration 0008 — W7 pipeline v2 (address-first stages)",
+        status: "fail",
+        detail: failing.join("; "),
+        fix: "Paste supabase/migrations/0008_pipeline_v2_stages.sql into the Supabase SQL editor and click Run.",
+      });
+    } else {
+      checks.push({
+        id: "migration_0008",
+        label: "Migration 0008 — W7 pipeline v2 (address-first stages)",
+        status: "ok",
+        detail: "matched_on, candidate_name, candidate_address, search_query columns present; auto_attached + searching_address enum values confirmed",
+      });
+    }
+  }
+
+  // ─── 4g. Migration 0009: OpenClaw Stage 3 statuses + event types ────────
+  // Probes: openclaw_researching + unresolved_after_openclaw in lead_status enum;
+  //         openclaw_dispatched + openclaw_callback_received in enrichment_event_type enum.
+  // A code-22P02 error means the enum value doesn't exist yet.
+  const [m0009s1, m0009s2, m0009e1, m0009e2] = await Promise.all([
+    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "openclaw_researching" as never),
+    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "unresolved_after_openclaw" as never),
+    sb.from("enrichment_events").select("id", { count: "exact", head: true }).eq("event_type", "openclaw_dispatched" as never),
+    sb.from("enrichment_events").select("id", { count: "exact", head: true }).eq("event_type", "openclaw_callback_received" as never),
+  ]);
+  {
+    const missing: string[] = [];
+    if (m0009s1.error?.code === "22P02") missing.push("lead_status: openclaw_researching");
+    if (m0009s2.error?.code === "22P02") missing.push("lead_status: unresolved_after_openclaw");
+    if (m0009e1.error?.code === "22P02") missing.push("enrichment_event_type: openclaw_dispatched");
+    if (m0009e2.error?.code === "22P02") missing.push("enrichment_event_type: openclaw_callback_received");
+    if (missing.length > 0) {
+      checks.push({
+        id: "migration_0009",
+        label: "Migration 0009 — OpenClaw Stage 3 enum values",
+        status: "fail",
+        detail: `Missing enum values: ${missing.join(", ")}`,
+        fix: "Paste supabase/migrations/0009_openclaw_stage3.sql into the Supabase SQL editor and click Run.",
+      });
+    } else {
+      checks.push({
+        id: "migration_0009",
+        label: "Migration 0009 — OpenClaw Stage 3 enum values",
+        status: "ok",
+        detail: "openclaw_researching, unresolved_after_openclaw (lead_status) + openclaw_dispatched, openclaw_callback_received (enrichment_event_type) all present",
+      });
+    }
   }
 
   // ─── 6. Env vars ──────────────────────────────────────────────────────
@@ -306,6 +369,23 @@ export async function GET() {
       status: !!process.env.OPENCLAW_WEBHOOK_URL ? "ok" : "warn",
       detail: !!process.env.OPENCLAW_WEBHOOK_URL ? "set — OpenClaw automated browser research active" : "missing — Stage 3 skipped, unresolved leads stay unresolved",
       fix: !process.env.OPENCLAW_WEBHOOK_URL ? "Set OPENCLAW_WEBHOOK_URL in Railway env vars to the n8n OpenClaw workflow webhook URL. No extra API key needed." : undefined,
+    },
+    {
+      id: "w7_n8n_key",
+      label: "W7: N8N_SHARED_KEY set (OpenClaw webhook auth)",
+      status: !!process.env.N8N_SHARED_KEY ? "ok" : "warn",
+      detail: !!process.env.N8N_SHARED_KEY
+        ? "set — OpenClaw webhook calls will include Authorization header"
+        : "missing — OpenClaw webhook fires without auth header (acceptable if n8n doesn't require it)",
+      fix: !process.env.N8N_SHARED_KEY
+        ? "Set N8N_SHARED_KEY in Railway env vars — same key used by all n8n → CRM calls."
+        : undefined,
+    },
+    {
+      id: "w7_b2bhint_removed",
+      label: "W7: B2BHint API — intentionally removed",
+      status: "ok" as Status,
+      detail: "B2BHint API stage removed in migration 0009. OpenClaw (Stage 3) reads public B2BHint pages via browser — no API key required. Do not add B2BHINT_API_KEY.",
     },
     {
       id: "w7_ready_to_call",
