@@ -1,10 +1,15 @@
 // GET /api/diagnostics — admin-only system readiness check.
 // Reports: schema migrations applied, env vars set, auth state,
 // JWT freshness, presence of seed data.
+//
+// MUST be force-dynamic: Next.js 15 caches GET handlers statically at build time
+// by default. Without this, Railway serves a stale build-time snapshot forever.
 
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+
+export const dynamic = "force-dynamic";
 
 type Status = "ok" | "warn" | "fail";
 type Check = {
