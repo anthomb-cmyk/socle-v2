@@ -140,6 +140,17 @@ export default function TestPanel() {
         <W7EnrichmentTest />
       </section>
 
+      {/* ── W7 OpenClaw force-dispatch ── */}
+      <section className="bg-purple-50 rounded-2xl border border-purple-200 p-4">
+        <h2 className="text-sm font-semibold text-purple-900 mb-1">W7 — Force OpenClaw dispatch (single lead)</h2>
+        <p className="text-xs text-purple-700 mb-3">
+          Skips Stages 1–2 and sends one lead directly to OpenClaw (Stage 3).
+          Use for leads stuck at <code>unresolved_after_brave</code> or similar legacy states.
+          Requires <code>OPENCLAW_WEBHOOK_URL</code> to be set in Railway env vars.
+        </p>
+        <ForceOpenClawDispatch />
+      </section>
+
       <section className="bg-white rounded-2xl border border-zinc-200 p-4">
         <h2 className="text-sm font-semibold text-zinc-700 mb-3">Verify each surface</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
@@ -426,6 +437,90 @@ function W7EnrichmentTest() {
       {result && !result.ok && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
           ✗ {result.error ?? "Unknown error"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Force OpenClaw dispatch ───────────────────────────────────────────────
+const KNOWN_TEST_LEAD = "a57b3c92-4c8d-477a-86b3-613f2cfc5062";
+
+type ForceOpenClawResult = {
+  ok: boolean;
+  skipped?: boolean;
+  error?: string;
+  data?: {
+    outcome: string;
+    leadId: string;
+    status?: string;
+    reason?: string;
+    message: string;
+    enrichmentJobId?: string;
+    bestPhone?: string;
+  };
+};
+
+function ForceOpenClawDispatch() {
+  const [leadId, setLeadId] = useState(KNOWN_TEST_LEAD);
+  const [running, setRunning] = useState(false);
+  const [forcResult, setForcResult] = useState<ForceOpenClawResult | null>(null);
+
+  async function dispatch() {
+    if (!leadId.trim()) return;
+    setRunning(true);
+    setForcResult(null);
+    const r = await fetch("/api/enrichment/force-openclaw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leadId: leadId.trim() }),
+    });
+    const j: ForceOpenClawResult = await r.json();
+    setRunning(false);
+    setForcResult(j);
+  }
+
+  const outcomeColor: Record<string, string> = {
+    openclaw_dispatched: "bg-blue-100 border-blue-300 text-blue-900",
+    webhook_missing:     "bg-amber-100 border-amber-300 text-amber-900",
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          value={leadId}
+          onChange={e => setLeadId(e.target.value)}
+          placeholder="Lead UUID"
+          className="flex-1 rounded-lg border border-purple-200 bg-white px-3 py-1.5 text-sm font-mono"
+        />
+        <button
+          onClick={dispatch}
+          disabled={running || !leadId.trim()}
+          className="bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-lg px-4 py-1.5 text-sm font-medium whitespace-nowrap">
+          {running ? "Dispatching…" : "Send to OpenClaw →"}
+        </button>
+      </div>
+
+      {forcResult && forcResult.ok && forcResult.data && (
+        <div className={`rounded-lg border p-4 text-sm space-y-2 ${outcomeColor[forcResult.data.outcome] ?? "bg-white border-zinc-200"}`}>
+          <p className="font-semibold">Outcome: {forcResult.data.outcome}</p>
+          <p className="text-xs">{forcResult.data.message}</p>
+          {forcResult.data.status && <p className="text-xs font-mono">Lead status → {forcResult.data.status}</p>}
+          {forcResult.data.reason && <p className="text-xs text-amber-800">Reason: {forcResult.data.reason}</p>}
+          {forcResult.data.enrichmentJobId && (
+            <p className="text-xs opacity-70">Job ID: {forcResult.data.enrichmentJobId}</p>
+          )}
+          {forcResult.skipped && forcResult.data.bestPhone && (
+            <p className="text-xs">Existing phone: <strong>{forcResult.data.bestPhone}</strong></p>
+          )}
+        </div>
+      )}
+
+      {forcResult && !forcResult.ok && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+          ✗ {forcResult.error ?? "Unknown error"}
         </div>
       )}
     </div>
