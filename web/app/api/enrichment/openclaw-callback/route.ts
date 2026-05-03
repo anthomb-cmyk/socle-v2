@@ -79,12 +79,20 @@ export async function POST(request: Request) {
   // ── Mode: deep_search ─────────────────────────────────────────────────────
   const { lead_id: leadId, enrichment_job_id: jobId, candidates, reasoning_summary } = body;
 
+  // Log the callback received event (used by /admin/test health check)
+  await sb.from("enrichment_events").insert({
+    lead_id:    leadId,
+    event_type: "openclaw_callback_received",
+    stage:      "openclaw",
+    payload:    { candidate_count: candidates?.length ?? 0, job_id: jobId ?? null },
+  });
+
   if (candidates.length === 0) {
     // OpenClaw found nothing — mark lead fully unresolved
-    await sb.from("leads").update({ status: "unresolved_after_all_sources" }).eq("id", leadId);
+    await sb.from("leads").update({ status: "unresolved_after_openclaw" }).eq("id", leadId);
     await sb.from("enrichment_events").insert({
       lead_id: leadId,
-      event_type: "unresolved_after_all_sources",
+      event_type: "unresolved_after_openclaw",
       stage: "openclaw",
       payload: { reasoning_summary: reasoning_summary ?? null },
     });

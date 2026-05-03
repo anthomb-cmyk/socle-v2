@@ -8,8 +8,8 @@
 //   prior enrichment), skip enrichment and return skipped=true.
 //   This is stricter than the old gate which only checked for "verified" phones.
 //
-// Runs stages 1-3 synchronously (address → company → b2bhint),
-// dispatches stage 4 (OpenClaw) asynchronously if all else fails.
+// Runs stages 1-2 synchronously (address → company),
+// dispatches stage 3 (OpenClaw) asynchronously if both fail.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -116,8 +116,7 @@ export async function POST(request: Request) {
     "enrichment_running",
     "searching_address",
     "searching_company",
-    "searching_b2bhint",
-    "openclaw_reviewing",
+    "openclaw_researching",
     "needs_phone_review",
   ];
   if (activeStatuses.includes(lead.status)) {
@@ -216,7 +215,7 @@ export async function POST(request: Request) {
     solved:             `Phone auto-attached (high confidence) at stage '${result.stageReached}'. Lead is ready_to_call.`,
     review:             `${result.candidateIds.length} candidate(s) queued for phone review at stage '${result.stageReached}'.`,
     openclaw_dispatched: "All direct stages exhausted. OpenClaw deep search dispatched — awaiting callback.",
-    unresolved:         "No candidates found after all stages. Lead marked unresolved_after_all_sources.",
+    unresolved:         "No candidates found after all stages. Lead marked unresolved_after_openclaw.",
   };
 
   return NextResponse.json({

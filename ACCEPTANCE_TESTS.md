@@ -488,3 +488,91 @@ Repeat with a lead where all four stages return nothing. Expected: `leads.status
 4. Tick the rows of the table above as they pass.
 
 Automation comes after the slice ships.
+
+---
+
+## AT-W7 — W7 Phone Enrichment Pipeline v3 (Address-First, 3 Stages)
+
+Tests the address-first stop-early pipeline (`/api/enrichment/start`). Requires migrations 0007 + 0008 + 0009 applied and `BRAVE_SEARCH_API_KEY` set.
+
+**Pipeline architecture (v3, as of migration 0009):**
+- Stage 1: Address search (Brave) — mailing address first, then property address
+- Stage 2: Company/person search (Brave) — company name + director name
+- Stage 3: OpenClaw — automated browser research (async, no API key, public sources + public B2BHint pages)
+- **B2BHint API removed** — B2BHINT_API_KEY is no longer used
+
+### AT-W7-1: Existing phone gate
+
+**Pre-condition:** A lead exists in DB where `leads_view.best_phone` is non-null (imported from XLSX with phone).
+
+| Step | Action | Expected DB | Expected UI |
+|---|---|---|---|
+| 1 | `POST /api/enrichment/start { leadId }` | No new `enrichment_jobs` row | Response: `{ ok: true, skipped: true, data: { message: "Lead already has a phone number — enrichment skipped." } }` |
+| 2 | Check `leads.status` | Unchanged or set to `ready_to_call` if it was `new` | Lead callable without enrichment |
+
+### AT-W7-2: Address search auto-attach (HIGH confidence ≥80)
+
+**Pre-condition:** A lead with a mailing address that appears on a public business directory page alongside a phone number. No existing phone.
+
+| Step | Action | Expected DB | Expected UI |
+|---|---|---|---|
+| 1 | `POST /api/enrichment/start { leadId }` | `enrichment_jobs` row created, status=`processing` | — |
+| 2 | Pipeline runs | `enrichment_events`: `enrichment_started` → `address_search_started` → `address_search_complete` | — |
+| 3 | High-confidence match | `phone_candidates` row: `candidate_status='auto_attached'`, `stage='address_search'`, `matched_on` in (`mailing_address`, `mailing_postal`, `address_company`), `initial_confidence ≥ 80` | — |
+| 4 | Phone auto-attached | `phones` row with `e164`, `source='enrichment_other'`, `status='unverified'` | — |
+| 5 | Lead status | `leads.status = 'ready_to_call'` | Lead appears in `/calls/queue` |
+| 6 | Response | `{ outcome: "solved", stageReached: "address_search" }` | — |
+
+**Pass criteria:** pipeline stops after address_search — no `company_search_started` event in `enrichment_events`.
+
+### AT-W7-3: Company search → review queue (MEDIUM confidence 50–79)
+
+**Pre-condition:** A lead with a company name but no easily-geocoded address. Company name returns a matching phone in Brave but address/city match is weak.
+
+| Step | Action | Expected DB | Expected UI |
+|---|---|---|---|
+| 1 | `POST /api/enrichment/start { leadId }` | — | — |
+| 2 | Address search completes with no high/medium result | `enrichment_events`: `unresolved_after_address` status | — |
+| 3 | Company search finds candidate, 50–79 confidence | `phone_candidates` row: `candidate_status='needs_anthony_review'`, `stage='company_search'` | — |
+| 4 | Lead queued for review | `leads.status = 'needs_phone_review'` | Candidate visible at `/review` with phone, source URL, confidence |
+| 5 | Response | `{ outcome: "review", stageReached: "company_search" }` | — |
+| 6 | Anthony approves at `/review` | `phone_candidates.candidate_status='approved_by_anthony'`. New `phones` row. `leads.status='ready_to_call'` | Lead callable |
+
+### AT-W7-4: All stages exhausted → unresolved (no OPENCLAW_WEBHOOK_URL)
+
+**Pre-condition:** A lead where both address and company searches return nothing useful, and `OPENCLAW_WEBHOOK_URL` is not set.
+
+| Step | Action | Expected DB |
+|---|---|---|
+| 1 | `POST /api/enrichment/start { leadId }` (no OPENCLAW_WEBHOOK_URL set) | Pipeline runs stages 1–2, both produce 0 candidates; Stage 3 skipped |
+| 2 | Outcome | `leads.status = 'unresolved_after_openclaw'`. Response: `{ outcome: "unresolved" }` |
+| 3 | `enrichment_events` audit | `address_search_started`, `address_search_complete`, `company_search_started`, `company_search_complete`, `openclaw_dispatched` (with reason = "not configured"), `unresolved_after_openclaw` events present. No `phone_auto_attached`. |
+
+### AT-W7-7: OpenClaw dispatched (Stage 3 webhook configured)
+
+**Pre-condition:** Stages 1+2 find nothing. `OPENCLAW_WEBHOOK_URL` is set.
+
+| Step | Action | Expected DB |
+|---|---|---|
+| 1 | `POST /api/enrichment/start { leadId }` | Stages 1+2 exhaust. Stage 3 fires webhook. |
+| 2 | Outcome | `leads.status = 'openclaw_researching'`. Response: `{ outcome: "openclaw_dispatched" }` |
+| 3 | `enrichment_events` audit | `openclaw_dispatched` event present with `prior_candidate_ids` and `stages_tried` payload |
+| 4 | OpenClaw callback | `POST /api/enrichment/openclaw-callback` returns result → candidate saved, lead → `needs_phone_review` or `ready_to_call` |
+| 5 | Callback event | `openclaw_callback_received` event written to `enrichment_events` |
+
+### AT-W7-5: Single-lead test via /admin/test
+
+| Step | Action | Expected |
+|---|---|---|
+| 1 | `/admin/test` → W7 section → "Run enrichment test (1 lead)" | Response shows `leadId`, `outcome`, `stageReached`, candidates (if any) |
+| 2 | Check `/admin/test` W7 health checks | `migration_0007 ✓`, `migration_0008 ✓`, `BRAVE_SEARCH_API_KEY ✓` |
+| 3 | Check `/review` | Any medium-confidence candidates appear with full detail |
+
+### AT-W7-6: Stop-early — solved lead not passed to later stages
+
+| Step | Action | Expected |
+|---|---|---|
+| 1 | Trigger enrichment on a lead that returns ≥80 confidence at address_search | `outcome: "solved"` |
+| 2 | Inspect `enrichment_events` for that lead | `address_search_complete` present. **No** `company_search_started` event. Pipeline stopped. |
+
+**Pass criteria for all AT-W7 tests:** `/admin/test` shows migration_0007 ✓, migration_0008 ✓, BRAVE_SEARCH_API_KEY ✓. For AT-W7-7: migration_0009 applied and OPENCLAW_WEBHOOK_URL set.

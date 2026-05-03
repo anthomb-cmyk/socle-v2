@@ -1,11 +1,10 @@
-// Address-first phone enrichment pipeline orchestrator (v2).
+// Address-first phone enrichment pipeline orchestrator (v2 / W7).
 //
 // Stage order:
 //   0. Existing phone gate  — skip leads that already have any phone in DB
 //   1. Address search       — mailing address first, property address fallback
 //   2. Company/person search — company name + director name queries
-//   3. B2BHint expansion    — related companies/directors (stub until key configured)
-//   4. OpenClaw fallback    — async deep search for remaining unresolved leads
+//   3. OpenClaw fallback    — automated browser research (async, no API key)
 //
 // Stop-early rule:
 //   HIGH confidence (≥ 80)   → auto-attach phone → set ready_to_call → STOP for this lead
@@ -27,7 +26,6 @@ import {
   MEDIUM_CONFIDENCE_THRESHOLD,
 } from "./types";
 import { runAddressSearch, runCompanySearch } from "./brave-search";
-import { runB2BHintSearch } from "./b2bhint";
 import { requestOpenclawDeepSearch } from "./openclaw-validate";
 
 // ── Event / status helpers ────────────────────────────────────────────────────
@@ -316,54 +314,26 @@ export async function runEnrichmentPipeline(
 
   await setLeadStatus(sb, ctx.leadId, "unresolved_after_company");
 
-  // ── Stage 3: B2BHint expansion ─────────────────────────────────────────
-  await setLeadStatus(sb, ctx.leadId, "searching_b2bhint");
-  await logEvent(sb, ctx.leadId, "b2bhint_search_started", "b2bhint", {
-    company: ctx.companyName,
-    director: ctx.fullName,
-  });
-
-  const b2bhintResult = await runB2BHintSearch(ctx).catch(err => {
-    console.error("[pipeline] b2bhint search error:", err);
-    return { found: false as const, reason: (err as Error).message };
-  });
-
-  await logEvent(sb, ctx.leadId, "b2bhint_search_complete", "b2bhint", {
-    found:      b2bhintResult.found,
-    candidates: b2bhintResult.found ? b2bhintResult.candidates.length : 0,
-    reason:     b2bhintResult.found ? undefined : b2bhintResult.reason,
-  });
-
-  if (b2bhintResult.found) {
-    const { outcome, candidateIds } = await routeStageResult(
-      sb, ctx, b2bhintResult.candidates, "b2bhint",
-    );
-    allCandidateIds.push(...candidateIds);
-    if (outcome === "solved" || outcome === "review") {
-      return { outcome, stageReached: "b2bhint", candidateIds: allCandidateIds, openclawDispatched: false };
-    }
-  }
-
-  await setLeadStatus(sb, ctx.leadId, "unresolved_after_b2bhint");
-
-  // ── Stage 4: OpenClaw async fallback ───────────────────────────────────
-  // Only dispatched if configured. Lead waits for callback.
-  await setLeadStatus(sb, ctx.leadId, "openclaw_reviewing");
-  await logEvent(sb, ctx.leadId, "openclaw_search_started", "openclaw", {
+  // ── Stage 3: OpenClaw automated browser research ────────────────────────
+  // OpenClaw is an n8n workflow that browses the web, checks public B2BHint
+  // pages, finds related entities, and calls back via /api/enrichment/openclaw-callback.
+  // No API key required — it uses public sources only.
+  // If OPENCLAW_WEBHOOK_URL is not configured, the lead stays unresolved.
+  await setLeadStatus(sb, ctx.leadId, "openclaw_researching");
+  await logEvent(sb, ctx.leadId, "openclaw_dispatched", "openclaw", {
     prior_candidate_ids: allCandidateIds,
+    stages_tried:        ["address_search", "company_search"],
   });
 
-  const { dispatched, reason } = await requestOpenclawDeepSearch(ctx);
+  const { dispatched, reason } = await requestOpenclawDeepSearch(ctx, allCandidateIds);
   openclawDispatched = dispatched;
-
-  await logEvent(sb, ctx.leadId, "openclaw_search_complete", "openclaw", {
-    dispatched,
-    reason: reason ?? null,
-  });
 
   if (!dispatched) {
     // OpenClaw not configured — fully unresolved
-    await setLeadStatus(sb, ctx.leadId, "unresolved_after_all_sources");
+    await setLeadStatus(sb, ctx.leadId, "unresolved_after_openclaw");
+    await logEvent(sb, ctx.leadId, "unresolved_after_openclaw", "openclaw", {
+      reason: reason ?? "OPENCLAW_WEBHOOK_URL not configured",
+    });
     return {
       outcome:            "unresolved",
       stageReached:       "openclaw",
@@ -372,7 +342,7 @@ export async function runEnrichmentPipeline(
     };
   }
 
-  // OpenClaw dispatched — lead stays at openclaw_reviewing until callback
+  // OpenClaw dispatched — lead stays at openclaw_researching until callback
   return {
     outcome:            "openclaw_dispatched",
     stageReached:       "openclaw",

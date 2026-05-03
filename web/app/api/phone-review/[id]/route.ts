@@ -2,9 +2,9 @@
 // Body: { action: "approve" | "reject" | "retry" | "keep_unresolved" }
 //
 // approve        → promote phone_e164 to phones table as verified; lead → phone_verified
-// reject         → mark rejected_by_anthony; if no other candidates → unresolved_after_all_sources
+// reject         → mark rejected_by_anthony; if no other candidates → unresolved_after_openclaw
 // retry          → re-run enrichment pipeline for this lead
-// keep_unresolved → mark candidate rejected, lead → unresolved_after_all_sources
+// keep_unresolved → mark candidate rejected, lead → unresolved_after_openclaw
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -148,10 +148,10 @@ export async function POST(
       .limit(1);
 
     if (!remaining || remaining.length === 0) {
-      await sb.from("leads").update({ status: "unresolved_after_all_sources" }).eq("id", cand.lead_id);
+      await sb.from("leads").update({ status: "unresolved_after_openclaw" }).eq("id", cand.lead_id);
       await sb.from("enrichment_events").insert({
         lead_id: cand.lead_id,
-        event_type: "unresolved_after_all_sources",
+        event_type: "unresolved_after_openclaw",
         stage: null,
         payload: { reason: "all candidates rejected by anthony" },
       });
@@ -169,11 +169,11 @@ export async function POST(
       review_note: body.note ?? null,
     }).eq("id", id);
 
-    await sb.from("leads").update({ status: "unresolved_after_all_sources" }).eq("id", cand.lead_id);
+    await sb.from("leads").update({ status: "unresolved_after_openclaw" }).eq("id", cand.lead_id);
 
     await sb.from("enrichment_events").insert({
       lead_id: cand.lead_id,
-      event_type: "unresolved_after_all_sources",
+      event_type: "unresolved_after_openclaw",
       stage: null,
       payload: { reason: "kept unresolved by anthony", note: body.note ?? null },
     });

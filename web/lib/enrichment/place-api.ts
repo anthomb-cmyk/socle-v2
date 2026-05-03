@@ -1,14 +1,14 @@
 // Google Places API — optional supplement to company search.
 //
 // ⚠️  NOT WIRED INTO THE ACTIVE PIPELINE.
-// The v2 pipeline uses address_search → company_search (Brave) → b2bhint → openclaw.
+// The v3 pipeline uses address_search → company_search (Brave) → openclaw (Stage 3).
 // This module is retained as an optional enhancement for company_search:
 // if Brave finds nothing for a company name, Google Places can confirm
 // whether that company has a listed business phone.
 //
 // To activate: set GOOGLE_PLACES_API_KEY in Railway env vars,
 // then call runPlaceApiSearch() as a second pass inside company_search,
-// or as an additional stage between company_search and b2bhint.
+// or as an additional stage between company_search and openclaw.
 //
 // Billing: Google Cloud Console → Places API (New). First $200/month free.
 

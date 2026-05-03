@@ -19,10 +19,13 @@ ALTER TYPE pipeline_stage ADD VALUE IF NOT EXISTS 'address_search';
 ALTER TYPE pipeline_stage ADD VALUE IF NOT EXISTS 'company_search';
 ALTER TYPE pipeline_stage ADD VALUE IF NOT EXISTS 'b2bhint';
 
--- ─── New lead_status values ───────────────────────────────────────────────
--- Existing phone gate
-ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'phone_ready';
+-- ─── New candidate_status value ──────────────────────────────────────────
+-- pipeline.ts uses 'auto_attached' when a HIGH-confidence phone is found
+-- and immediately written to the phones table without human review.
+-- The candidate_status enum was defined in 0007 without this value.
+ALTER TYPE candidate_status ADD VALUE IF NOT EXISTS 'auto_attached';
 
+-- ─── New lead_status values ───────────────────────────────────────────────
 -- Address search stage
 ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'searching_address';
 ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'unresolved_after_address';

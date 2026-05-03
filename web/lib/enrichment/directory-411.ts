@@ -1,12 +1,12 @@
 // Stage — 411 / Directory Lookup (stub)
 //
 // ⚠️  NOT WIRED INTO THE ACTIVE PIPELINE.
-// The v2 pipeline uses address_search → company_search → b2bhint → openclaw.
+// The v3 pipeline uses address_search → company_search → openclaw (Stage 3).
 // This module is retained as a future hook for Canada411 / Pages Jaunes APIs
 // once a subscription is confirmed.
 //
 // To activate: set DIRECTORY_411_API_URL + DIRECTORY_411_API_KEY,
-// then insert a call to runDirectorySearch() between company_search and b2bhint
+// then insert a call to runDirectorySearch() between company_search and openclaw
 // in pipeline.ts.
 //
 // Credential options for Québec:

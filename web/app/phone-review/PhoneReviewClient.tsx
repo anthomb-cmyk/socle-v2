@@ -20,6 +20,10 @@ export type PhoneCandidate = {
   phone_raw: string;
   phone_e164: string | null;
   stage: string;
+  matched_on: string | null;
+  search_query: string | null;
+  candidate_name: string | null;
+  candidate_address: string | null;
   source_label: string | null;
   source_url: string | null;
   snippet: string | null;
@@ -67,20 +71,41 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 
 function StagePill({ stage }: { stage: string }) {
   const map: Record<string, string> = {
-    brave: "bg-blue-100 text-blue-700",
-    directory_411: "bg-purple-100 text-purple-700",
-    place_api: "bg-teal-100 text-teal-700",
-    openclaw: "bg-orange-100 text-orange-700",
+    address_search: "bg-blue-100 text-blue-700",
+    company_search: "bg-purple-100 text-purple-700",
+    openclaw:       "bg-orange-100 text-orange-700",
   };
   const labels: Record<string, string> = {
-    brave: "Brave",
-    directory_411: "411",
-    place_api: "Places",
-    openclaw: "OpenClaw",
+    address_search: "Adresse",
+    company_search: "Entreprise",
+    openclaw:       "OpenClaw",
   };
   return (
     <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${map[stage] ?? "bg-zinc-100 text-zinc-500"}`}>
       {labels[stage] ?? stage}
+    </span>
+  );
+}
+
+function MatchedOnPill({ matchedOn }: { matchedOn: string | null }) {
+  if (!matchedOn) return null;
+  const labels: Record<string, string> = {
+    mailing_address:    "adresse postale",
+    mailing_postal:     "code postal",
+    address_company:    "co. à l'adresse",
+    property_address:   "adresse immeuble",
+    company_name:       "nom entreprise",
+    director_name:      "nom directeur",
+    related_company:    "co. liée",
+    same_address_company: "co. même adresse",
+    public_directory:   "annuaire public",
+    company_website:    "site web co.",
+    public_b2bhint_page: "B2BHint public",
+    openclaw:           "OpenClaw",
+  };
+  return (
+    <span className="text-xs bg-zinc-100 text-zinc-500 rounded-full px-2 py-0.5">
+      via {labels[matchedOn] ?? matchedOn}
     </span>
   );
 }
@@ -137,6 +162,7 @@ function CandidateCard({
         <div className="flex gap-1.5 flex-wrap shrink-0">
           <StagePill stage={cand.stage} />
           <ConfidenceBadge score={cand.initial_confidence} />
+          <MatchedOnPill matchedOn={cand.matched_on} />
           {cand.openclaw_verdict && <VerdictBadge verdict={cand.openclaw_verdict} />}
         </div>
       </div>
@@ -153,6 +179,21 @@ function CandidateCard({
           <span className="text-xs text-zinc-400 ml-auto">{cand.source_label}</span>
         )}
       </div>
+
+      {/* Match context */}
+      {(cand.candidate_name || cand.candidate_address) && (
+        <div className="text-xs text-zinc-500 space-y-0.5">
+          {cand.candidate_name && (
+            <div><span className="text-zinc-400">Nom trouvé :</span> <span className="font-medium text-zinc-700">{cand.candidate_name}</span></div>
+          )}
+          {cand.candidate_address && (
+            <div><span className="text-zinc-400">Adresse source :</span> {cand.candidate_address}</div>
+          )}
+          {cand.search_query && (
+            <div className="text-zinc-300 italic truncate">Requête : {cand.search_query}</div>
+          )}
+        </div>
+      )}
 
       {/* Evidence */}
       {cand.snippet && (

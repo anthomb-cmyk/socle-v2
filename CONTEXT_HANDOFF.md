@@ -50,22 +50,21 @@
 - GitHub push (HTTPS keychain — `brew install gh && gh auth login`)
 
 ### What Anthony should do next (in order)
-1. **Remove git lock + commit + push** (2 min):
-   ```bash
-   cd "/Users/anthonymakeen/Documents/New project/socle-v2"
-   rm .git/index.lock
-   git add -A
-   git commit -m "feat: caller queue, import quick-assign, leads filters, nav, enrichment pipeline (W7)"
-   git push origin main
-   ```
-2. **Apply Supabase migration 0006** (2 min): Go to Supabase dashboard → SQL Editor → paste and run contents of `supabase/migrations/0006_enrichment_status.sql` (adds enrichment pipeline statuses to `lead_status` enum)
-3. **n8n W1a credentials** (5 min): open `https://anthonysocleacquisitions.app.n8n.cloud/workflow/2gZp3dbXCZPU3NV6`, attach `antho02mb@gmail.com` OAuth2 to `New Email Received` trigger + 2 draft nodes + OpenAI API to `AI Email Classifier`
-4. **W1a-biz** (5 min): In n8n, find any "Auto-Reply: Socle Business Email" workflow → open `New Email Received` trigger + both `Create Draft` nodes → attach `anthony@socleacquisitions.com` Gmail OAuth2 → Activate
-5. **W7 credentials** (5 min): In n8n, open W7 (`ieE7UpmdRiWejjz7`) → create two credentials:
-   - `Socle CRM N8N Key` — HTTP Header Auth, Name: `Authorization`, Value: `Bearer {N8N_SHARED_KEY}`
-   - `Brave Search API` — HTTP Header Auth, Name: `X-Subscription-Token`, Value: `{BRAVE_API_KEY}`
-   Then set `N8N_ENRICHMENT_WEBHOOK_URL` in Railway env vars to the W7 webhook URL (shown in n8n as `https://anthonysocleacquisitions.app.n8n.cloud/webhook/enrichment-job`) → Activate W7
-6. **Live email test** (2 min): send a test email to `antho02mb@gmail.com`, verify lead appears in Railway CRM within 1 minute
+
+#### W7 phone enrichment — make it live (highest priority)
+1. **Apply migration 0007** (2 min): Supabase dashboard → SQL Editor → paste `supabase/migrations/0007_phone_pipeline.sql` → Run
+2. **Apply migration 0008** (2 min): Supabase dashboard → SQL Editor → paste `supabase/migrations/0008_pipeline_v2_stages.sql` → Run
+3. **Apply migration 0009** (2 min): Supabase dashboard → SQL Editor → paste `supabase/migrations/0009_openclaw_stage3.sql` → Run
+4. **Set `BRAVE_SEARCH_API_KEY` in Railway** (2 min): Railway → socle-v2 service → Variables → add `BRAVE_SEARCH_API_KEY = <your key>`. Get key at https://api.search.brave.com. This unlocks Stages 1 + 2.
+5. **Test W7 on one lead** (1 min): Go to `/admin/test` → "W7 enrichment — single lead test" → click "Run enrichment test (1 lead)". Inspect result: stage reached, confidence, candidate phone, source URL.
+6. **Check migration 0006 if not applied** (2 min): `/admin/test` will show `migration_0006` as fail if not applied. Paste `supabase/migrations/0006_enrichment_status.sql` → Run.
+
+#### Optional — unlock Stage 3 (OpenClaw)
+7. **OpenClaw** (Stage 3): Set `OPENCLAW_WEBHOOK_URL` + `N8N_SHARED_KEY` in Railway, activate the n8n OpenClaw workflow. OpenClaw uses public web sources only — no API key required beyond the webhook.
+
+#### Other pending
+8. **n8n W1a credentials** (5 min): open `https://anthonysocleacquisitions.app.n8n.cloud/workflow/2gZp3dbXCZPU3NV6`, attach `antho02mb@gmail.com` OAuth2 to `New Email Received` trigger + 2 draft nodes + OpenAI API to `AI Email Classifier`
+9. **W1a-biz** (5 min): In n8n, find any "Auto-Reply: Socle Business Email" workflow → attach `anthony@socleacquisitions.com` Gmail OAuth2 → Activate
 
 ---
 
@@ -119,13 +118,16 @@ Key config facts:
 
 ## Database (Supabase `mkgkrfcfhtrlecfuzroz`)
 
-5 migrations applied on Railway, 1 pending manual apply:
+5 migrations applied on Railway, 4 pending manual apply:
 - `0001_init.sql` — base schema (16 tables)
 - `0002_followups_sync.sql` — Google Calendar / Tasks sync fields
 - `0003_user_roles.sql` — widened role taxonomy + `is_active` + `email`
 - `0004_enrichment_extensions.sql` — `enrichment_jobs` + `enrichment_results`
 - `0005_properties_source.sql` — `source` + `source_meta` on properties
 - `0006_enrichment_status.sql` — ⚠️ **PENDING MANUAL APPLY** — adds `needs_enrichment`, `brave_queued`, `unresolved_after_brave`, etc. to `lead_status` enum
+- `0007_phone_pipeline.sql` — ⚠️ **PENDING MANUAL APPLY** — creates `phone_candidates` table, `enrichment_events` table, `candidate_status`/`pipeline_stage`/`openclaw_verdict` enums
+- `0008_pipeline_v2_stages.sql` — ⚠️ **PENDING MANUAL APPLY** — adds `address_search`/`company_search`/`b2bhint` enum values, `auto_attached` to `candidate_status`, `matched_on`/`search_query`/`candidate_name`/`candidate_address`/`related_entity_name`/`related_entity_type` columns on `phone_candidates`
+- `0009_openclaw_stage3.sql` — ⚠️ **PENDING MANUAL APPLY** — adds `openclaw_researching`/`unresolved_after_openclaw` to `lead_status`; adds `openclaw_dispatched`/`openclaw_callback_received` to `enrichment_event_type`
 
 Seeded: 10 leads (Granby), 10 properties, 11 contacts, 10 phones, 1 campaign, follow-ups, 1 hot-seller submission, 1 open review item, 1 pending proposed action.
 
@@ -192,7 +194,13 @@ n8n endpoints (auth: `Bearer ${N8N_SHARED_KEY}`):
 ## Critical decisions (see DECISIONS.md, 50+ entries)
 
 - Auth helpers return-result, never throw (Next.js hangs on thrown Response)
-- All enrichment results land `unverified` — never auto-write to phones/contacts/leads
+- W7 v3 (as of 0009): 3-stage pipeline — Stage 1 (address search) → Stage 2 (company/person search) → Stage 3 (OpenClaw automated browser research). **B2BHint has been removed entirely** — required a paid API key that was never activated.
+- OpenClaw is Stage 3, not Stage 4. It uses public web sources only (no API key). It CAN browse public B2BHint pages, Canada411, Pages Jaunes, REQ, and company websites.
+- Stop-early rule: HIGH confidence (≥80) → auto-attach phone, `ready_to_call`. MEDIUM (50–79) → `needs_phone_review` queue. LOW (<50) → continue to next stage.
+- Existing phone gate: `leads_view.best_phone` — if any phone exists (imported OR previously enriched), skip enrichment entirely.
+- Solved leads never pass to later stages — stop-early is enforced in `pipeline.ts`.
+- All enrichment results land `unverified` — never auto-write to phones/contacts/leads (except auto_attach path which requires ≥80 confidence)
+- `B2BHINT_API_KEY` is no longer referenced anywhere. Do not add it back.
 - `/admin/test` is single source of truth for platform readiness
 - Railway `buildCommand` = `npm run build` only (not `npm ci && npm run build`)
 - Telegram = plain text only, no `parse_mode`

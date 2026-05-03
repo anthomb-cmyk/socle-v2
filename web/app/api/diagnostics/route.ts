@@ -130,6 +130,59 @@ export async function GET() {
     checks.push({ id: "migration_0005", label: "Migration 0005 (properties.source + source_meta)", status: "ok", detail: "source + source_meta columns present" });
   }
 
+  // ─── 4d. Migration 0006: lead_status enrichment enum values ──────────────
+  // Probe via a filter that only succeeds if the enum value exists.
+  const m0006 = await sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "needs_enrichment" as never);
+  if (m0006.error && m0006.error.code === "22P02") {
+    checks.push({
+      id: "migration_0006",
+      label: "Migration 0006 (enrichment lead statuses)",
+      status: "fail",
+      detail: "lead_status enum missing enrichment values",
+      fix: "Paste supabase/migrations/0006_enrichment_status.sql into the Supabase SQL editor and click Run.",
+    });
+  } else {
+    checks.push({ id: "migration_0006", label: "Migration 0006 (enrichment lead statuses)", status: "ok", detail: "enrichment status enum values present" });
+  }
+
+  // ─── 4e. Migration 0007: phone_candidates + enrichment_events ──────────
+  const m0007 = await sb.from("phone_candidates").select("id", { count: "exact", head: true });
+  if (m0007.error) {
+    checks.push({
+      id: "migration_0007",
+      label: "Migration 0007 (phone_candidates + enrichment_events)",
+      status: "fail",
+      detail: m0007.error.message,
+      fix: "Paste supabase/migrations/0007_phone_pipeline.sql into the Supabase SQL editor and click Run.",
+    });
+  } else {
+    checks.push({ id: "migration_0007", label: "Migration 0007 (phone_candidates + enrichment_events)", status: "ok", detail: `phone_candidates reachable (${m0007.count ?? 0} rows)` });
+  }
+
+  // ─── 4f. Migration 0008: address-first pipeline v2 ────────────────────
+  // Probes for matched_on column AND auto_attached enum value (both added by 0008).
+  const m0008col = await sb.from("phone_candidates").select("id, matched_on").limit(1);
+  const m0008enum = await sb.from("phone_candidates").select("id", { count: "exact", head: true }).eq("candidate_status", "auto_attached" as never);
+  if (m0008col.error) {
+    checks.push({
+      id: "migration_0008",
+      label: "Migration 0008 — W7 pipeline v2",
+      status: "fail",
+      detail: "matched_on column missing on phone_candidates",
+      fix: "Paste supabase/migrations/0008_pipeline_v2_stages.sql into the Supabase SQL editor and click Run.",
+    });
+  } else if (m0008enum.error && m0008enum.error.code === "22P02") {
+    checks.push({
+      id: "migration_0008",
+      label: "Migration 0008 — W7 pipeline v2",
+      status: "fail",
+      detail: "candidate_status enum is missing 'auto_attached' — pipeline.ts will fail at runtime",
+      fix: "Paste supabase/migrations/0008_pipeline_v2_stages.sql into the Supabase SQL editor and click Run.",
+    });
+  } else {
+    checks.push({ id: "migration_0008", label: "Migration 0008 — W7 pipeline v2", status: "ok", detail: "matched_on column + auto_attached enum value present" });
+  }
+
   // ─── 6. Env vars ──────────────────────────────────────────────────────
   const envChecks: Array<{ name: string; required: boolean; helpFix: string }> = [
     { name: "NEXT_PUBLIC_SUPABASE_URL", required: true, helpFix: "Add to web/.env.local (project URL from Supabase dashboard)." },
@@ -141,6 +194,9 @@ export async function GET() {
     { name: "TELEGRAM_WEBHOOK_SECRET", required: false, helpFix: "Run `openssl rand -hex 32`, put the result in web/.env.local. Required only when registering inbound webhook." },
     { name: "N8N_SHARED_KEY", required: false, helpFix: "Generate a strong secret and put in web/.env.local. Used by n8n workflows to call /api/n8n/* endpoints." },
     { name: "N8N_ENRICHMENT_WEBHOOK_URL", required: false, helpFix: "Set to the n8n enrichment workflow's webhook URL. Without it, /api/enrichment-jobs creates rows but doesn't auto-fire — n8n must poll." },
+    // W7 — Phone enrichment pipeline v2
+    { name: "BRAVE_SEARCH_API_KEY", required: true, helpFix: "Set BRAVE_SEARCH_API_KEY in Railway env vars. Get key from https://api.search.brave.com. Required for W7 address + company searches (Stages 1–2)." },
+    { name: "OPENCLAW_WEBHOOK_URL", required: false, helpFix: "Set OPENCLAW_WEBHOOK_URL in Railway env vars to the n8n OpenClaw workflow webhook URL. Required for Stage 3 (automated browser deep search). No extra API key needed." },
   ];
   for (const e of envChecks) {
     const set = !!process.env[e.name];
@@ -179,8 +235,13 @@ export async function GET() {
       .eq("status", "new").is("assigned_to", null),
     sb.from("import_jobs").select("id", { count: "exact", head: true })
       .eq("status", "preview").lt("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString()),
+    // W7 pipeline v2 counts
+    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),
+    sb.from("phone_candidates").select("id", { count: "exact", head: true }).eq("candidate_status", "needs_anthony_review"),
+    sb.from("phone_candidates").select("id", { count: "exact", head: true }).eq("candidate_status", "auto_attached"),
+    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "openclaw_researching"),
   ]);
-  const [imps, leads, assigned, calls, subs, reviews, proposed, fups, events, enrichJobs, enrichJobFailures, enrichResults, enrichPending, stuckPending, stuckRunning, unassignedLeads, stuckPreviews] = seedCounts.map(r => r.count ?? 0);
+  const [imps, leads, assigned, calls, subs, reviews, proposed, fups, events, enrichJobs, enrichJobFailures, enrichResults, enrichPending, stuckPending, stuckRunning, unassignedLeads, stuckPreviews, w7ReadyToCall, w7NeedsReview, w7AutoAttached, w7OpenclawResearching] = seedCounts.map(r => r.count ?? 0);
   const stuckTotal = stuckPending + stuckRunning;
 
   const seedChecks: Array<{ id: string; label: string; n: number; warnIf0: boolean; fix: string }> = [
@@ -215,6 +276,103 @@ export async function GET() {
       fix: s.n === 0 ? s.fix : undefined,
     });
   }
+
+  // ─── W7 pipeline v2 health ──────────────────────────────────────────────
+  // Query last enrichment event, last dispatch, last callback, and last failed job.
+  const [lastEventRow, lastFailedJobRow, lastDispatchRow, lastCallbackRow, leadsNeedingEnrichmentRow] = await Promise.all([
+    sb.from("enrichment_events").select("event_type, stage, created_at").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("enrichment_jobs").select("id, error_message, completed_at").eq("status", "failed").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("enrichment_events").select("lead_id, created_at").eq("event_type", "openclaw_dispatched").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("enrichment_events").select("lead_id, created_at").eq("event_type", "openclaw_callback_received").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    sb.from("leads").select("id", { count: "exact", head: true }).not("status", "in", '("ready_to_call","in_outreach","meeting_set","qualified","phone_verified","do_not_contact","rejected")'),
+  ]);
+  const lastEvent = lastEventRow.data as { event_type: string; stage: string | null; created_at: string } | null;
+  const lastFailed = lastFailedJobRow.data as { id: string; error_message: string | null; completed_at: string } | null;
+  const lastDispatch = lastDispatchRow.data as { lead_id: string; created_at: string } | null;
+  const lastCallback = lastCallbackRow.data as { lead_id: string; created_at: string } | null;
+  const leadsNeedingPhone = leadsNeedingEnrichmentRow.count ?? 0;
+
+  checks.push(
+    {
+      id: "w7_brave_key",
+      label: "W7: BRAVE_SEARCH_API_KEY set (Stages 1–2)",
+      status: !!process.env.BRAVE_SEARCH_API_KEY ? "ok" : "fail",
+      detail: !!process.env.BRAVE_SEARCH_API_KEY ? "set — address + company searches active" : "missing — Stages 1 and 2 will throw at runtime",
+      fix: !process.env.BRAVE_SEARCH_API_KEY ? "Add BRAVE_SEARCH_API_KEY to Railway → Service → Variables. Get key at https://api.search.brave.com." : undefined,
+    },
+    {
+      id: "w7_openclaw_url",
+      label: "W7: OPENCLAW_WEBHOOK_URL set (Stage 3)",
+      status: !!process.env.OPENCLAW_WEBHOOK_URL ? "ok" : "warn",
+      detail: !!process.env.OPENCLAW_WEBHOOK_URL ? "set — OpenClaw automated browser research active" : "missing — Stage 3 skipped, unresolved leads stay unresolved",
+      fix: !process.env.OPENCLAW_WEBHOOK_URL ? "Set OPENCLAW_WEBHOOK_URL in Railway env vars to the n8n OpenClaw workflow webhook URL. No extra API key needed." : undefined,
+    },
+    {
+      id: "w7_ready_to_call",
+      label: "W7: Leads auto-attached (ready_to_call)",
+      status: "ok",
+      detail: `${w7ReadyToCall} lead(s) with status=ready_to_call`,
+    },
+    {
+      id: "w7_needs_review",
+      label: "W7: Phone candidates needing review",
+      status: w7NeedsReview > 0 ? "warn" : "ok",
+      detail: w7NeedsReview > 0 ? `${w7NeedsReview} candidate(s) awaiting Anthony review` : "0 pending",
+      fix: w7NeedsReview > 0 ? "Go to /phone-review to approve or reject phone candidates." : undefined,
+    },
+    {
+      id: "w7_auto_attached",
+      label: "W7: Phones auto-attached (high confidence)",
+      status: "ok",
+      detail: `${w7AutoAttached} phone(s) auto-attached without human review`,
+    },
+    {
+      id: "w7_openclaw_researching",
+      label: "W7: Leads currently in OpenClaw research",
+      status: "ok",
+      detail: `${w7OpenclawResearching} lead(s) with status=openclaw_researching (awaiting callback)`,
+    },
+    {
+      id: "w7_leads_needing_phone",
+      label: "W7: Leads still needing phone enrichment",
+      status: "ok",
+      detail: `${leadsNeedingPhone} lead(s) without a callable phone`,
+    },
+    {
+      id: "w7_last_event",
+      label: "W7: Last enrichment event",
+      status: lastEvent ? "ok" : "warn",
+      detail: lastEvent
+        ? `${lastEvent.event_type} @ stage=${lastEvent.stage ?? "none"} (${lastEvent.created_at})`
+        : "No enrichment events yet — pipeline has not run",
+    },
+    {
+      id: "w7_last_openclaw_dispatch",
+      label: "W7: Last OpenClaw dispatch",
+      status: lastDispatch ? "ok" : "warn",
+      detail: lastDispatch
+        ? `Lead ${lastDispatch.lead_id} dispatched at ${lastDispatch.created_at}`
+        : "OpenClaw has never been dispatched — set OPENCLAW_WEBHOOK_URL or run a lead through Stage 3",
+    },
+    {
+      id: "w7_last_openclaw_callback",
+      label: "W7: Last OpenClaw callback received",
+      status: lastCallback ? "ok" : (lastDispatch ? "warn" : "ok"),
+      detail: lastCallback
+        ? `Lead ${lastCallback.lead_id} callback at ${lastCallback.created_at}`
+        : lastDispatch ? "OpenClaw dispatched but no callback yet — check n8n workflow" : "No dispatches yet",
+      fix: !lastCallback && lastDispatch ? "Check n8n OpenClaw workflow — it dispatched but never called back to /api/enrichment/openclaw-callback." : undefined,
+    },
+    {
+      id: "w7_last_error",
+      label: "W7: Last enrichment failure",
+      status: lastFailed ? "warn" : "ok",
+      detail: lastFailed
+        ? `Job ${lastFailed.id}: ${lastFailed.error_message ?? "no message"} (${lastFailed.completed_at})`
+        : "No failed enrichment jobs",
+      fix: lastFailed ? "Check enrichment_jobs table for job " + lastFailed.id + " — inspect raw_output for more detail." : undefined,
+    },
+  );
 
   // ─── Import pipeline health ────────────────────────────────────────────
   checks.push(

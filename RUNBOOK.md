@@ -131,6 +131,72 @@ freshness, admin user configured, and seed-data counts. Each failing row
 expands to show the exact fix. Click the green "Seed everything" button if
 starting from empty state.
 
+### Apply migrations 0007 + 0008 + 0009 (W7 phone pipeline v2/v3)
+
+All three migrations are required before W7 can run on Railway.
+
+**Migration 0007** — creates `phone_candidates`, `enrichment_events`, and required enums:
+1. Supabase dashboard → SQL Editor
+2. Paste contents of `supabase/migrations/0007_phone_pipeline.sql`
+3. Click Run
+
+**Migration 0008** — adds address-first pipeline v2 columns and enum values:
+1. Supabase dashboard → SQL Editor
+2. Paste contents of `supabase/migrations/0008_pipeline_v2_stages.sql`
+3. Click Run
+
+**Migration 0009** — OpenClaw as Stage 3 (B2BHint removed):
+1. Supabase dashboard → SQL Editor
+2. Paste contents of `supabase/migrations/0009_openclaw_stage3.sql`
+3. Click Run
+
+All three are fully idempotent (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` throughout).
+
+**Verify in `/admin/test`:** look for `migration_0007` and `migration_0008` rows under Migrations — both should show ✓. Migration 0009 is verified by the `w7_openclaw_researching` counter being present.
+
+### Set Railway env vars for W7
+
+In Railway → socle-v2 service → Variables:
+
+| Var | Required for | How to get |
+|---|---|---|
+| `BRAVE_SEARCH_API_KEY` | Stages 1 + 2 (required) | https://api.search.brave.com |
+| `OPENCLAW_WEBHOOK_URL` | Stage 3 (optional) | n8n OpenClaw workflow webhook URL |
+
+Without `BRAVE_SEARCH_API_KEY`, calling `POST /api/enrichment/start` will throw at runtime and the job will be marked failed.
+
+**Note:** `B2BHINT_API_KEY` has been removed from the pipeline entirely. Do not set it — it is no longer referenced. OpenClaw (Stage 3) reads public B2BHint pages via browser without any API key.
+
+### Test W7 on one lead
+
+From a signed-in admin browser at `/admin/test`:
+- Scroll to "W7 enrichment — single lead test"
+- Click "Run enrichment test (1 lead)"
+- Inspect result: outcome, stage reached, candidate phone, confidence, matched_on, source URL
+
+Or via curl:
+```bash
+curl -X POST https://socle-v2-production.up.railway.app/api/dev/test-enrichment-one \
+  -H "Cookie: <your session cookie>"
+```
+
+Expected responses:
+- `outcome: "solved"` — phone found ≥80 confidence, auto-attached, lead is `ready_to_call`
+- `outcome: "review"` — phone found 50–79 confidence, waiting at `/review`
+- `outcome: "unresolved"` — nothing found (check `BRAVE_SEARCH_API_KEY` is set)
+
+### Interpret W7 outcomes
+
+| outcome | What happened | Where to look |
+|---|---|---|
+| `solved` | Phone auto-attached, lead → `ready_to_call` | `/leads` → filter `ready_to_call` |
+| `review` | Phone candidate queued for you to approve | `/phone-review` → approve or reject |
+| `openclaw_dispatched` | Stage 3 webhook sent to n8n, waiting for callback | `enrichment_jobs` table, status=`processing`; lead status=`openclaw_researching` |
+| `unresolved` | No phone found — OPENCLAW_WEBHOOK_URL not set | `enrichment_events` for the lead shows what was tried; lead status=`unresolved_after_openclaw` |
+
+### Approve/reject a phone candidate
+Go to `/review` → find the candidate → click Approve (attaches phone, sets `ready_to_call`) or Reject (marks `rejected_by_anthony`).
+
 ### Apply migration 0002 manually (if Supabase CLI not installed)
 Paste the contents of `supabase/migrations/0002_followups_sync.sql` into the
 Supabase SQL Editor (same workflow as 0001) and click Run. Adds

@@ -68,7 +68,8 @@ export default function TestPanel() {
     Auth: diag.checks.filter(c => c.id === "admin_seeded" || c.id === "jwt_fresh"),
     Environment: diag.checks.filter(c => c.id.startsWith("env_")),
     "Seed data": diag.checks.filter(c => c.id.startsWith("seed_")),
-    Enrichment: diag.checks.filter(c => c.id.startsWith("enrich_")),
+    "Enrichment jobs": diag.checks.filter(c => c.id.startsWith("enrich_")),
+    "W7 phone enrichment": diag.checks.filter(c => c.id.startsWith("w7_")),
     "Import pipeline": diag.checks.filter(c => c.id.startsWith("import_")),
     "Alpha loops": diag.checks.filter(c => c.id.startsWith("alpha_")),
   };
@@ -120,6 +121,16 @@ export default function TestPanel() {
         )}
       </section>
 
+      {/* ── W7 single-lead enrichment test ── */}
+      <section className="bg-amber-50 rounded-2xl border border-amber-200 p-4">
+        <h2 className="text-sm font-semibold text-amber-900 mb-1">W7 enrichment — single lead test</h2>
+        <p className="text-xs text-amber-700 mb-3">
+          Picks the first lead in DB with no phone number, runs the full address-first pipeline on it, and shows what was found.
+          Safe: runs one lead only. Do <strong>not</strong> use this to bulk-enrich.
+        </p>
+        <W7EnrichmentTest />
+      </section>
+
       <section className="bg-white rounded-2xl border border-zinc-200 p-4">
         <h2 className="text-sm font-semibold text-zinc-700 mb-3">Verify each surface</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
@@ -129,7 +140,7 @@ export default function TestPanel() {
           <Link href={"/calls/queue" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Caller queue →</Link>
           <Link href={"/follow-ups" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Follow-ups →</Link>
           <Link href={"/calendar" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Calendar →</Link>
-          <Link href={"/review" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Review inbox →</Link>
+          <Link href={"/review" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Review inbox → (phone candidates)</Link>
           <Link href={"/data-health" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Data health →</Link>
           <Link href={"/admin/events" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Automation events →</Link>
           <Link href={"/admin/users" as never} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">Users →</Link>
@@ -291,6 +302,105 @@ function Pill({ label, value, suffix }: { label: string; value: number; suffix?:
     <div className="bg-zinc-50 rounded p-2">
       <div className="text-zinc-500 text-xs">{label}</div>
       <div className="font-semibold text-zinc-900">{value}{suffix && <span className="text-zinc-400 font-normal"> {suffix}</span>}</div>
+    </div>
+  );
+}
+
+// ─── W7 Enrichment Test ────────────────────────────────────────────────────
+type W7TestResult = {
+  ok: boolean;
+  error?: string;
+  data?: {
+    leadId: string;
+    leadName: string | null;
+    leadAddress: string | null;
+    outcome: string;
+    stageReached: string;
+    candidateCount: number;
+    candidates: Array<{
+      phoneRaw: string;
+      phoneE164: string | null;
+      stage: string;
+      matchedOn: string | null;
+      sourceLabel: string;
+      sourceUrl: string | null;
+      initialConfidence: number;
+      snippet: string | null;
+      searchQuery: string | null;
+    }>;
+    message: string;
+  };
+};
+
+function W7EnrichmentTest() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<W7TestResult | null>(null);
+
+  async function run() {
+    setRunning(true);
+    setResult(null);
+    const r = await fetch("/api/dev/test-enrichment-one", { method: "POST" });
+    const j: W7TestResult = await r.json();
+    setRunning(false);
+    setResult(j);
+  }
+
+  const outcomeColor: Record<string, string> = {
+    solved: "bg-emerald-100 border-emerald-300 text-emerald-900",
+    review: "bg-amber-100 border-amber-300 text-amber-900",
+    openclaw_dispatched: "bg-blue-100 border-blue-300 text-blue-900",
+    unresolved: "bg-zinc-100 border-zinc-300 text-zinc-700",
+    skipped: "bg-zinc-50 border-zinc-200 text-zinc-600",
+  };
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={run}
+        disabled={running}
+        className="bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-medium">
+        {running ? "Running enrichment…" : "Run enrichment test (1 lead)"}
+      </button>
+
+      {result && result.ok && result.data && (
+        <div className={`rounded-lg border p-4 space-y-3 text-sm ${outcomeColor[result.data.outcome] ?? "bg-white border-zinc-200"}`}>
+          <div>
+            <span className="font-semibold">Outcome: {result.data.outcome}</span>
+            <span className="ml-2 text-xs opacity-75">stage reached: {result.data.stageReached}</span>
+          </div>
+          <p className="text-xs">{result.data.message}</p>
+          <div className="text-xs space-y-0.5 opacity-75">
+            <div>Lead ID: {result.data.leadId}</div>
+            {result.data.leadName && <div>Name: {result.data.leadName}</div>}
+            {result.data.leadAddress && <div>Address: {result.data.leadAddress}</div>}
+          </div>
+          {result.data.candidates.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold">{result.data.candidateCount} candidate(s) found:</p>
+              {result.data.candidates.map((c, i) => (
+                <div key={i} className="bg-white/70 rounded p-2 text-xs space-y-0.5 border border-black/10">
+                  <div className="font-mono font-semibold">{c.phoneRaw}{c.phoneE164 && c.phoneE164 !== c.phoneRaw && <span className="ml-1 text-zinc-500">(→ {c.phoneE164})</span>}</div>
+                  <div className="flex gap-3 flex-wrap">
+                    <span>confidence: <strong>{c.initialConfidence}</strong></span>
+                    <span>stage: {c.stage}</span>
+                    <span>matched on: {c.matchedOn ?? "—"}</span>
+                    <span>source: {c.sourceLabel}</span>
+                  </div>
+                  {c.searchQuery && <div className="text-zinc-500">query: "{c.searchQuery}"</div>}
+                  {c.snippet && <div className="text-zinc-500 truncate">snippet: {c.snippet.slice(0, 120)}</div>}
+                  {c.sourceUrl && <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Source →</a>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {result && !result.ok && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+          ✗ {result.error ?? "Unknown error"}
+        </div>
+      )}
     </div>
   );
 }
