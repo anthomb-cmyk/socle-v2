@@ -536,12 +536,24 @@ export async function GET() {
     },
   );
 
+  // ─── Build / deploy version marker ──────────────────────────────────────
+  // RAILWAY_GIT_COMMIT_SHA is injected by Railway at deploy time.
+  // If this shows "local" in production, Railway is not injecting the variable
+  // or the build cache is stale — trigger a manual redeploy.
+  const deployedCommit = process.env.RAILWAY_GIT_COMMIT_SHA ?? "local";
+  const deployedAt = new Date().toISOString(); // request time — proxy for server liveness
+
   return NextResponse.json({
     ok: true,
     data: {
       overall,
       stats: { fails, warns, total: checks.length, ok: checks.filter(c => c.status === "ok").length },
       checks,
+      meta: {
+        deployedCommit,
+        deployedAt,
+        migrationCheckCount: checks.filter(c => c.id.startsWith("migration_")).length,
+      },
     },
   });
 }

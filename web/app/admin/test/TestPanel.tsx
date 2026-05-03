@@ -8,6 +8,11 @@ type Diag = {
   overall: "ready" | "needs_setup" | "needs_seed" | "missing_env" | "missing_migration";
   stats: { fails: number; warns: number; total: number; ok: number };
   checks: Check[];
+  meta?: {
+    deployedCommit: string;
+    deployedAt: string;
+    migrationCheckCount: number;
+  };
 };
 
 type Seeder = { label: string; endpoint: string; body: Record<string, unknown>; primary?: boolean; importProof?: boolean };
@@ -62,8 +67,8 @@ export default function TestPanel() {
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!diag) return null;
 
-  // Group checks by category
-  const groups: Record<string, Check[]> = {
+  // Group checks by category — only render groups that have at least one check
+  const allGroups: Record<string, Check[]> = {
     Migrations: diag.checks.filter(c => c.id.startsWith("migration_")),
     Auth: diag.checks.filter(c => c.id === "admin_seeded" || c.id === "jwt_fresh"),
     Environment: diag.checks.filter(c => c.id.startsWith("env_")),
@@ -73,14 +78,18 @@ export default function TestPanel() {
     "Import pipeline": diag.checks.filter(c => c.id.startsWith("import_")),
     "Alpha loops": diag.checks.filter(c => c.id.startsWith("alpha_")),
   };
+  const groups = Object.entries(allGroups).filter(([, checks]) => checks.length > 0);
 
   return (
     <div className="space-y-6">
       <OverallBanner diag={diag} onRefresh={refresh} />
 
-      {Object.entries(groups).map(([title, checks]) => (
+      {groups.map(([title, checks]) => (
         <section key={title} className="bg-white rounded-2xl border border-zinc-200 p-4">
-          <h2 className="text-sm font-semibold text-zinc-700 mb-3">{title}</h2>
+          <h2 className="text-sm font-semibold text-zinc-700 mb-3">
+            {title}
+            <span className="ml-2 text-xs font-normal text-zinc-400">{checks.length} check{checks.length !== 1 ? "s" : ""}</span>
+          </h2>
           <ul className="space-y-1">
             {checks.map(c => <CheckRow key={c.id} check={c} />)}
           </ul>
@@ -159,6 +168,10 @@ function OverallBanner({ diag, onRefresh }: { diag: Diag; onRefresh: () => void 
     missing_migration: { color: "bg-red-50 border-red-200 text-red-900", label: "Missing migrations", sub: "Database schema not fully applied." },
   };
   const c = config[diag.overall];
+  const commit = diag.meta?.deployedCommit ?? "unknown";
+  const migCount = diag.meta?.migrationCheckCount ?? "?";
+  // Expected: migration checks should cover 0001–0009 = 9 checks
+  const migOk = typeof migCount === "number" && migCount >= 9;
   return (
     <div className={`rounded-2xl border p-4 ${c.color}`}>
       <div className="flex justify-between items-center">
@@ -168,6 +181,20 @@ function OverallBanner({ diag, onRefresh }: { diag: Diag; onRefresh: () => void 
           <p className="text-xs mt-1 opacity-75">
             {diag.stats.ok} ok · {diag.stats.warns} warn · {diag.stats.fails} fail · {diag.stats.total} total checks
           </p>
+          {/* ── Deploy version marker ── */}
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-mono opacity-80">
+            <span title="Git commit SHA deployed on Railway (RAILWAY_GIT_COMMIT_SHA)">
+              commit: <strong>{commit.slice(0, 8)}</strong>
+            </span>
+            <span className={migOk ? "text-emerald-700 font-semibold" : "text-red-700 font-semibold"}>
+              {migOk ? "✓" : "✗"} {migCount} migration check{migCount !== 1 ? "s" : ""} loaded
+              {!migOk && " — expected ≥9 (0001–0009)"}
+            </span>
+            <a href="/api/diagnostics" target="_blank" rel="noopener noreferrer"
+              className="underline opacity-70 hover:opacity-100">
+              raw JSON ↗
+            </a>
+          </div>
         </div>
         <button onClick={onRefresh} className="bg-white/50 hover:bg-white rounded-lg px-3 py-1.5 text-sm font-medium">
           Re-check
