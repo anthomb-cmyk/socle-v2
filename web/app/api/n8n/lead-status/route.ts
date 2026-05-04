@@ -49,13 +49,26 @@ export async function POST(request: Request) {
     .eq("id", body.lead_id);
   if (leadErr) return NextResponse.json({ ok: false, error: leadErr.message }, { status: 500 });
 
-  // Optionally update the enrichment job
+  // Optionally update the enrichment job.
+  // DB enum job_status: pending|preview|confirmed|processing|completed|failed|cancelled.
+  // There is no "success" — both success and no_result map to "completed"; only the
+  // associated lead status / phone_candidates reveal whether something was actually found.
   if (body.enrichment_job_id && body.job_outcome) {
-    const jobStatus = body.job_outcome === "success" ? "success"
-      : body.job_outcome === "no_result" ? "completed"
-      : "failed";
+    const jobStatus = body.job_outcome === "failed" ? "failed" : "completed";
+    const update: Record<string, unknown> = { status: jobStatus, completed_at: new Date().toISOString() };
+    // Surface the outcome on the job row so /admin/enrichment can display a result
+    // summary even when the workflow doesn't return a structured raw_output.
+    update.raw_output = {
+      outcome: body.job_outcome,
+      lead_status: body.status,
+      stage: "lead_status_update",
+      summary:
+        body.job_outcome === "success" ? "Phone found and lead progressed."
+        : body.job_outcome === "no_result" ? "Stage completed without finding a phone."
+        : "Stage failed.",
+    };
     await sb.from("enrichment_jobs")
-      .update({ status: jobStatus, completed_at: new Date().toISOString() })
+      .update(update)
       .eq("id", body.enrichment_job_id);
   }
 

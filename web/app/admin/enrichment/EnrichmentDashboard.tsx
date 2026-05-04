@@ -7,9 +7,32 @@ type Job = {
   job_type: string; workflow_id: string; workflow_run_id: string | null;
   status: string; attempts: number;
   started_at: string | null; completed_at: string | null;
-  error_message: string | null; cost_usd: number | null;
+  error_message: string | null; raw_output: unknown | null; cost_usd: number | null;
   created_at: string;
 };
+
+function summarizeRawOutput(raw: unknown): string {
+  if (raw == null || typeof raw !== "object") return "";
+  const r = raw as Record<string, unknown>;
+  // OpenClaw callback shape: { candidates: number, reasoning_summary: string }
+  if (typeof r.candidates === "number") {
+    const n = r.candidates;
+    const reason = typeof r.reasoning_summary === "string" ? r.reasoning_summary : "";
+    return n === 0
+      ? `0 candidates — ${reason || "no phones found"}`
+      : `${n} candidate${n === 1 ? "" : "s"}${reason ? ` — ${reason}` : ""}`;
+  }
+  // /api/n8n/lead-status shape: { outcome, lead_status, summary }
+  if (typeof r.summary === "string") {
+    const tag = typeof r.outcome === "string" ? `[${r.outcome}] ` : "";
+    return `${tag}${r.summary}`;
+  }
+  // Fallback: short JSON peek
+  try {
+    const s = JSON.stringify(r);
+    return s.length > 80 ? s.slice(0, 77) + "…" : s;
+  } catch { return ""; }
+}
 type Result = {
   id: string; lead_id: string | null; contact_id: string | null;
   kind: string; value: string; source: string; source_url: string | null;
@@ -187,7 +210,7 @@ export default function EnrichmentDashboard() {
                 <th className="text-left p-2">Status</th>
                 <th className="text-left p-2">Lead</th>
                 <th className="text-left p-2">Created</th>
-                <th className="text-left p-2">Error</th>
+                <th className="text-left p-2">Result / Error</th>
                 <th className="text-left p-2"></th>
               </tr>
             </thead>
@@ -201,7 +224,11 @@ export default function EnrichmentDashboard() {
                   <td className="p-2"><JobStatusPill s={j.status} /></td>
                   <td className="p-2">{j.lead_id ? <Link href={`/leads/${j.lead_id}` as never} className="underline text-xs">open →</Link> : "—"}</td>
                   <td className="p-2 text-xs text-zinc-500">{new Date(j.created_at).toLocaleString()}</td>
-                  <td className="p-2 text-xs text-red-700 max-w-xs truncate">{j.error_message ?? ""}</td>
+                  <td className="p-2 text-xs max-w-xs truncate" title={j.error_message ?? summarizeRawOutput(j.raw_output)}>
+                    {j.error_message
+                      ? <span className="text-red-700">{j.error_message}</span>
+                      : <span className="text-zinc-600">{summarizeRawOutput(j.raw_output)}</span>}
+                  </td>
                   <td className="p-2 text-right">
                     {(j.status === "failed" || j.status === "cancelled" || j.status === "success") && (
                       <button onClick={() => action(j.id, "retry")} disabled={busy === j.id}

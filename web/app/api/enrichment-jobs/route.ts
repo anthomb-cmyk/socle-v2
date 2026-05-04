@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
   const sb = createSupabaseAdminClient();
   let q = sb.from("enrichment_jobs")
-    .select("id, lead_id, contact_id, job_type, workflow_id, workflow_run_id, status, attempts, started_at, completed_at, error_message, cost_usd, created_at")
+    .select("id, lead_id, contact_id, job_type, workflow_id, workflow_run_id, status, attempts, started_at, completed_at, error_message, raw_output, cost_usd, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (leadId) q = q.eq("lead_id", leadId);
