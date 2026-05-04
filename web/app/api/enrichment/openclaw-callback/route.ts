@@ -47,6 +47,18 @@ const DeepSearchBody = z.object({
 
 const Body = z.discriminatedUnion("mode", [ValidationBody, DeepSearchBody]);
 
+// Back-compat: older W8 versions sent `phone_candidates` instead of `candidates`.
+// Normalize the inbound body before Zod parse so either key works.
+function normalizeBody(raw: unknown): unknown {
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    if (r.mode === "deep_search" && r.candidates === undefined && Array.isArray(r.phone_candidates)) {
+      return { ...r, candidates: r.phone_candidates };
+    }
+  }
+  return raw;
+}
+
 export async function POST(request: Request) {
   // Auth: if N8N_SHARED_KEY is set, require matching Bearer token.
   // If not set, accept the request — the middleware already exempts this route
@@ -59,7 +71,7 @@ export async function POST(request: Request) {
   }
 
   let body;
-  try { body = Body.parse(await request.json()); }
+  try { body = Body.parse(normalizeBody(await request.json())); }
   catch (err) { return NextResponse.json({ ok: false, error: "Bad input", errors: (err as z.ZodError).issues }, { status: 400 }); }
 
   const sb = createSupabaseAdminClient();
@@ -88,22 +100,35 @@ export async function POST(request: Request) {
   });
 
   if (candidates.length === 0) {
-    // OpenClaw found nothing — mark lead fully unresolved
+    // OpenClaw found nothing — mark lead fully unresolved.
+    // The lead may already be openclaw_researching (force-openclaw set it), but we
+    // overwrite unconditionally because OpenClaw has now spoken and produced no result.
     await sb.from("leads").update({ status: "unresolved_after_openclaw" }).eq("id", leadId);
     await sb.from("enrichment_events").insert({
       lead_id: leadId,
       event_type: "unresolved_after_openclaw",
       stage: "openclaw",
-      payload: { reasoning_summary: reasoning_summary ?? null },
+      payload: { reasoning_summary: reasoning_summary ?? null, source: "openclaw_callback" },
     });
     if (jobId) {
       await sb.from("enrichment_jobs").update({
-        status: "failed",
+        status: "completed",
         completed_at: new Date().toISOString(),
-        error_message: "OpenClaw deep search found no candidates",
+        raw_output: {
+          outcome: "no_result",
+          candidates: 0,
+          reasoning_summary: reasoning_summary ?? "",
+        },
       }).eq("id", jobId);
     }
-    return NextResponse.json({ ok: true, data: { mode: "deep_search", found: false } });
+    await sb.from("automation_events").insert({
+      source: "n8n",
+      event_type: "openclaw_callback_received",
+      status: "success",
+      related_lead_id: leadId,
+      payload: { mode: "deep_search", outcome: "no_result", candidates: 0, job_id: jobId ?? null, reasoning_summary: reasoning_summary ?? "" },
+    });
+    return NextResponse.json({ ok: true, data: { mode: "deep_search", found: false, outcome: "no_result" } });
   }
 
   // Load contact_id for this lead
@@ -158,12 +183,24 @@ export async function POST(request: Request) {
     await sb.from("enrichment_jobs").update({
       status: "completed",
       completed_at: new Date().toISOString(),
-      raw_output: { candidates: savedIds.length, reasoning_summary },
+      raw_output: {
+        outcome: "candidates_found",
+        candidates: savedIds.length,
+        reasoning_summary: reasoning_summary ?? "",
+      },
     }).eq("id", jobId);
   }
 
+  await sb.from("automation_events").insert({
+    source: "n8n",
+    event_type: "openclaw_callback_received",
+    status: "success",
+    related_lead_id: leadId,
+    payload: { mode: "deep_search", outcome: "candidates_found", candidates: savedIds.length, candidateIds: savedIds, job_id: jobId ?? null, reasoning_summary: reasoning_summary ?? "" },
+  });
+
   return NextResponse.json({
     ok: true,
-    data: { mode: "deep_search", found: true, savedCandidates: savedIds.length, candidateIds: savedIds },
+    data: { mode: "deep_search", found: true, savedCandidates: savedIds.length, candidateIds: savedIds, outcome: "candidates_found" },
   });
 }

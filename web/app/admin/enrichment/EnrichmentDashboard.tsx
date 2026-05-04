@@ -82,6 +82,19 @@ export default function EnrichmentDashboard() {
     refresh();
   }
 
+  async function runWatchdog(minutes: number) {
+    setBusy("watchdog"); setMsg(null); setError(null);
+    const r = await fetch(`/api/enrichment/watchdog?minutes=${minutes}`, { method: "POST" });
+    const j = await r.json();
+    setBusy(null);
+    if (!j.ok) { setError(j.error); return; }
+    const n = j.data?.timed_out ?? 0;
+    setMsg(n > 0
+      ? `✓ Watchdog: marked ${n} stuck OpenClaw job${n === 1 ? "" : "s"} failed (no_callback_timeout)`
+      : `✓ Watchdog: no stuck OpenClaw jobs older than ${minutes} min`);
+    refresh();
+  }
+
   async function reviewResult(id: string, action: "approve" | "reject") {
     setBusy(id); setError(null);
     const r = await fetch(`/api/enrichment-results/${id}`, {
@@ -129,14 +142,24 @@ export default function EnrichmentDashboard() {
 
       {stuckJobs.length > 0 && (
         <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-          <h2 className="text-sm font-semibold text-amber-900 mb-2">Stuck jobs ({stuckJobs.length})</h2>
-          <p className="text-xs text-amber-800 mb-2">
-            Pending {">"} 30 min OR running {">"} 60 min. Likely the n8n workflow didn&rsquo;t pick up the trigger or crashed without reporting back.
-          </p>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div>
+              <h2 className="text-sm font-semibold text-amber-900">Stuck jobs ({stuckJobs.length})</h2>
+              <p className="text-xs text-amber-800 mt-1">
+                Pending {">"} 30 min OR processing {">"} 60 min. Likely the n8n workflow didn&rsquo;t pick up the trigger or crashed without reporting back.
+              </p>
+            </div>
+            <button
+              onClick={() => runWatchdog(10)}
+              disabled={busy === "watchdog"}
+              className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded px-2 py-1 whitespace-nowrap">
+              {busy === "watchdog" ? "Running…" : "Mark stale OpenClaw jobs failed (>10 min)"}
+            </button>
+          </div>
           <ul className="text-sm space-y-1">
             {stuckJobs.map(j => (
               <li key={j.id} className="flex justify-between">
-                <span><code className="font-mono text-xs">{j.id.slice(0, 8)}…</code> {j.job_type}</span>
+                <span><code className="font-mono text-xs">{j.id.slice(0, 8)}…</code> {j.job_type} · <span className="text-zinc-600">{j.workflow_id}</span></span>
                 <span className="text-xs">{j.status} since {new Date(j.started_at ?? j.created_at).toLocaleString()}</span>
               </li>
             ))}
