@@ -14,7 +14,8 @@ const Body = z.object({
   is_active: z.boolean().optional(),
   telegram_user_id: z.string().nullable().optional(),
   email: z.string().email().nullable().optional(),
-  twilio_forward_to: z.string().nullable().optional(),
+  twilio_forward_to:  z.string().nullable().optional(),
+  twilio_from_number: z.string().nullable().optional(),
 });
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -39,16 +40,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       is_active: body.is_active ?? true,
       telegram_user_id: body.telegram_user_id ?? null,
       email: body.email ?? null,
-      twilio_forward_to: body.twilio_forward_to ?? null,
+      twilio_forward_to:  body.twilio_forward_to ?? null,
+      twilio_from_number: body.twilio_from_number ?? null,
     });
   } else {
     const update: Record<string, unknown> = {};
-    if (body.display_name !== undefined) update.display_name = body.display_name;
-    if (body.role !== undefined) update.role = body.role;
-    if (body.is_active !== undefined) update.is_active = body.is_active;
+    if (body.display_name !== undefined)    update.display_name    = body.display_name;
+    if (body.role !== undefined)            update.role            = body.role;
+    if (body.is_active !== undefined)       update.is_active       = body.is_active;
     if (body.telegram_user_id !== undefined) update.telegram_user_id = body.telegram_user_id;
-    if (body.email !== undefined) update.email = body.email;
-    if (body.twilio_forward_to !== undefined) update.twilio_forward_to = body.twilio_forward_to;
+    if (body.email !== undefined)           update.email           = body.email;
+    if (body.twilio_forward_to !== undefined)  update.twilio_forward_to  = body.twilio_forward_to;
+    if (body.twilio_from_number !== undefined) update.twilio_from_number = body.twilio_from_number;
     if (Object.keys(update).length > 0) {
       await sb.from("users_meta").update(update).eq("user_id", id);
     }

@@ -69,10 +69,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Phone number is not dialable" }, { status: 400 });
   }
 
-  // ── Resolve the caller's forward-to number ─────────────────────────────
+  // ── Resolve the caller's numbers ─────────────────────────────────────
+  // twilio_forward_to  = caller's personal cell (Twilio rings this first)
+  // twilio_from_number = caller's Twilio number (what the lead sees as caller ID)
   const { data: meta } = await sb
     .from("users_meta")
-    .select("twilio_forward_to, display_name")
+    .select("twilio_forward_to, twilio_from_number, display_name")
     .eq("user_id", user.id)
     .single();
 
@@ -82,13 +84,32 @@ export async function POST(request: Request) {
     "";
   const forwardTo = normalizePhone(forwardToRaw);
 
+  // Per-user Twilio "from" number, falls back to the shared env var
+  const fromNumberRaw =
+    meta?.twilio_from_number?.trim() ||
+    process.env.TWILIO_PHONE_NUMBER?.trim() ||
+    "";
+  const fromNumber = normalizePhone(fromNumberRaw);
+
   if (!forwardTo) {
     return NextResponse.json(
       {
         ok: false,
         error:
           "Aucun numéro de renvoi configuré. " +
-          "Enregistre ton numéro dans Mon compte → Paramètres avant de lancer un appel.",
+          "Demande à Anthony de l'ajouter dans Admin → Utilisateurs.",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!fromNumber) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Aucun numéro Twilio configuré pour ce compte. " +
+          "Demande à Anthony de l'ajouter dans Admin → Utilisateurs.",
       },
       { status: 400 },
     );
@@ -144,7 +165,7 @@ export async function POST(request: Request) {
   try {
     twilioCall = await callTwilioApi("/Calls.json", {
       To:                    forwardTo,
-      From:                  twilioConfig.fromNumber,
+      From:                  fromNumber,
       Url:                   bridgeUrl,
       Method:                "POST",
       StatusCallback:        statusCallbackUrl,

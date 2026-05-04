@@ -12,7 +12,7 @@ export async function GET() {
 
   const sb = createSupabaseAdminClient();
   let query = sb.from("users_meta")
-    .select("user_id, display_name, role, is_active, telegram_user_id, email, twilio_forward_to, created_at")
+    .select("user_id, display_name, role, is_active, telegram_user_id, email, twilio_forward_to, twilio_from_number, created_at")
     .order("display_name");
   if (role !== "admin") query = query.eq("user_id", user.id);
   const { data, error } = await query;
@@ -36,6 +36,7 @@ export async function GET() {
         telegram_user_id: null,
         email: u.email ?? null,
         twilio_forward_to: null,
+        twilio_from_number: null,
         created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at ?? null,
         _orphan: true,

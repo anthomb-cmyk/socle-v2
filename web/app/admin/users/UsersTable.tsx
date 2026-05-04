@@ -12,6 +12,7 @@ type UserRow = {
   telegram_user_id: string | null;
   email: string | null;
   twilio_forward_to: string | null;
+  twilio_from_number: string | null;
   last_sign_in_at?: string | null;
   _orphan?: boolean;
 };
@@ -58,10 +59,11 @@ export default function UsersTable() {
 
   async function saveEdit(id: string) {
     const ok = await patch(id, {
-      display_name: draft.display_name ?? null,
-      telegram_user_id: draft.telegram_user_id ?? null,
-      twilio_forward_to: draft.twilio_forward_to ?? null,
-      email: draft.email ?? null,
+      display_name:       draft.display_name ?? null,
+      telegram_user_id:   draft.telegram_user_id ?? null,
+      twilio_forward_to:  draft.twilio_forward_to ?? null,
+      twilio_from_number: draft.twilio_from_number ?? null,
+      email:              draft.email ?? null,
     });
     if (ok) { setEditing(null); setDraft({}); }
   }
@@ -79,14 +81,15 @@ export default function UsersTable() {
               <th className="text-left p-2">Role</th>
               <th className="text-left p-2">Active</th>
               <th className="text-left p-2">Telegram</th>
-              <th className="text-left p-2">Twilio fwd</th>
+              <th className="text-left p-2">Twilio fwd (personal cell)</th>
+              <th className="text-left p-2">Twilio from (their # to leads)</th>
               <th className="text-left p-2">Last sign-in</th>
               <th className="text-left p-2"></th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={7} className="p-4 text-center text-zinc-400">Loading…</td></tr>}
-            {!loading && users.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-zinc-400">No users yet.</td></tr>}
+            {loading && <tr><td colSpan={8} className="p-4 text-center text-zinc-400">Loading…</td></tr>}
+            {!loading && users.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-zinc-400">No users yet.</td></tr>}
             {users.map(u => {
               const isEditing = editing === u.user_id;
               return (
@@ -134,10 +137,19 @@ export default function UsersTable() {
                   <td className="p-2 text-xs">
                     {isEditing ? (
                       <input value={draft.twilio_forward_to ?? ""} onChange={e => setDraft({ ...draft, twilio_forward_to: e.target.value || null })}
-                        placeholder="+15145551234"
+                        placeholder="+15146638466"
                         className="border border-zinc-300 rounded px-2 py-1 text-xs font-mono w-full" />
                     ) : u.twilio_forward_to ? (
                       <span className="font-mono">{u.twilio_forward_to}</span>
+                    ) : <span className="text-zinc-400">—</span>}
+                  </td>
+                  <td className="p-2 text-xs">
+                    {isEditing ? (
+                      <input value={draft.twilio_from_number ?? ""} onChange={e => setDraft({ ...draft, twilio_from_number: e.target.value || null })}
+                        placeholder="+14385333217"
+                        className="border border-zinc-300 rounded px-2 py-1 text-xs font-mono w-full" />
+                    ) : u.twilio_from_number ? (
+                      <span className="font-mono">{u.twilio_from_number}</span>
                     ) : <span className="text-zinc-400">—</span>}
                   </td>
                   <td className="p-2 text-xs text-zinc-500">
@@ -152,7 +164,7 @@ export default function UsersTable() {
                           className="border border-zinc-300 text-xs rounded px-2 py-1">Cancel</button>
                       </div>
                     ) : (
-                      <button onClick={() => { setEditing(u.user_id); setDraft({ display_name: u.display_name, email: u.email, telegram_user_id: u.telegram_user_id, twilio_forward_to: u.twilio_forward_to }); }}
+                      <button onClick={() => { setEditing(u.user_id); setDraft({ display_name: u.display_name, email: u.email, telegram_user_id: u.telegram_user_id, twilio_forward_to: u.twilio_forward_to, twilio_from_number: u.twilio_from_number }); }}
                         className="text-xs text-zinc-600 hover:underline">Edit</button>
                     )}
                   </td>
