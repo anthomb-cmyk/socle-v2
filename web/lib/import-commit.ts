@@ -6,6 +6,9 @@ import { normalizeCity } from "./cities";
 import { formatDisplay } from "./role-parser/phone-utils";
 import type { ParseResult, ParsedRow, ParsedOwner } from "./role-parser/types";
 
+// Flush incremental counters to import_jobs every N rows so the client can poll progress.
+const INCREMENTAL_FLUSH_EVERY = 5;
+
 // Normalise a contact name for dedup matching.
 // Rôle exports are ALL-CAPS; other sources may be title-cased.
 // We title-case before both lookup AND storage so the same person matches
@@ -44,11 +47,24 @@ export async function commitImport(
     errors: [...parse.errors],
   };
 
-  for (const row of parse.rows) {
+  for (let i = 0; i < parse.rows.length; i++) {
+    const row = parse.rows[i];
     try {
       await commitRow(supabase, row, opts, counts);
     } catch (err) {
       counts.errors.push({ row: row.row_number, message: (err as Error).message });
+    }
+
+    // Every N rows, flush current counters so the client polling can see progress.
+    if ((i + 1) % INCREMENTAL_FLUSH_EVERY === 0) {
+      await supabase.from("import_jobs").update({
+        properties_created: counts.properties_created,
+        contacts_created:   counts.contacts_created,
+        leads_created:      counts.leads_created,
+        phones_created:     counts.phones_created,
+        errors_count:       counts.errors.length,
+        updated_at:         new Date().toISOString(),
+      }).eq("id", opts.importJobId);
     }
   }
 

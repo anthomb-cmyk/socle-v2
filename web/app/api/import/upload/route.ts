@@ -101,6 +101,7 @@ export async function POST(request: Request) {
     ok: true,
     data: {
       jobId: job!.id,
+      campaignId,
       format: parse.format,
       totalRows: parse.total_rows,
       summary: { properties: parse.rows.length, owners: ownerCount, phones: phoneCount, cities },

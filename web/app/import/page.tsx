@@ -1,6 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import NextStepBanner from "@/components/next-step-banner";
+import type { ImportDoneCounts } from "@/components/next-step-banner";
 
 type PreviewSummary = {
   jobId: string;
@@ -18,6 +20,20 @@ type PreviewSummary = {
   errorsCount: number;
 };
 
+// Shape returned by GET /api/import/[jobId] while polling
+type JobPollData = {
+  id: string;
+  status: string;
+  total_rows: number | null;
+  properties_created: number | null;
+  contacts_created: number | null;
+  phones_created: number | null;
+  leads_created: number | null;
+  errors_count: number | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
 type Counts = {
   properties_created: number; properties_updated: number;
   contacts_created: number; contacts_updated: number;
@@ -26,6 +42,8 @@ type Counts = {
 };
 
 type User = { user_id: string; display_name: string; role: string };
+
+const POLL_INTERVAL_MS = 1500;
 
 export default function ImportPage() {
   const router = useRouter();
@@ -38,6 +56,12 @@ export default function ImportPage() {
   const [result, setResult] = useState<Counts | null>(null);
   const [errorsOpen, setErrorsOpen] = useState(false);
 
+  // Confirmer / polling state
+  const [confirming, setConfirming] = useState(false);
+  const [pollData, setPollData] = useState<JobPollData | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const confirmStartRef = useRef<number | null>(null);
+
   // Post-import quick-assign state
   const [users, setUsers] = useState<User[]>([]);
   const [assignTarget, setAssignTarget] = useState("");
@@ -46,9 +70,11 @@ export default function ImportPage() {
   const [newLeadIds, setNewLeadIds] = useState<string[]>([]);
   const [campaignIdForResult, setCampaignIdForResult] = useState<string | null>(null);
 
-  // Post-import enrichment state
+  // Post-import enrichment via banner
   const [enrichBusy, setEnrichBusy] = useState(false);
-  const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
+
+  // Banner data when import is done
+  const [importDoneCounts, setImportDoneCounts] = useState<ImportDoneCounts | null>(null);
 
   useEffect(() => {
     fetch("/api/users").then(r => r.json()).then(j => {
@@ -56,11 +82,86 @@ export default function ImportPage() {
     });
   }, []);
 
+  // Stop polling helper
+  function stopPolling() {
+    if (pollRef.current !== null) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  // Start polling /api/import/[jobId] every 1.5 s
+  function startPolling(jobId: string, campaignId: string | null) {
+    stopPolling();
+    confirmStartRef.current = Date.now();
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const resp = await fetch(`/api/import/${jobId}`);
+        const json = await resp.json();
+        if (!json.ok) return;
+        const job: JobPollData = json.data;
+        setPollData(job);
+
+        if (job.status === "completed" || job.status === "failed") {
+          stopPolling();
+          setConfirming(false);
+
+          if (job.status === "completed") {
+            // Fetch final result to get all fields including *_updated
+            const finalResp = await fetch(`/api/import/${jobId}`);
+            const finalJson = await finalResp.json();
+            const finalJob: JobPollData = finalJson.ok ? finalJson.data : job;
+
+            const fakeCounts: Counts = {
+              properties_created: finalJob.properties_created ?? 0,
+              properties_updated: 0,
+              contacts_created: finalJob.contacts_created ?? 0,
+              contacts_updated: 0,
+              phones_created: finalJob.phones_created ?? 0,
+              leads_created: finalJob.leads_created ?? 0,
+              leads_updated: 0,
+              duplicates_seen: 0,
+              errors: [],
+            };
+            setResult(fakeCounts);
+            setCampaignIdForResult(campaignId);
+
+            // Build banner counts
+            setImportDoneCounts({
+              leadsCreated: finalJob.leads_created ?? 0,
+              propertiesCreated: finalJob.properties_created ?? 0,
+              contactsCreated: finalJob.contacts_created ?? 0,
+              phonesCreated: finalJob.phones_created ?? 0,
+              errorsCount: finalJob.errors_count ?? 0,
+              campaignName: campaignName || null,
+              campaignId,
+            });
+
+            // Fetch newly created lead IDs for quick-assign
+            if (campaignId) {
+              const leadsResp = await fetch(`/api/leads?campaign_id=${campaignId}&limit=500`);
+              const leadsJson = await leadsResp.json();
+              if (leadsJson.ok) {
+                setNewLeadIds(leadsJson.data.leads.map((l: { lead_id: string }) => l.lead_id));
+              }
+            }
+          } else {
+            // failed
+            setError("L'import a échoué. Vérifiez les logs ou réessayez.");
+          }
+        }
+      } catch {
+        // Network hiccup — keep polling
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
     setError(null); setBusy(true); setPreview(null); setResult(null);
-    setAssignResult(null); setNewLeadIds([]);
+    setAssignResult(null); setNewLeadIds([]); setImportDoneCounts(null); setPollData(null);
 
     const fd = new FormData();
     fd.append("file", file);
@@ -71,41 +172,54 @@ export default function ImportPage() {
     const json = await resp.json();
     setBusy(false);
     if (!json.ok) { setError(json.error); return; }
-    setPreview(json.data);
+    setPreview({ ...json.data, campaignId: json.data.campaignId ?? null });
   }
 
   async function onConfirm() {
-    if (!preview) return;
-    setBusy(true); setError(null);
-    const resp = await fetch(`/api/import/${preview.jobId}/confirm`, { method: "POST" });
-    const json = await resp.json();
-    setBusy(false);
-    if (!json.ok) { setError(json.error); return; }
-    setResult(json.data);
-    setCampaignIdForResult(preview.campaignId);
-    // Fetch the newly created lead IDs so we can assign them
-    if (preview.campaignId) {
-      const leadsResp = await fetch(`/api/leads?campaign_id=${preview.campaignId}&limit=500`);
-      const leadsJson = await leadsResp.json();
-      if (leadsJson.ok) {
-        setNewLeadIds(leadsJson.data.leads.map((l: { lead_id: string }) => l.lead_id));
+    if (!preview || confirming) return;
+    setConfirming(true);
+    setError(null);
+    setPollData(null);
+
+    const { jobId, campaignId } = preview;
+
+    // Start polling immediately (before the POST resolves)
+    startPolling(jobId, campaignId);
+
+    // Fire POST — it will run for up to 5 minutes server-side.
+    // We don't await in a way that blocks UI; the interval above handles state.
+    fetch(`/api/import/${jobId}/confirm`, { method: "POST" }).then(async resp => {
+      const json = await resp.json();
+      if (!json.ok) {
+        // If the server returned an error synchronously (e.g. 409 wrong status),
+        // stop polling and surface the error.
+        stopPolling();
+        setConfirming(false);
+        setError(json.error ?? "Erreur lors de la confirmation.");
       }
-    }
+      // On success the polling interval will have already transitioned the UI
+      // once it sees status === 'completed'. We just let it run.
+    }).catch(() => {
+      stopPolling();
+      setConfirming(false);
+      setError("Connexion perdue pendant l'import. Vérifiez le statut dans quelques instants.");
+    });
   }
 
   async function quickEnrich() {
-    if (newLeadIds.length === 0) return;
-    setEnrichBusy(true); setEnrichMsg(null);
+    if (newLeadIds.length === 0 || !importDoneCounts) return;
+    setEnrichBusy(true);
     try {
       await fetch("/api/enrichment-jobs/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadIds: newLeadIds, jobType: "find_phone", force: false }),
       });
-      router.push("/leads" as never);
+      const dest = campaignIdForResult
+        ? `/leads?campaign_id=${campaignIdForResult}&_just_enriched=1`
+        : "/leads?_just_enriched=1";
+      router.push(dest as never);
     } catch {
-      setEnrichMsg("Erreur lors du lancement de l'enrichissement.");
-    } finally {
       setEnrichBusy(false);
     }
   }
@@ -125,6 +239,12 @@ export default function ImportPage() {
     setAssignResult({ count: newLeadIds.length, name });
   }
 
+  // Progress bar helpers
+  const totalRows = preview?.totalRows ?? pollData?.total_rows ?? 0;
+  const leadsProcessed = pollData?.leads_created ?? 0;
+  const progressPct = totalRows > 0 ? Math.min(100, Math.round((leadsProcessed / totalRows) * 100)) : 0;
+  const elapsedSec = confirmStartRef.current ? Math.round((Date.now() - confirmStartRef.current) / 1000) : 0;
+
   return (
     <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ marginBottom: 4 }}>
@@ -135,7 +255,7 @@ export default function ImportPage() {
       </div>
 
       {/* ─── Upload form ─── */}
-      {!result && (
+      {!result && !confirming && (
         <form onSubmit={onUpload} className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="crm-f-row">
             <label className="crm-f-lbl">
@@ -177,7 +297,7 @@ export default function ImportPage() {
       )}
 
       {/* ─── Preview ─── */}
-      {preview && !result && (
+      {preview && !result && !confirming && (
         <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-text)", marginBottom: 4 }}>Prévisualisation</h2>
@@ -275,10 +395,16 @@ export default function ImportPage() {
           )}
 
           <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
-            <button onClick={onConfirm} disabled={busy} className="crm-btn crm-btn-gold" style={{ opacity: busy ? 0.6 : 1 }}>
-              {busy ? "Import en cours…" : "Confirmer l'import"}
+            {/* Fix B: button disabled while confirming */}
+            <button
+              onClick={onConfirm}
+              disabled={confirming}
+              className="crm-btn crm-btn-gold"
+              style={{ opacity: confirming ? 0.6 : 1 }}
+            >
+              {confirming ? "Confirmation en cours…" : "Confirmer l'import"}
             </button>
-            <button onClick={() => { setPreview(null); setFile(null); }} disabled={busy} className="crm-btn">
+            <button onClick={() => { setPreview(null); setFile(null); }} disabled={confirming} className="crm-btn">
               Annuler
             </button>
           </div>
@@ -286,7 +412,72 @@ export default function ImportPage() {
         </div>
       )}
 
-      {/* ─── Result + quick assign ─── */}
+      {/* ─── Fix A: Live progress while confirming ─── */}
+      {confirming && (
+        <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-text)", margin: 0 }}>Import en cours…</h2>
+
+          {/* Progress bar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{
+              height: 10, borderRadius: 5, background: "var(--crm-bg-alt)",
+              overflow: "hidden", border: "1px solid var(--crm-card-border)"
+            }}>
+              <div style={{
+                height: "100%",
+                width: `${progressPct}%`,
+                background: "linear-gradient(90deg, #059669, #10b981)",
+                transition: "width 0.8s ease",
+                borderRadius: 5,
+              }} />
+            </div>
+            <p style={{ fontSize: 13, color: "var(--crm-text2)", margin: 0 }}>
+              {leadsProcessed} / {totalRows} leads
+              {elapsedSec > 0 && (
+                <span style={{ color: "var(--crm-text3)", marginLeft: 12 }}>
+                  Démarré il y a {elapsedSec} s
+                </span>
+              )}
+            </p>
+          </div>
+
+          {pollData && (
+            <p style={{ fontSize: 12, color: "var(--crm-text3)", margin: 0 }}>
+              {pollData.properties_created ?? 0} propriétés
+              {" · "}{pollData.contacts_created ?? 0} contacts
+              {" · "}{pollData.leads_created ?? 0} leads
+              {" · "}{pollData.phones_created ?? 0} téléphones
+              {" · "}{pollData.errors_count ?? 0} erreurs
+            </p>
+          )}
+
+          <div>
+            <button
+              onClick={() => {
+                stopPolling();
+                setConfirming(false);
+              }}
+              className="crm-btn"
+              style={{ fontSize: 12 }}
+            >
+              Annuler le suivi (l&rsquo;import continue en arrière-plan)
+            </button>
+          </div>
+          {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
+        </div>
+      )}
+
+      {/* ─── Fix C: NextStepBanner on import success ─── */}
+      {result && importDoneCounts && (
+        <NextStepBanner
+          kind="import_done"
+          importDone={importDoneCounts}
+          onEnrichImport={quickEnrich}
+          enrichImportBusy={enrichBusy}
+        />
+      )}
+
+      {/* ─── Result details + quick assign ─── */}
       {result && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16, borderColor: "var(--crm-gold-border)", background: "var(--crm-surface)" }}>
@@ -314,24 +505,6 @@ export default function ImportPage() {
               </details>
             )}
           </div>
-
-          {/* Enrichir maintenant banner */}
-          {newLeadIds.length > 0 && (
-            <div className="crm-card" style={{ padding: "16px 24px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderColor: "var(--crm-gold-border)" }}>
-              <div style={{ fontSize: 13, color: "var(--crm-text2)", flex: 1 }}>
-                <strong>Import réussi · {result.leads_created} lead{result.leads_created !== 1 ? "s" : ""} créés</strong>
-              </div>
-              <button
-                onClick={quickEnrich}
-                disabled={enrichBusy}
-                className="crm-btn crm-btn-dark"
-                style={{ opacity: enrichBusy ? 0.6 : 1 }}
-              >
-                {enrichBusy ? "Lancement…" : `Enrichir maintenant les ${newLeadIds.length} leads`}
-              </button>
-              {enrichMsg && <span style={{ fontSize: 12, color: "var(--crm-red)" }}>{enrichMsg}</span>}
-            </div>
-          )}
 
           {/* Quick assign panel */}
           {newLeadIds.length > 0 && !assignResult && (
@@ -386,6 +559,7 @@ export default function ImportPage() {
             <button onClick={() => {
               setPreview(null); setResult(null); setFile(null);
               setCampaignName(""); setCity(""); setAssignResult(null); setNewLeadIds([]);
+              setImportDoneCounts(null); setPollData(null);
             }} className="crm-btn">
               Importer un autre fichier
             </button>
