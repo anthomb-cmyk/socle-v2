@@ -85,7 +85,6 @@ const STAGE_CHECKLISTS: Record<string, { title: string; nextStage: string; items
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function StageChecklist({ leadId, status }: { leadId: string; status: string }) {
   const config = STAGE_CHECKLISTS[status];
-  if (!config) return null;
 
   const storageKey = `checklist_${leadId}_${status}`;
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -115,7 +114,7 @@ export default function StageChecklist({ leadId, status }: { leadId: string; sta
   const pct = Math.round((done / total) * 100);
   const allBlockingDone = config.items.filter(i => i.blocking).every(i => checked.has(i.id));
 
-  if (!loaded) return null;
+  if (!config || !loaded) return null;
 
   return (
     <div style={{
