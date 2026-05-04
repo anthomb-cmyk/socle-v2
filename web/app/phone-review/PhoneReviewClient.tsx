@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
+import { useRouter } from "next/navigation";
 
 type Campaign = { name: string } | null;
 type Property = { address: string; city: string | null; num_units: number | null } | null;
@@ -37,6 +38,33 @@ export type PhoneCandidate = {
   created_at: string;
   leads: Lead;
 };
+
+// ── Confidence filter buckets ─────────────────────────────────────────────────
+type ConfidenceBucket = "all" | "ge80" | "70-79" | "60-69" | "50-59" | "lt50";
+
+function bucketLabel(b: ConfidenceBucket, count: number): string {
+  const labels: Record<ConfidenceBucket, string> = {
+    all:    `Tous (${count})`,
+    ge80:   `≥ 80 (${count})`,
+    "70-79": `70-79 (${count})`,
+    "60-69": `60-69 (${count})`,
+    "50-59": `50-59 (${count})`,
+    lt50:   `< 50 (${count})`,
+  };
+  return labels[b];
+}
+
+function matchBucket(conf: number, b: ConfidenceBucket): boolean {
+  if (b === "all") return true;
+  if (b === "ge80") return conf >= 80;
+  if (b === "70-79") return conf >= 70 && conf <= 79;
+  if (b === "60-69") return conf >= 60 && conf <= 69;
+  if (b === "50-59") return conf >= 50 && conf <= 59;
+  if (b === "lt50") return conf < 50;
+  return true;
+}
+
+// ── Badge components ──────────────────────────────────────────────────────────
 
 function ConfidenceBadge({ score }: { score: number }) {
   const color =
@@ -120,11 +148,17 @@ function formatPhone(raw: string | null): string {
   return raw;
 }
 
+// ── CandidateCard ─────────────────────────────────────────────────────────────
+
 function CandidateCard({
   cand,
+  selected,
+  onToggleSelect,
   onAction,
 }: {
   cand: PhoneCandidate;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
   onAction: (id: string, action: "approve" | "reject" | "retry" | "keep_unresolved", note?: string) => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -143,27 +177,41 @@ function CandidateCard({
   }
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-2xl p-5 space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="font-semibold text-zinc-900 truncate">{name}</div>
-          <div className="text-sm text-zinc-500 truncate">
-            {address}{city ? `, ${city}` : ""}
-            {property?.num_units ? ` · ${property.num_units} units` : ""}
-          </div>
-          {contact?.mailing_address && (
-            <div className="text-xs text-zinc-400 mt-0.5">
-              Mail: {contact.mailing_address}{contact.mailing_city ? `, ${contact.mailing_city}` : ""}
-              {contact.mailing_postal ? ` ${contact.mailing_postal}` : ""}
+    <div
+      className="bg-white border border-zinc-200 rounded-2xl p-5 space-y-4"
+      style={selected ? { borderColor: "#6ee7b7", boxShadow: "0 0 0 2px #6ee7b733" } : {}}
+    >
+      {/* Checkbox + Header */}
+      <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(cand.id)}
+          className="mt-1 h-4 w-4 rounded border-zinc-300 text-emerald-600 cursor-pointer"
+          aria-label={`Sélectionner ${name}`}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="font-semibold text-zinc-900 truncate">{name}</div>
+              <div className="text-sm text-zinc-500 truncate">
+                {address}{city ? `, ${city}` : ""}
+                {property?.num_units ? ` · ${property.num_units} units` : ""}
+              </div>
+              {contact?.mailing_address && (
+                <div className="text-xs text-zinc-400 mt-0.5">
+                  Mail: {contact.mailing_address}{contact.mailing_city ? `, ${contact.mailing_city}` : ""}
+                  {contact.mailing_postal ? ` ${contact.mailing_postal}` : ""}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div className="flex gap-1.5 flex-wrap shrink-0">
-          <StagePill stage={cand.stage} />
-          <ConfidenceBadge score={cand.initial_confidence} />
-          <MatchedOnPill matchedOn={cand.matched_on} />
-          {cand.openclaw_verdict && <VerdictBadge verdict={cand.openclaw_verdict} />}
+            <div className="flex gap-1.5 flex-wrap shrink-0">
+              <StagePill stage={cand.stage} />
+              <ConfidenceBadge score={cand.initial_confidence} />
+              <MatchedOnPill matchedOn={cand.matched_on} />
+              {cand.openclaw_verdict && <VerdictBadge verdict={cand.openclaw_verdict} />}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -282,13 +330,75 @@ function CandidateCard({
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
+const BULK_CONCURRENCY = 10;
+
 export default function PhoneReviewClient({
   initialCandidates,
 }: {
   initialCandidates: PhoneCandidate[];
 }) {
+  const router = useRouter();
   const [candidates, setCandidates] = useState(initialCandidates);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeBucket, setActiveBucket] = useState<ConfidenceBucket>("all");
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  // Filtered list based on active bucket
+  const filtered = useMemo(
+    () => candidates.filter((c) => matchBucket(c.initial_confidence, activeBucket)),
+    [candidates, activeBucket],
+  );
+
+  // Count per bucket for pill labels
+  const bucketCounts = useMemo<Record<ConfidenceBucket, number>>(() => {
+    const counts: Record<ConfidenceBucket, number> = {
+      all: candidates.length,
+      ge80: 0,
+      "70-79": 0,
+      "60-69": 0,
+      "50-59": 0,
+      lt50: 0,
+    };
+    for (const c of candidates) {
+      if (c.initial_confidence >= 80) counts.ge80++;
+      else if (c.initial_confidence >= 70) counts["70-79"]++;
+      else if (c.initial_confidence >= 60) counts["60-69"]++;
+      else if (c.initial_confidence >= 50) counts["50-59"]++;
+      else counts.lt50++;
+    }
+    return counts;
+  }, [candidates]);
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+
+  function toggleSelectAll() {
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((c) => next.delete(c.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((c) => next.add(c.id));
+        return next;
+      });
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function handleAction(
     id: string,
@@ -311,9 +421,60 @@ export default function PhoneReviewClient({
     // Keep on retry so user can see it's been re-queued
     if (action !== "retry") {
       setCandidates((prev) => prev.filter((c) => c.id !== id));
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     }
     setErrors((prev) => { const next = { ...prev }; delete next[id]; return next; });
   }
+
+  async function runBulkAction(action: "approve" | "reject" | "keep_unresolved") {
+    const ids = Array.from(selectedIds).filter((id) =>
+      filtered.some((c) => c.id === id),
+    );
+    if (ids.length === 0) return;
+
+    setBulkProgress({ done: 0, total: ids.length });
+
+    // Process in batches of BULK_CONCURRENCY
+    let done = 0;
+    for (let i = 0; i < ids.length; i += BULK_CONCURRENCY) {
+      const batch = ids.slice(i, i + BULK_CONCURRENCY);
+      await Promise.allSettled(
+        batch.map(async (id) => {
+          try {
+            const res = await fetch(`/api/phone-review/${id}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action }),
+            });
+            const data = await res.json() as { ok: boolean; error?: string };
+            if (data.ok) {
+              // Bulk actions are never "retry", so always remove from list
+              setCandidates((prev) => prev.filter((c) => c.id !== id));
+              setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+            } else {
+              setErrors((prev) => ({ ...prev, [id]: data.error ?? "Unknown error" }));
+            }
+          } catch {
+            setErrors((prev) => ({ ...prev, [id]: "Network error" }));
+          }
+          done++;
+          setBulkProgress({ done, total: ids.length });
+        }),
+      );
+    }
+
+    setBulkProgress(null);
+
+    // After bulk approve, redirect with _just_approved flag
+    if (action === "approve") {
+      router.push("/phone-review?_just_approved=1");
+      router.refresh();
+    }
+  }
+
+  const selectedCount = Array.from(selectedIds).filter((id) =>
+    filtered.some((c) => c.id === id),
+  ).length;
 
   if (candidates.length === 0) {
     return (
@@ -325,16 +486,131 @@ export default function PhoneReviewClient({
     );
   }
 
+  const BUCKETS: ConfidenceBucket[] = ["all", "ge80", "70-79", "60-69", "50-59", "lt50"];
+
   return (
     <div className="space-y-4">
-      {candidates.map((c) => (
+      {/* ── Confidence filter pills ── */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {BUCKETS.map((b) => (
+          <button
+            key={b}
+            onClick={() => setActiveBucket(b)}
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "4px 12px",
+              borderRadius: 999,
+              border: "1px solid",
+              cursor: "pointer",
+              transition: "all 0.15s",
+              borderColor: activeBucket === b ? "#059669" : "#e5e7eb",
+              background: activeBucket === b ? "#059669" : "#f9fafb",
+              color: activeBucket === b ? "#fff" : "#374151",
+            }}
+          >
+            {bucketLabel(b, bucketCounts[b])}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Master checkbox + select all label ── */}
+      {filtered.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px" }}>
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            onChange={toggleSelectAll}
+            className="h-4 w-4 rounded border-zinc-300 text-emerald-600 cursor-pointer"
+            aria-label="Tout sélectionner"
+          />
+          <span style={{ fontSize: 13, color: "#6b7280" }}>
+            {allFilteredSelected
+              ? `Tout désélectionner (${filtered.length})`
+              : `Tout sélectionner (${filtered.length})`}
+          </span>
+        </div>
+      )}
+
+      {/* ── Bulk action bar ── */}
+      {selectedCount > 0 && (
+        <div
+          style={{
+            position: "sticky",
+            top: 12,
+            zIndex: 20,
+            background: "#1f2937",
+            color: "#f9fafb",
+            borderRadius: 12,
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 120 }}>
+            {bulkProgress
+              ? `Approbation en cours… ${bulkProgress.done} / ${bulkProgress.total}`
+              : `${selectedCount} candidat${selectedCount !== 1 ? "e" : ""}${selectedCount !== 1 ? "s" : ""} sélectionné${selectedCount !== 1 ? "e" : ""}${selectedCount !== 1 ? "s" : ""}`}
+          </span>
+          <button
+            onClick={() => runBulkAction("approve")}
+            disabled={bulkProgress !== null}
+            style={{
+              background: "#059669", color: "#fff", border: "none",
+              borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", opacity: bulkProgress ? 0.6 : 1,
+            }}
+          >
+            Approuver tous
+          </button>
+          <button
+            onClick={() => runBulkAction("reject")}
+            disabled={bulkProgress !== null}
+            style={{
+              background: "#dc2626", color: "#fff", border: "none",
+              borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", opacity: bulkProgress ? 0.6 : 1,
+            }}
+          >
+            Rejeter tous
+          </button>
+          <button
+            onClick={() => runBulkAction("keep_unresolved")}
+            disabled={bulkProgress !== null}
+            style={{
+              background: "#374151", color: "#d1d5db", border: "1px solid #4b5563",
+              borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", opacity: bulkProgress ? 0.6 : 1,
+            }}
+          >
+            Garder non-résolu
+          </button>
+        </div>
+      )}
+
+      {/* ── Candidate list ── */}
+      {filtered.map((c) => (
         <div key={c.id}>
-          <CandidateCard cand={c} onAction={handleAction} />
+          <CandidateCard
+            cand={c}
+            selected={selectedIds.has(c.id)}
+            onToggleSelect={toggleSelect}
+            onAction={handleAction}
+          />
           {errors[c.id] && (
             <p className="text-sm text-red-600 mt-1 px-1">{errors[c.id]}</p>
           )}
         </div>
       ))}
+
+      {filtered.length === 0 && candidates.length > 0 && (
+        <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center text-zinc-400 text-sm">
+          Aucun candidat dans ce filtre de confiance.
+        </div>
+      )}
     </div>
   );
 }

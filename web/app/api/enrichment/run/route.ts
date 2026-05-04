@@ -558,8 +558,20 @@ export async function POST(request: Request) {
       const finalCandidates: Candidate[] = [];
       const candidateIds: string[] = [];
 
+      // Downgrade protection: don't demote a lead that's already in a better state
+      const { data: leadNowFallback } = await sb
+        .from('leads')
+        .select('status')
+        .eq('id', body.lead_id)
+        .single();
+      const currentStatusFallback = (leadNowFallback as { status: string } | null)?.status;
       const newLeadStatus = 'unresolved_after_openclaw';
-      await sb.from('leads').update({ status: newLeadStatus }).eq('id', body.lead_id);
+      const shouldUpdateFallback =
+        currentStatusFallback !== 'ready_to_call' &&
+        currentStatusFallback !== 'needs_human_review';
+      if (shouldUpdateFallback) {
+        await sb.from('leads').update({ status: newLeadStatus }).eq('id', body.lead_id);
+      }
 
       if (body.enrichment_job_id) {
         await sb.from('enrichment_jobs').update({
@@ -1016,7 +1028,17 @@ export async function POST(request: Request) {
       }
     }
 
-    // 9e. Lead status decision
+    // 9e. Lead status decision — with downgrade protection
+    // Hierarchy: ready_to_call > needs_human_review > unresolved_after_openclaw
+    // The runner may only escalate, never demote.
+
+    const { data: leadNow } = await sb
+      .from('leads')
+      .select('status')
+      .eq('id', body.lead_id)
+      .single();
+    const currentStatus = (leadNow as { status: string } | null)?.status;
+
     let newLeadStatus: string;
     if (anyAutoAttached) {
       newLeadStatus = 'ready_to_call';
@@ -1026,7 +1048,31 @@ export async function POST(request: Request) {
       newLeadStatus = 'unresolved_after_openclaw';
     }
 
-    await sb.from('leads').update({ status: newLeadStatus }).eq('id', body.lead_id);
+    // Downgrade protection:
+    // - never demote from ready_to_call unless the new status is also ready_to_call
+    // - never demote from needs_human_review to unresolved_after_openclaw
+    const statusRank: Record<string, number> = {
+      ready_to_call: 3,
+      needs_human_review: 2,
+      unresolved_after_openclaw: 1,
+    };
+    const currentRank = statusRank[currentStatus ?? ''] ?? 0;
+    const newRank = statusRank[newLeadStatus] ?? 0;
+    const shouldUpdate = newRank >= currentRank;
+
+    const leadStatusUpdateMeta = {
+      previous: currentStatus ?? null,
+      computed: newLeadStatus,
+      applied: shouldUpdate ? newLeadStatus : (currentStatus ?? null),
+      protected_from_downgrade: !shouldUpdate,
+    };
+
+    if (shouldUpdate) {
+      await sb.from('leads').update({ status: newLeadStatus }).eq('id', body.lead_id);
+    } else {
+      // Keep current status — no update needed
+      newLeadStatus = currentStatus ?? newLeadStatus;
+    }
 
     // ── Build meta & reasoning_summary ───────────────────────────────────────
     const autoAttachMeta = {
@@ -1058,6 +1104,7 @@ export async function POST(request: Request) {
       brave_credential_set:       true,
       secondary_pass:             secondaryPassMeta,
       auto_attach:                autoAttachMeta,
+      lead_status_update:         leadStatusUpdateMeta,
     };
 
     const queryExamples = queriesRun.slice(0, 3).map(q => `"${q}"`).join(' | ');

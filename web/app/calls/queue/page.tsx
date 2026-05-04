@@ -2,6 +2,7 @@ import React from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
+import NextStepBanner from "@/components/next-step-banner";
 
 type QueueLead = {
   lead_id: string;
@@ -71,16 +72,23 @@ export default async function CallQueuePage() {
   const CALLABLE_STATUSES = ["new", "ready_to_call", "in_outreach", "no_answer", "phone_verified"] as const;
 
   // All leads assigned to this user in callable statuses AND with a verified phone
-  const { data: rawLeads } = await sb
-    .from("leads_view")
-    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,priority")
-    .eq("assigned_to", user.id)
-    .in("status", CALLABLE_STATUSES as unknown as string[])
-    .not("best_phone", "is", null)   // must have a verified phone — no-phone leads never show here
-    .order("priority", { ascending: false })
-    .order("last_contacted_at", { ascending: true, nullsFirst: true });
+  // Also fetch hot sellers count for queue_empty banner
+  const [queueRes, hotSellersRes] = await Promise.all([
+    sb
+      .from("leads_view")
+      .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,priority")
+      .eq("assigned_to", user.id)
+      .in("status", CALLABLE_STATUSES as unknown as string[])
+      .not("best_phone", "is", null)   // must have a verified phone — no-phone leads never show here
+      .order("priority", { ascending: false })
+      .order("last_contacted_at", { ascending: true, nullsFirst: true }),
+    sb.from("review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open"),
+  ]);
 
-  const leads = (rawLeads ?? []) as QueueLead[];
+  const leads = (queueRes.data ?? []) as QueueLead[];
+  const hotSellers = hotSellersRes.count ?? 0;
 
   // Per-lead call counts from call_logs
   const leadIds = leads.map((l) => l.lead_id);
@@ -99,8 +107,17 @@ export default async function CallQueuePage() {
   const phoneReady = leads.length;
   // noPhone removed — all visible leads enforced to have a phone by query above
 
+  const showQueueEmptyBanner = leads.length === 0;
+
   return (
     <main className="crm-page-narrow">
+      {showQueueEmptyBanner && (
+        <NextStepBanner
+          kind="queue_empty"
+          counts={{ ready: 0, review: 0, hotSellers }}
+        />
+      )}
+
       <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
         <div>
           <h1 className="crm-page-title">File d&rsquo;appels</h1>

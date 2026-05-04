@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SignOutButton from "./sign-out-button";
 
 type NavItem = {
@@ -16,23 +16,23 @@ type NavItem = {
   callerOnly?: boolean;
 };
 
-// Primary nav — Socle V2 lead-calling CRM workflow order
+// Primary nav — workflow order: dashboard → leads → calls → phone-review → review → ops
 const PRIMARY_NAV: NavItem[] = [
-  { href: "/",                  label: "Tableau de bord",  icon: "dashboard",   adminOnly: true  },
-  { href: "/leads",             label: "Leads",            icon: "leads"                         },
-  { href: "/import",            label: "Import rôle",      icon: "import",      adminOnly: true  },
-  { href: "/calls/queue",       label: "File d'appels",    icon: "calls"                         },
-  { href: "/review",            label: "Revue",            icon: "review",      adminOnly: true  },
-  { href: "/follow-ups",        label: "Suivis",           icon: "followups"                     },
-  { href: "/calendar",          label: "Calendrier",       icon: "calendar"                      },
-  { href: "/map",               label: "Carte",            icon: "map"                           },
-  { href: "/admin/enrichment",  label: "Enrichissement",   icon: "enrichment",  adminOnly: true  },
+  { href: "/",                  label: "Tableau de bord",      icon: "dashboard",   adminOnly: true  },
+  { href: "/leads",             label: "Leads",                icon: "leads"                         },
+  { href: "/calls/queue",       label: "File d'appels",        icon: "calls"                         },
+  { href: "/phone-review",      label: "Téléphones à réviser", icon: "phone",       adminOnly: true  },
+  { href: "/review",            label: "Revue",                icon: "review",      adminOnly: true  },
+  { href: "/import",            label: "Import rôle",          icon: "import",      adminOnly: true  },
+  { href: "/admin/enrichment",  label: "Enrichissement",       icon: "enrichment",  adminOnly: true  },
+  { href: "/follow-ups",        label: "Suivis",               icon: "followups"                     },
+  { href: "/calendar",          label: "Calendrier",           icon: "calendar"                      },
+  { href: "/map",               label: "Carte",                icon: "map"                           },
 ];
 
 // Admin-only secondary tools
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users",   label: "Utilisateurs",       icon: "users"      },
-  { href: "/phone-review",  label: "Tél. revue",         icon: "phone"      },
   { href: "/admin/events",  label: "Journal événements", icon: "events"     },
   { href: "/data-health",   label: "Santé données",      icon: "health"     },
   { href: "/properties",    label: "Propriétés",         icon: "properties" },
@@ -47,6 +47,68 @@ type RecentLead = {
   status: string;
 };
 
+type SidebarCounts = {
+  leads_total: number;
+  leads_ready_to_call: number;
+  phone_candidates_needs_review: number;
+  review_items_pending: number;
+  proposed_actions_pending: number;
+  hot_sellers_pending: number;
+};
+
+const POLL_INTERVAL_MS = 30_000;
+
+function useSidebarCounts(): SidebarCounts | null {
+  const [counts, setCounts] = useState<SidebarCounts | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchCounts() {
+      try {
+        const res = await fetch("/api/sidebar-counts", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { ok: boolean; data?: SidebarCounts };
+        if (!cancelled && json.ok && json.data) {
+          setCounts(json.data);
+        }
+      } catch {
+        // Silently ignore — don't break sidebar
+      }
+    }
+
+    fetchCounts();
+    const timer = setInterval(fetchCounts, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  return counts;
+}
+
+function Badge({
+  count,
+  highlight,
+}: {
+  count: number;
+  highlight?: "green" | "amber" | "red";
+}) {
+  if (count === 0) return null;
+  const base =
+    "inline-flex items-center justify-center text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-[5px] leading-none ml-auto shrink-0";
+  const colors =
+    highlight === "green"
+      ? "bg-emerald-500 text-white"
+      : highlight === "amber"
+      ? "bg-amber-400 text-white"
+      : highlight === "red"
+      ? "bg-red-500 text-white"
+      : "bg-zinc-200 text-zinc-600";
+  return <span className={`${base} ${colors}`}>{count}</span>;
+}
+
 export default function AppSidebar({
   email,
   role,
@@ -59,6 +121,7 @@ export default function AppSidebar({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = role === "admin";
+  const counts = useSidebarCounts();
 
   // Build initials from "firstname.lastname@..." pattern
   const handle = email.split("@")[0];
@@ -87,6 +150,39 @@ export default function AppSidebar({
     return "";
   }
 
+  function getBadgeForItem(item: NavItem) {
+    if (!counts) return null;
+    if (item.href === "/leads") {
+      return <Badge count={counts.leads_total} />;
+    }
+    if (item.href === "/calls/queue") {
+      return (
+        <Badge
+          count={counts.leads_ready_to_call}
+          highlight={counts.leads_ready_to_call > 0 ? "green" : undefined}
+        />
+      );
+    }
+    if (item.href === "/phone-review") {
+      return (
+        <Badge
+          count={counts.phone_candidates_needs_review}
+          highlight={counts.phone_candidates_needs_review > 0 ? "amber" : undefined}
+        />
+      );
+    }
+    if (item.href === "/review") {
+      const total = counts.review_items_pending + counts.proposed_actions_pending;
+      return (
+        <Badge
+          count={total}
+          highlight={total > 0 ? "red" : undefined}
+        />
+      );
+    }
+    return null;
+  }
+
   const sidebar = (
     <div className="crm-sidebar-inner">
       {/* ── Logo ── */}
@@ -107,9 +203,11 @@ export default function AppSidebar({
             href={item.href as never}
             className={`crm-sidebar-link${isActive(item.href) ? " crm-sidebar-link--active" : ""}`}
             onClick={() => setMobileOpen(false)}
+            style={{ display: "flex", alignItems: "center", gap: 8 }}
           >
             <NavIcon name={item.icon} />
-            <span>{item.label}</span>
+            <span style={{ flex: 1 }}>{item.label}</span>
+            {getBadgeForItem(item)}
           </Link>
         ))}
 
