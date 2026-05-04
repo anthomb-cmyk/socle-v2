@@ -120,16 +120,12 @@ export async function POST(request: Request) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const sharedKey = process.env.N8N_SHARED_KEY ?? "";
 
-  await runWithConcurrency(jobsToRun, 5, async ({ leadId, jobId, leadInfo }) => {
-    // Build lead_context from leads_view row — runner will DB-fetch mailing fields itself
-    const lead_context = {
-      full_name:        leadInfo.full_name,
-      company_name:     leadInfo.company_name,
-      property_address: leadInfo.address,
-      property_city:    leadInfo.city,
-      num_units:        leadInfo.num_units,
-    };
-
+  await runWithConcurrency(jobsToRun, 5, async ({ leadId, jobId }) => {
+    // Intentionally DO NOT send lead_context — leads_view doesn't have mailing
+    // fields (those live on contacts), and a partial lead_context blocks the
+    // runner's DB-fallback path (which only fires when lead_context is absent
+    // entirely). Letting the runner DB-fetch full context per lead means it
+    // gets mailing_address/city/postal and can build the full 10-query set.
     try {
       await fetch(`${appUrl}/api/enrichment/run`, {
         method: "POST",
@@ -140,7 +136,6 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           enrichment_job_id: jobId,
           lead_id: leadId,
-          lead_context,
         }),
       });
       // runner handles its own DB writes (job status, candidates, phone attach)
