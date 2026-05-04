@@ -140,7 +140,7 @@ export async function POST(request: Request) {
         .from("phones")
         .select("id")
         .eq("contact_id", lead.contact_id)
-        .in("status", ["unverified", "valid"])
+        .in("status", ["unverified", "valid", "verified"])
         .neq("id", body.phoneId)
         .limit(1);
 

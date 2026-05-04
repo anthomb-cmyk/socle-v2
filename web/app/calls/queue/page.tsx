@@ -83,7 +83,7 @@ export default async function CallQueuePage() {
   const sb = createSupabaseAdminClient();
   const now = new Date().toISOString();
 
-  const [queueRes, hotSellersRes] = await Promise.all([
+  const [queueRes, hotSellersRes, locksRes] = await Promise.all([
     sb
       .from("leads_view")
       .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority")
@@ -99,9 +99,19 @@ export default async function CallQueuePage() {
     sb.from("review_items")
       .select("id", { count: "exact", head: true })
       .eq("status", "open"),
+    // Fetch active locks held by OTHER callers so we can hide those leads
+    sb.from("call_locks")
+      .select("lead_id")
+      .neq("locked_by", user.id)
+      .gt("expires_at", now),
   ]);
 
-  const leads = (queueRes.data ?? []) as QueueLead[];
+  // Build a set of lead IDs currently locked by someone else
+  const lockedByOthers = new Set((locksRes.data ?? []).map((r: { lead_id: string }) => r.lead_id));
+
+  const leads = ((queueRes.data ?? []) as QueueLead[]).filter(
+    (l) => !lockedByOthers.has(l.lead_id),
+  );
   const hotSellers = hotSellersRes.count ?? 0;
 
   // Per-lead call counts (fetched separately to avoid a heavy view join)
