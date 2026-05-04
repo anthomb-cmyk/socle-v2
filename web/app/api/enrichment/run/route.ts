@@ -439,6 +439,25 @@ function extractPhonesFromText(
   return results;
 }
 
+// ── Auto-attach helpers ────────────────────────────────────────────────────────
+
+function countStrongEvidence(matched_on: string): number {
+  const r = (matched_on || '').toLowerCase();
+  let n = 0;
+  if (/(^|;\s*)mailing_address/.test(r)) n++;
+  if (/(^|;\s*)(city|postal_prefix)/.test(r)) n++;
+  if (/(^|;\s*)contact_name/.test(r)) n++;
+  if (/(^|;\s*)company_name/.test(r)) n++;
+  if (/(^|;\s*)related_entity/.test(r)) n++;
+  return n;
+}
+
+function isAutoAttachable(c: Candidate): boolean {
+  return c.confidence >= 80
+      && !!(c.source_url && c.source_url.length > 0)
+      && countStrongEvidence(c.matched_on) >= 2;
+}
+
 // ── POST handler ───────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -869,34 +888,154 @@ export async function POST(request: Request) {
     }
 
     // ── 9. DB writes ──────────────────────────────────────────────────────────
+
+    // 9a. Load contact_id for this lead (needed for auto-attach phones insert)
+    let contactId: string | null = null;
+    {
+      const { data: leadContact } = await sb
+        .from('leads')
+        .select('contact_id')
+        .eq('id', body.lead_id)
+        .single();
+      contactId = (leadContact as { contact_id: string | null } | null)?.contact_id ?? null;
+    }
+
+    // 9b. Fetch existing phone_candidates for dedup
+    const { data: existingRows } = await sb
+      .from('phone_candidates')
+      .select('id, phone_e164, source_label, initial_confidence')
+      .eq('lead_id', body.lead_id);
+
+    const existingMap = new Map<string, { id: string; initial_confidence: number }>();
+    for (const r of (existingRows ?? [])) {
+      const row = r as { id: string; phone_e164: string; source_label: string; initial_confidence: number | null };
+      const key = `${row.phone_e164}|${row.source_label}`;
+      existingMap.set(key, { id: row.id, initial_confidence: row.initial_confidence ?? 0 });
+    }
+
+    // 9c. Per-candidate loop: dedup + insert/update + auto-attach
     const candidateIds: string[] = [];
+    const reviewCandidateIds: string[] = [];      // needs_anthony_review ones
+    const autoAttachedPhoneIds: string[] = [];    // phone_candidates.id
+    const autoAttachedPhones: string[] = [];      // e164 list
+    let dedupUpdates = 0;
+    let anyAutoAttached = false;
 
     for (const c of finalCandidates) {
       const phoneE164 = '+1' + c.phone_raw.replace(/\D/g, '').slice(-10);
-      const { data: row } = await sb.from('phone_candidates').insert({
-        lead_id:            body.lead_id,
-        enrichment_job_id:  body.enrichment_job_id ?? null,
-        phone_raw:          c.phone_raw,
-        phone_e164:         phoneE164,
-        stage:              'openclaw',
-        source_label:       c.source_label,
-        source_url:         c.source_url,
-        snippet:            c.snippet,
-        initial_confidence: c.confidence,
-        candidate_status:   'needs_anthony_review',
-        review_reason:      `OpenClaw deep search — confidence ${c.confidence} (${c.matched_on})`,
-      }).select('id').single();
+      const key = `${phoneE164}|${c.source_label}`;
 
-      if (row) candidateIds.push((row as { id: string }).id);
+      let candidateId: string | null = null;
+
+      const existing = existingMap.get(key);
+      if (existing) {
+        // Dedup: UPDATE existing row — bump confidence, refresh fields
+        const bumped = Math.max(existing.initial_confidence, c.confidence);
+        await sb
+          .from('phone_candidates')
+          .update({
+            initial_confidence: bumped,
+            snippet:            c.snippet,
+            source_url:         c.source_url,
+            matched_on:         c.matched_on,
+            review_reason:      `OpenClaw deep search — confidence ${bumped} (${c.matched_on})`,
+            search_query:       c.search_query,
+          })
+          .eq('id', existing.id);
+        candidateId = existing.id;
+        dedupUpdates++;
+      } else {
+        // Fresh insert
+        const { data: row } = await sb.from('phone_candidates').insert({
+          lead_id:            body.lead_id,
+          enrichment_job_id:  body.enrichment_job_id ?? null,
+          phone_raw:          c.phone_raw,
+          phone_e164:         phoneE164,
+          stage:              'openclaw',
+          source_label:       c.source_label,
+          source_url:         c.source_url,
+          snippet:            c.snippet,
+          initial_confidence: c.confidence,
+          candidate_status:   'needs_anthony_review',
+          review_reason:      `OpenClaw deep search — confidence ${c.confidence} (${c.matched_on})`,
+        }).select('id').single();
+
+        if (row) {
+          candidateId = (row as { id: string }).id;
+        }
+      }
+
+      if (candidateId) {
+        candidateIds.push(candidateId);
+      }
+
+      // 9d. Auto-attach check
+      if (candidateId && isAutoAttachable(c) && contactId) {
+        // Check whether this phone already exists in the canonical phones table
+        const { data: existingPhone } = await sb
+          .from('phones')
+          .select('id')
+          .eq('contact_id', contactId)
+          .eq('e164', phoneE164)
+          .maybeSingle();
+
+        if (!existingPhone) {
+          // Insert into phones
+          const evidence = `conf ${c.confidence}; source=${c.source}; url=${c.source_url}; snippet="${c.snippet.slice(0, 120)}"`;
+          const notes = `Auto-attached by enrichment runner — matched_on: ${c.matched_on}`;
+          await sb.from('phones').insert({
+            contact_id:  contactId,
+            e164:        phoneE164,
+            display:     c.phone_raw,
+            status:      'valid',
+            source:      'enrichment_other',
+            confidence:  c.confidence,
+            evidence,
+            notes,
+          });
+        }
+        // Whether phone already existed or we just inserted it — mark candidate auto_attached
+        const newReviewReason =
+          `OpenClaw deep search — confidence ${c.confidence} (${c.matched_on}) [AUTO-ATTACHED]`;
+        await sb
+          .from('phone_candidates')
+          .update({
+            candidate_status: 'auto_attached',
+            review_reason:    newReviewReason,
+          })
+          .eq('id', candidateId);
+
+        autoAttachedPhoneIds.push(candidateId);
+        autoAttachedPhones.push(phoneE164);
+        anyAutoAttached = true;
+      } else if (candidateId && !existing) {
+        // Only count freshly inserted non-auto-attached rows as review candidates
+        reviewCandidateIds.push(candidateId);
+      } else if (candidateId && existing) {
+        reviewCandidateIds.push(candidateId);
+      }
     }
 
-    const newLeadStatus = finalCandidates.length > 0
-      ? 'needs_human_review'
-      : 'unresolved_after_openclaw';
+    // 9e. Lead status decision
+    let newLeadStatus: string;
+    if (anyAutoAttached) {
+      newLeadStatus = 'ready_to_call';
+    } else if (finalCandidates.length > 0) {
+      newLeadStatus = 'needs_human_review';
+    } else {
+      newLeadStatus = 'unresolved_after_openclaw';
+    }
 
     await sb.from('leads').update({ status: newLeadStatus }).eq('id', body.lead_id);
 
     // ── Build meta & reasoning_summary ───────────────────────────────────────
+    const autoAttachMeta = {
+      candidates_auto_attached: autoAttachedPhoneIds.length,
+      auto_attached_phone_ids:  autoAttachedPhoneIds,
+      auto_attached_phones:     autoAttachedPhones,
+      dedup_updates:            dedupUpdates,
+    };
+
     const meta = {
       queries_run:                queriesRun.length,
       queries_list:               queriesRun,
@@ -918,6 +1057,7 @@ export async function POST(request: Request) {
       total_candidates_seen:      candidatesMap.size,
       brave_credential_set:       true,
       secondary_pass:             secondaryPassMeta,
+      auto_attach:                autoAttachMeta,
     };
 
     const queryExamples = queriesRun.slice(0, 3).map(q => `"${q}"`).join(' | ');
@@ -927,7 +1067,22 @@ export async function POST(request: Request) {
       .join(', ');
 
     let reasoning_summary: string;
-    if (finalCandidates.length > 0) {
+    if (anyAutoAttached && finalCandidates.length > 0) {
+      const top = finalCandidates[0];
+      const autoList = autoAttachedPhones
+        .map((ph, i) => {
+          const cand = finalCandidates.find(
+            fc => ('+1' + fc.phone_raw.replace(/\D/g, '').slice(-10)) === ph,
+          );
+          return cand
+            ? `${cand.phone_raw} conf ${cand.confidence} (${cand.matched_on}; public_directory:${cand.source_label}; source=${cand.source})`
+            : ph;
+        })
+        .join(', ');
+      reasoning_summary =
+        `Found ${finalCandidates.length} candidate(s) — ${autoAttachedPhoneIds.length} auto-attached: ${autoList} → phones. Lead → ready_to_call.` +
+        secondaryReasoningSuffix;
+    } else if (finalCandidates.length > 0) {
       const top = finalCandidates[0];
       reasoning_summary =
         `Found ${finalCandidates.length} candidate(s) from ${queriesRun.length} Brave queries + ${pagesFetched.length} page fetches.` +
@@ -988,6 +1143,40 @@ export async function POST(request: Request) {
         runner:           'inline',
       },
     });
+
+    // ── Auto-attach events (additional row when at least one phone attached) ──
+    if (anyAutoAttached) {
+      const autoAttachPayload = {
+        source:               'enrichment_runner',
+        auto_attached_phones: autoAttachedPhones,
+        auto_attached_ids:    autoAttachedPhoneIds,
+        confidence:           finalCandidates
+          .filter(fc => autoAttachedPhones.includes('+1' + fc.phone_raw.replace(/\D/g, '').slice(-10)))
+          .map(fc => fc.confidence),
+        source_url:           finalCandidates
+          .filter(fc => autoAttachedPhones.includes('+1' + fc.phone_raw.replace(/\D/g, '').slice(-10)))
+          .map(fc => fc.source_url),
+        matched_on:           finalCandidates
+          .filter(fc => autoAttachedPhones.includes('+1' + fc.phone_raw.replace(/\D/g, '').slice(-10)))
+          .map(fc => fc.matched_on),
+        reasoning_summary,
+      };
+
+      await sb.from('enrichment_events').insert({
+        lead_id:    body.lead_id,
+        event_type: 'phone_auto_attached',
+        stage:      'openclaw',
+        payload:    autoAttachPayload,
+      });
+
+      await sb.from('automation_events').insert({
+        source:          'web_app',
+        event_type:      'phone_auto_attached',
+        status:          'success',
+        related_lead_id: body.lead_id,
+        payload:         autoAttachPayload,
+      });
+    }
 
     // ── Return ────────────────────────────────────────────────────────────────
     return NextResponse.json({
