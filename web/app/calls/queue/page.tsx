@@ -15,12 +15,12 @@ type QueueLead = {
   status: string;
   campaign_name: string | null;
   last_contacted_at: string | null;
+  next_action_at: string | null;
   priority: number | null;
 };
 
 function formatPhone(phone: string | null) {
   if (!phone) return null;
-  // Format +15145551234 → (514) 555-1234
   const m = phone.replace(/\D/g, "");
   if (m.length === 11 && m[0] === "1")
     return `(${m.slice(1, 4)}) ${m.slice(4, 7)}-${m.slice(7)}`;
@@ -30,14 +30,26 @@ function formatPhone(phone: string | null) {
 }
 
 function timeAgo(iso: string | null): string {
-  if (!iso) return "never";
+  if (!iso) return "jamais";
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return `${hrs}h`;
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return `${days}j`;
+}
+
+/** Returns a short label if the scheduled callback is overdue, or null if not. */
+function overdueLabel(nextActionAt: string | null): string | null {
+  if (!nextActionAt) return null;
+  const diff = Date.now() - new Date(nextActionAt).getTime();
+  if (diff <= 0) return null; // in the future — should have been filtered, but guard
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `Rappel en retard — ${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Rappel en retard — ${hrs}h`;
+  return `Rappel en retard — ${Math.floor(hrs / 24)}j`;
 }
 
 function statusLabel(s: string) {
@@ -51,12 +63,17 @@ function statusLabel(s: string) {
   return map[s] ?? s;
 }
 
-function rowBorderStyle(p: number | null): React.CSSProperties {
+function rowBorderStyle(p: number | null, isOverdue: boolean): React.CSSProperties {
+  if (isOverdue) return { borderLeft: "4px solid var(--crm-blue)" };
   if (p == null) return { borderLeft: "4px solid var(--crm-card-border)" };
   if (p >= 80) return { borderLeft: "4px solid var(--crm-red)" };
   if (p >= 50) return { borderLeft: "4px solid var(--crm-gold)" };
   return { borderLeft: "4px solid var(--crm-card-border)" };
 }
+
+const CALLABLE_STATUSES = [
+  "new", "ready_to_call", "in_outreach", "no_answer", "phone_verified",
+] as const;
 
 export default async function CallQueuePage() {
   const supabase = await createSupabaseServerClient();
@@ -64,23 +81,20 @@ export default async function CallQueuePage() {
   if (!user) redirect("/login");
 
   const sb = createSupabaseAdminClient();
+  const now = new Date().toISOString();
 
-  // Callable statuses: only leads with a verified phone may appear in the call queue.
-  // "new" and "ready_to_call" remain for leads that already had a phone at import time.
-  // "phone_verified" is the status set when Anthony approves an enriched phone candidate.
-  // All enrichment-pipeline statuses are explicitly excluded.
-  const CALLABLE_STATUSES = ["new", "ready_to_call", "in_outreach", "no_answer", "phone_verified"] as const;
-
-  // All leads assigned to this user in callable statuses AND with a verified phone
-  // Also fetch hot sellers count for queue_empty banner
   const [queueRes, hotSellersRes] = await Promise.all([
     sb
       .from("leads_view")
-      .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,priority")
+      .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority")
       .eq("assigned_to", user.id)
       .in("status", CALLABLE_STATUSES as unknown as string[])
-      .not("best_phone", "is", null)   // must have a verified phone — no-phone leads never show here
+      .not("best_phone", "is", null)
+      // Exclude leads scheduled for a future callback — they'll reappear when it's time
+      .or(`next_action_at.is.null,next_action_at.lte.${now}`)
+      // Overdue callbacks first, then by priority, then oldest-contacted first
       .order("priority", { ascending: false })
+      .order("next_action_at", { ascending: true, nullsFirst: false })
       .order("last_contacted_at", { ascending: true, nullsFirst: true }),
     sb.from("review_items")
       .select("id", { count: "exact", head: true })
@@ -90,7 +104,7 @@ export default async function CallQueuePage() {
   const leads = (queueRes.data ?? []) as QueueLead[];
   const hotSellers = hotSellersRes.count ?? 0;
 
-  // Per-lead call counts from call_logs
+  // Per-lead call counts (fetched separately to avoid a heavy view join)
   const leadIds = leads.map((l) => l.lead_id);
   const callCounts: Record<string, number> = {};
   if (leadIds.length > 0) {
@@ -103,15 +117,11 @@ export default async function CallQueuePage() {
     });
   }
 
-  // All visible leads already have a verified phone (enforced by query above)
-  const phoneReady = leads.length;
-  // noPhone removed — all visible leads enforced to have a phone by query above
-
-  const showQueueEmptyBanner = leads.length === 0;
+  const overdueCount = leads.filter((l) => l.next_action_at && new Date(l.next_action_at) <= new Date()).length;
 
   return (
     <main className="crm-page-narrow">
-      {showQueueEmptyBanner && (
+      {leads.length === 0 && (
         <NextStepBanner
           kind="queue_empty"
           counts={{ ready: 0, review: 0, hotSellers }}
@@ -122,9 +132,9 @@ export default async function CallQueuePage() {
         <div>
           <h1 className="crm-page-title">File d&rsquo;appels</h1>
           <p className="crm-page-sub">
-            {leads.length} lead{leads.length === 1 ? "" : "s"} assigné{leads.length === 1 ? "" : "s"}
-            {phoneReady > 0 && (
-              <> · <span style={{ color: "var(--crm-green)", fontWeight: 600 }}>{phoneReady} avec tél.</span></>
+            {leads.length} lead{leads.length === 1 ? "" : "s"} à appeler
+            {overdueCount > 0 && (
+              <> · <span style={{ color: "var(--crm-blue)", fontWeight: 600 }}>{overdueCount} rappel{overdueCount !== 1 ? "s" : ""} en retard</span></>
             )}
           </p>
         </div>
@@ -143,6 +153,7 @@ export default async function CallQueuePage() {
           {leads.map((l) => {
             const callCount = callCounts[l.lead_id] ?? 0;
             const formatted = formatPhone(l.best_phone);
+            const overdue = overdueLabel(l.next_action_at);
 
             return (
               <li key={l.lead_id}>
@@ -156,13 +167,13 @@ export default async function CallQueuePage() {
                     padding: "12px 16px",
                     textDecoration: "none",
                     transition: "border-color 0.15s, box-shadow 0.15s",
-                    ...rowBorderStyle(l.priority),
+                    ...rowBorderStyle(l.priority, !!overdue),
                   }}
                   className="hover:border-[var(--crm-gold-border)] hover:shadow-sm"
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      {/* Line 1: name + status */}
+                      {/* Line 1: name + status + overdue badge */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
                         <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {l.full_name ?? l.company_name ?? "—"}
@@ -170,17 +181,22 @@ export default async function CallQueuePage() {
                         <span className={`crm-pill crm-pill--${l.status === "no_answer" ? "sans-reponse" : l.status === "in_outreach" ? "contacte" : l.status === "phone_verified" ? "a-appeler" : "nouveau"}`}>
                           {statusLabel(l.status)}
                         </span>
+                        {overdue && (
+                          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--crm-blue)", background: "color-mix(in srgb, var(--crm-blue) 12%, transparent)", borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap" }}>
+                            {overdue}
+                          </span>
+                        )}
                       </div>
                       {/* Line 2: address */}
                       <div style={{ fontSize: 12, color: "var(--crm-text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
                         {l.address}{l.city ? `, ${l.city}` : ""}
                       </div>
-                      {/* Line 3: units · campaign · calls */}
+                      {/* Line 3: units · campaign · call count · last contact */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--crm-text3)", flexWrap: "wrap" }}>
                         {l.num_units != null && <span className="crm-chip crm-chip-units">{l.num_units} log.</span>}
                         {l.campaign_name && <span>{l.campaign_name}</span>}
                         {callCount > 0 && <span>· {callCount} appel{callCount !== 1 ? "s" : ""}</span>}
-                        {l.last_contacted_at && <span>· {timeAgo(l.last_contacted_at)}</span>}
+                        {l.last_contacted_at && <span>· il y a {timeAgo(l.last_contacted_at)}</span>}
                       </div>
                     </div>
 
@@ -201,7 +217,7 @@ export default async function CallQueuePage() {
 
       {leads.length > 0 && (
         <div style={{ marginTop: 20, textAlign: "center", fontSize: 11, color: "var(--crm-text3)" }}>
-          Triés par priorité · plus ancien contact en premier
+          Priorité · rappels en retard en premier · plus ancien contact en dernier
         </div>
       )}
     </main>

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp web/components/leads-table.tsx /tmp/leads-table-with-lint-fixes.tsx)",
+      "Read(//tmp/**)",
+      "Bash(cp web/lib/enrichment/openclaw-validate.ts /tmp/openclaw-validate-with-lint-fix.ts)",
+      "Read(//private/tmp/**)",
+      "Bash(git reset *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git ls-tree *)",
+      "Bash(git add *)"
+    ]
+  }
+}
