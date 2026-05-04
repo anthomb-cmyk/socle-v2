@@ -46,6 +46,10 @@ export default function ImportPage() {
   const [newLeadIds, setNewLeadIds] = useState<string[]>([]);
   const [campaignIdForResult, setCampaignIdForResult] = useState<string | null>(null);
 
+  // Post-import enrichment state
+  const [enrichBusy, setEnrichBusy] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/users").then(r => r.json()).then(j => {
       if (j.ok) setUsers(j.data.filter((u: User) => u.role === "caller" || u.role === "cold_caller"));
@@ -86,6 +90,23 @@ export default function ImportPage() {
       if (leadsJson.ok) {
         setNewLeadIds(leadsJson.data.leads.map((l: { lead_id: string }) => l.lead_id));
       }
+    }
+  }
+
+  async function quickEnrich() {
+    if (newLeadIds.length === 0) return;
+    setEnrichBusy(true); setEnrichMsg(null);
+    try {
+      await fetch("/api/enrichment-jobs/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadIds: newLeadIds, jobType: "find_phone", force: false }),
+      });
+      router.push("/leads" as never);
+    } catch {
+      setEnrichMsg("Erreur lors du lancement de l'enrichissement.");
+    } finally {
+      setEnrichBusy(false);
     }
   }
 
@@ -293,6 +314,24 @@ export default function ImportPage() {
               </details>
             )}
           </div>
+
+          {/* Enrichir maintenant banner */}
+          {newLeadIds.length > 0 && (
+            <div className="crm-card" style={{ padding: "16px 24px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderColor: "var(--crm-gold-border)" }}>
+              <div style={{ fontSize: 13, color: "var(--crm-text2)", flex: 1 }}>
+                <strong>Import réussi · {result.leads_created} lead{result.leads_created !== 1 ? "s" : ""} créés</strong>
+              </div>
+              <button
+                onClick={quickEnrich}
+                disabled={enrichBusy}
+                className="crm-btn crm-btn-dark"
+                style={{ opacity: enrichBusy ? 0.6 : 1 }}
+              >
+                {enrichBusy ? "Lancement…" : `Enrichir maintenant les ${newLeadIds.length} leads`}
+              </button>
+              {enrichMsg && <span style={{ fontSize: 12, color: "var(--crm-red)" }}>{enrichMsg}</span>}
+            </div>
+          )}
 
           {/* Quick assign panel */}
           {newLeadIds.length > 0 && !assignResult && (

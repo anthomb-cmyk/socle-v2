@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Lead = {
@@ -71,7 +72,27 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
+// ── Batch progress types ─────────────────────────────────────────────────────
+
+type BatchStatus = {
+  total: number;
+  by_status: { pending: number; processing: number; completed: number; failed: number; cancelled: number };
+  candidates_total: number;
+  auto_attached_count: number;
+  needs_review_count: number;
+  leads_with_phone: number;
+  elapsed_seconds: number | null;
+};
+
+type BatchProgress = {
+  leadIds: string[];
+  status: BatchStatus | null;
+  done: boolean;
+  dismissed: boolean;
+};
+
 export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
+  const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [cities, setCities] = useState<string[]>([]);
@@ -96,6 +117,10 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Batch enrichment progress panel
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const buildParams = useCallback((currentOffset = 0) => {
     const params = new URLSearchParams();
@@ -142,6 +167,45 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
     if (!canAssign) return;
     fetch("/api/users").then(r => r.json()).then(j => j.ok && setUsers(j.data));
   }, [canAssign]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
+
+  function startBatchProgress(leadIds: string[]) {
+    setBatchProgress({ leadIds, status: null, done: false, dismissed: false });
+
+    // Poll every 2 seconds
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/enrichment/batch-status?leadIds=${leadIds.join(",")}`);
+        const j = await r.json();
+        if (!j.ok) return;
+        const s: BatchStatus = j.data;
+        const inProgress = s.by_status.pending + s.by_status.processing;
+        const done = inProgress === 0;
+        setBatchProgress(prev => prev ? { ...prev, status: s, done } : null);
+        if (done) {
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          router.refresh();
+        }
+      } catch {
+        // swallow network errors during polling
+      }
+    };
+
+    poll();
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    pollTimerRef.current = setInterval(poll, 2000);
+  }
+
+  function stopBatchProgress() {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    setBatchProgress(null);
+  }
 
   function toggle(id: string) {
     setSelected(prev => { const n = new Set(prev); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
@@ -301,7 +365,13 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
             {busy ? "En cours…" : "Appliquer"}
           </button>
           <span style={{ borderLeft: "1px solid var(--crm-gold-border)", height: 20 }} />
-          <BatchEnrichButton leadIds={[...selected]} onDone={() => { setSelected(new Set()); refresh(); }} />
+          <BatchEnrichButton
+            leadIds={[...selected]}
+            onDone={(enrichedIds) => {
+              setSelected(new Set());
+              startBatchProgress(enrichedIds);
+            }}
+          />
           <button onClick={() => setSelected(new Set())} style={{ fontSize: 12, color: "var(--crm-text2)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Effacer</button>
         </div>
       )}
@@ -310,6 +380,15 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
         <div style={{ background: "var(--crm-green-light)", border: "1px solid #A7F3D0", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--crm-green)", fontWeight: 600 }}>{successMsg}</div>
       )}
       {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
+
+      {/* ─── Batch enrichment progress panel ─── */}
+      {batchProgress && !batchProgress.dismissed && (
+        <BatchProgressPanel
+          progress={batchProgress}
+          onCancel={stopBatchProgress}
+          onDismiss={() => setBatchProgress(null)}
+        />
+      )}
 
       {/* ─── Lead rows ─── */}
       <div className="crm-card" style={{ overflow: "hidden", padding: 0 }}>
@@ -499,27 +578,28 @@ const filterSelectStyle: React.CSSProperties = {
 
 const ENRICH_TYPES = ["find_phone", "verify_phone", "find_email", "find_website", "owner_identity", "property_context"] as const;
 
-function BatchEnrichButton({ leadIds, onDone }: { leadIds: string[]; onDone: () => void }) {
+function BatchEnrichButton({ leadIds, onDone }: { leadIds: string[]; onDone: (ids: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<typeof ENRICH_TYPES[number]>("find_phone");
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   async function fire() {
-    setBusy(true); setMsg(null);
-    const r = await fetch("/api/enrichment-jobs/batch", {
+    setBusy(true); setErrMsg(null);
+    setOpen(false);
+    // Fire without awaiting — progress panel shows immediately
+    fetch("/api/enrichment-jobs/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leadIds, jobType: type, force }),
+    }).then(r => r.json()).then(j => {
+      if (!j.ok) setErrMsg(`✗ ${j.error}`);
+    }).catch(() => {
+      // swallow — progress panel handles status
     });
-    const j = await r.json();
     setBusy(false);
-    if (!j.ok) { setMsg(`✗ ${j.error}`); return; }
-    const c = j.data.counts;
-    setMsg(`✓ ${c.created} créés · ${c.skipped} ignorés · ${c.failed} échecs`);
-    setOpen(false);
-    onDone();
+    onDone(leadIds);
   }
 
   return (
@@ -528,7 +608,7 @@ function BatchEnrichButton({ leadIds, onDone }: { leadIds: string[]; onDone: () 
         style={{ background: "var(--crm-blue)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
         Enrichir ▾
       </button>
-      {msg && <span style={{ fontSize: 11, color: "var(--crm-text2)" }}>{msg}</span>}
+      {errMsg && <span style={{ fontSize: 11, color: "var(--crm-red)" }}>{errMsg}</span>}
       {open && (
         <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#fff", border: "1px solid var(--crm-card-border)", borderRadius: 12, boxShadow: "0 8px 28px rgba(0,0,0,.10)", padding: 12, zIndex: 20, minWidth: 220 }}>
           <label style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 4 }}>Type de job</label>
@@ -550,6 +630,114 @@ function BatchEnrichButton({ leadIds, onDone }: { leadIds: string[]; onDone: () 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Batch progress panel ─────────────────────────────────────────────────────
+
+function fmtTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function BatchProgressPanel({
+  progress,
+  onCancel,
+  onDismiss,
+}: {
+  progress: BatchProgress;
+  onCancel: () => void;
+  onDismiss: () => void;
+}) {
+  const { status, done, leadIds } = progress;
+  const total = status?.total ?? leadIds.length;
+  const completed = status?.by_status.completed ?? 0;
+  const failed = status?.by_status.failed ?? 0;
+  const finishedCount = completed + failed;
+  const pct = total > 0 ? Math.round((finishedCount / total) * 100) : 0;
+  const elapsed = status?.elapsed_seconds ?? null;
+
+  if (done && status) {
+    // Summary view
+    return (
+      <div style={{
+        background: "var(--crm-green-light)",
+        border: "1px solid #A7F3D0",
+        borderRadius: 12,
+        padding: "14px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18, color: "var(--crm-green)" }}>✓</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-green)" }}>Enrichissement terminé</span>
+          </div>
+          <button onClick={onDismiss} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--crm-text3)", lineHeight: 1 }}>×</button>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--crm-text2)", margin: 0 }}>
+          <strong>{total}</strong> leads enrichis · <strong>{status.leads_with_phone}</strong> téléphones attachés · <strong>{status.needs_review_count}</strong> à réviser · <strong>{failed}</strong> échecs
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {status.needs_review_count > 0 && (
+            <Link href="/phone-review" style={{ background: "var(--crm-blue)", color: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+              Voir les téléphones à réviser →
+            </Link>
+          )}
+          <Link href="/leads?status=ready_to_call" style={{ background: "var(--crm-green)", color: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+            Voir les leads prêts à appeler →
+          </Link>
+          <button onClick={onDismiss} style={{ border: "1px solid var(--crm-card-border)", background: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer", color: "var(--crm-text2)" }}>
+            Fermer
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // In-progress view
+  return (
+    <div style={{
+      background: "var(--crm-card)",
+      border: "1px solid var(--crm-card-border)",
+      borderRadius: 12,
+      padding: "14px 18px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 16, animation: "spin 1.2s linear infinite", display: "inline-block" }}>⟳</span>
+          <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)" }}>Enrichissement en cours</span>
+          {elapsed !== null && (
+            <span style={{ fontSize: 12, color: "var(--crm-text3)", fontVariantNumeric: "tabular-nums" }}>{fmtTime(elapsed)}</span>
+          )}
+        </div>
+        <button onClick={onCancel} style={{ fontSize: 12, color: "var(--crm-text3)", background: "none", border: "1px solid var(--crm-card-border)", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}>
+          Annuler
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 6, background: "var(--crm-bg-alt)", borderRadius: 99, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: "var(--crm-blue)", borderRadius: 99, transition: "width 0.4s ease" }} />
+      </div>
+
+      <p style={{ fontSize: 12, color: "var(--crm-text2)", margin: 0 }}>
+        <strong>{finishedCount}</strong> / {total} enrichis
+        {status && (
+          <>
+            {" · "}<strong>{status.candidates_total}</strong> candidats
+            {" · "}<strong>{status.leads_with_phone}</strong> téléphones attachés
+            {failed > 0 && <> · <span style={{ color: "var(--crm-red)" }}><strong>{failed}</strong> échecs</span></>}
+          </>
+        )}
+      </p>
     </div>
   );
 }
