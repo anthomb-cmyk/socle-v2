@@ -1,8 +1,8 @@
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import CallWorkspace from "./CallWorkspace";
 import CallHistoryPanel from "./CallHistoryPanel";
+import CallLeadHeader from "./CallLeadHeader";
 
 export default async function CallLeadPage(
   { params }: { params: Promise<{ leadId: string }> }
@@ -42,17 +42,7 @@ export default async function CallLeadPage(
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <Link href="/calls/queue" className="text-sm text-zinc-500 hover:underline">← Back to queue</Link>
-
-      <header className="mt-3 mb-6">
-        <h1 className="text-2xl font-semibold">{lead.full_name ?? lead.company_name ?? "—"}</h1>
-        <p className="text-zinc-600">{lead.address}{lead.city ? `, ${lead.city}` : ""}</p>
-        <p className="text-sm text-zinc-500 mt-1">
-          {lead.num_units != null && <>{lead.num_units} units · </>}
-          {lead.contact_kind} · status: <span className="font-medium">{lead.status}</span>
-          {lead.campaign_name && <> · {lead.campaign_name}</>}
-        </p>
-      </header>
+      <CallLeadHeader lead={lead as Parameters<typeof CallLeadHeader>[0]["lead"]} />
 
       <CallWorkspace
         leadId={leadId}

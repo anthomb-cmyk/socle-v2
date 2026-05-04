@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useLocale } from "@/components/locale-provider";
 
 type HistoryRow = {
   id: string;
@@ -37,6 +38,7 @@ const INTENT_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 function OrganizeBlock({ callLogId }: { callLogId: string }) {
+  const { t } = useLocale();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OrganizedNotes | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -50,7 +52,7 @@ function OrganizeBlock({ callLogId }: { callLogId: string }) {
       if (!j.ok) { setErr(j.error); return; }
       setResult(j.data);
     } catch {
-      setErr("Erreur réseau");
+      setErr(t.history.networkError);
     } finally {
       setLoading(false);
     }
@@ -64,7 +66,7 @@ function OrganizeBlock({ callLogId }: { callLogId: string }) {
         borderRadius: 10, padding: "10px 12px", fontSize: 12,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>🤖 Analyse AI</span>
+          <span style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>{t.history.aiAnalysis}</span>
           {result.seller_name && (
             <span style={{ color: "#6B7280" }}>{result.seller_name}</span>
           )}
@@ -89,14 +91,14 @@ function OrganizeBlock({ callLogId }: { callLogId: string }) {
 
         {result.objections && result.objections.length > 0 && (
           <div style={{ marginBottom: 4 }}>
-            <span style={{ fontWeight: 600, color: "#6B7280" }}>Objections: </span>
+            <span style={{ fontWeight: 600, color: "#6B7280" }}>{t.history.objections} </span>
             <span style={{ color: "#374151" }}>{result.objections.join(" · ")}</span>
           </div>
         )}
 
         {result.next_steps && result.next_steps.length > 0 && (
           <div>
-            <span style={{ fontWeight: 600, color: "#6B7280" }}>Prochaines étapes:</span>
+            <span style={{ fontWeight: 600, color: "#6B7280" }}>{t.history.nextSteps}</span>
             <ul style={{ margin: "2px 0 0 0", paddingLeft: 16 }}>
               {result.next_steps.map((s, i) => (
                 <li key={i} style={{ color: "#374151", marginBottom: 2 }}>{s}</li>
@@ -120,7 +122,7 @@ function OrganizeBlock({ callLogId }: { callLogId: string }) {
           opacity: loading ? 0.6 : 1,
         }}
       >
-        {loading ? "⏳ Analyse en cours…" : "🤖 Organiser avec l'AI"}
+        {loading ? t.history.aiAnalyzing : t.history.aiAnalyzeBtn}
       </button>
       {err && <span style={{ fontSize: 11, color: "#EF4444", marginLeft: 6 }}>{err}</span>}
     </div>
@@ -129,6 +131,7 @@ function OrganizeBlock({ callLogId }: { callLogId: string }) {
 
 // ── TranscriptBlock ───────────────────────────────────────────────────────────
 function TranscriptBlock({ row }: { row: HistoryRow }) {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(row.transcript_status ?? "none");
@@ -165,7 +168,7 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
         }
       }, 3000);
     } catch {
-      setErr("Erreur réseau");
+      setErr(t.history.networkError);
       setLoading(false);
     }
   }
@@ -179,7 +182,7 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
               onClick={() => setOpen(o => !o)}
               className="text-xs text-indigo-600 hover:underline"
             >
-              {open ? "▲ Masquer la transcription" : "▼ Voir la transcription"}
+              {open ? t.history.hideTranscript : t.history.showTranscript}
             </button>
             <OrganizeBlock callLogId={row.id} />
           </div>
@@ -190,11 +193,11 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
           )}
         </div>
       ) : status === "processing" ? (
-        <span className="text-xs text-zinc-400 animate-pulse">⏳ Transcription en cours…</span>
+        <span className="text-xs text-zinc-400 animate-pulse">{t.history.transcribing}</span>
       ) : status === "failed" ? (
         <span className="text-xs text-red-500">
-          Transcription échouée ·{" "}
-          <button onClick={requestTranscript} className="underline">réessayer</button>
+          {t.history.transcriptFailed} ·{" "}
+          <button onClick={requestTranscript} className="underline">{t.history.retry}</button>
         </span>
       ) : (
         hasRecording && (
@@ -203,7 +206,7 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
             disabled={loading}
             className="text-xs text-indigo-600 hover:underline disabled:opacity-50"
           >
-            {loading ? "Demande envoyée…" : "📝 Obtenir la transcription"}
+            {loading ? t.history.requesting : t.history.getTranscript}
           </button>
         )
       )}
@@ -214,18 +217,24 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
 
 // ── CallHistoryPanel ──────────────────────────────────────────────────────────
 export default function CallHistoryPanel({ history }: { history: HistoryRow[] }) {
+  const { t } = useLocale();
+
   return (
     <section className="mt-8">
       <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">
-        Historique des appels ({history.length})
+        {t.history.title(history.length)}
       </h2>
       <ul className="space-y-3">
         {history.map((h) => {
           const dur = formatDuration(h.duration_sec);
+          // Translate outcome if available; fallback to raw value
+          const outcomeLabel = h.outcome
+            ? (t.outcome[h.outcome] ?? h.outcome)
+            : "—";
           return (
             <li key={h.id} className="text-sm border-l-2 border-zinc-200 pl-3">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-medium text-zinc-800">{h.outcome ?? "—"}</span>
+                <span className="font-medium text-zinc-800">{outcomeLabel}</span>
                 {dur && <span className="text-xs text-zinc-500">{dur}</span>}
                 {h.recording_url && <span className="text-xs text-zinc-400">🎙</span>}
                 <span className="text-xs text-zinc-400">

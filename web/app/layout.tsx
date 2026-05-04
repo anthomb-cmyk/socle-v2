@@ -2,6 +2,7 @@ import "./globals.css";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import AppSidebar from "@/components/app-sidebar";
 import ChatWidget from "@/components/chat-widget";
+import { LocaleProvider } from "@/components/locale-provider";
 
 export const metadata = {
   title: "Socle CRM",
@@ -78,24 +79,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="fr">
       <body style={{ background: "var(--crm-bg)", color: "var(--crm-text)", margin: 0, padding: 0 }}>
-        {userInfo ? (
-          <div className="crm-shell">
-            <AppSidebar
-              email={userInfo.email}
-              role={userInfo.role}
-              recentLeads={recentLeads}
-              recentDeals={recentDeals}
-            />
-            <div className="crm-main-content">
+        <LocaleProvider>
+          {userInfo ? (
+            <div className="crm-shell">
+              <AppSidebar
+                email={userInfo.email}
+                role={userInfo.role}
+                recentLeads={recentLeads}
+                recentDeals={recentDeals}
+              />
+              <div className="crm-main-content">
+                {children}
+              </div>
+              <ChatWidget />
+            </div>
+          ) : (
+            <div style={{ minHeight: "100vh", background: "var(--crm-bg)" }}>
               {children}
             </div>
-            <ChatWidget />
-          </div>
-        ) : (
-          <div style={{ minHeight: "100vh", background: "var(--crm-bg)" }}>
-            {children}
-          </div>
-        )}
+          )}
+        </LocaleProvider>
       </body>
     </html>
   );

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import SignOutButton from "./sign-out-button";
+import { LocaleToggle, useLocale } from "./locale-provider";
 
 type NavItem = {
   href: string;
@@ -132,6 +133,7 @@ export default function AppSidebar({
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = role === "admin";
   const counts = useSidebarCounts();
+  const { t } = useLocale();
 
   // Build initials from "firstname.lastname@..." pattern
   const handle = email.split("@")[0];
@@ -216,7 +218,13 @@ export default function AppSidebar({
             style={{ display: "flex", alignItems: "center", gap: 8 }}
           >
             <NavIcon name={item.icon} />
-            <span style={{ flex: 1 }}>{item.label}</span>
+            <span style={{ flex: 1 }}>
+          {item.href === "/calls/queue"
+            ? t.nav.queue
+            : item.href === "/phone-review"
+            ? t.nav.phoneReview
+            : item.label}
+        </span>
             {getBadgeForItem(item)}
           </Link>
         ))}
@@ -310,6 +318,7 @@ export default function AppSidebar({
           <div className="crm-sidebar-user-name">{handle}</div>
           <div className="crm-sidebar-user-role">{role}</div>
         </div>
+        <LocaleToggle />
         <SignOutButton />
       </div>
     </div>

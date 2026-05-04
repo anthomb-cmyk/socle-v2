@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import PhoneReviewClient, { type PhoneCandidate } from "./PhoneReviewClient";
+import PhoneReviewHeader from "./PhoneReviewHeader";
+import PhoneReviewRules from "./PhoneReviewRules";
 import NextStepBanner from "@/components/next-step-banner";
 
 export const revalidate = 0;
@@ -89,27 +90,9 @@ export default async function PhoneReviewPage({
         />
       )}
 
-      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 4 }}>
-        <div>
-          <h1 className="crm-page-title">Revue téléphonique</h1>
-          <p className="crm-page-sub">
-            {candidates.length === 0
-              ? "Aucun candidat en attente de revue."
-              : `${candidates.length} candidat${candidates.length === 1 ? "" : "s"} à approuver avant d'être appelable${candidates.length === 1 ? "" : "s"}.`}
-          </p>
-        </div>
-        <nav style={{ display: "flex", gap: 8 }}>
-          <Link href="/leads" className="crm-btn">Leads</Link>
-          <Link href="/review" className="crm-btn">Revue</Link>
-        </nav>
-      </header>
+      <PhoneReviewHeader candidateCount={candidates.length} />
 
-      {candidates.length > 0 && (
-        <div style={{ fontSize: 11, color: "var(--crm-text3)", background: "var(--crm-bg-alt)", border: "1px solid var(--crm-card-border)", borderRadius: 10, padding: "8px 14px" }}>
-          <strong style={{ color: "var(--crm-text2)" }}>Règles :</strong> Approuvez un numéro pour rendre le lead appelable. Rejetez pour le supprimer.
-          Réessayer relance le pipeline. Garder non-résolu masque sans réessayer.
-        </div>
-      )}
+      {candidates.length > 0 && <PhoneReviewRules />}
 
       <PhoneReviewClient initialCandidates={candidates} />
     </main>

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/components/locale-provider";
 
 type Campaign = { name: string } | null;
 type Property = { address: string; city: string | null; num_units: number | null } | null;
@@ -42,18 +43,6 @@ export type PhoneCandidate = {
 // ── Confidence filter buckets ─────────────────────────────────────────────────
 type ConfidenceBucket = "all" | "ge80" | "70-79" | "60-69" | "50-59" | "lt50";
 
-function bucketLabel(b: ConfidenceBucket, count: number): string {
-  const labels: Record<ConfidenceBucket, string> = {
-    all:    `Tous (${count})`,
-    ge80:   `≥ 80 (${count})`,
-    "70-79": `70-79 (${count})`,
-    "60-69": `60-69 (${count})`,
-    "50-59": `50-59 (${count})`,
-    lt50:   `< 50 (${count})`,
-  };
-  return labels[b];
-}
-
 function matchBucket(conf: number, b: ConfidenceBucket): boolean {
   if (b === "all") return true;
   if (b === "ge80") return conf >= 80;
@@ -67,7 +56,6 @@ function matchBucket(conf: number, b: ConfidenceBucket): boolean {
 // ── Badge components ──────────────────────────────────────────────────────────
 
 function ConfidenceBadge({ score }: { score: number }) {
-  // Three-band coloring: ≥80 green, 50-79 amber, <50 red
   const color =
     score >= 80 ? "bg-emerald-100 text-emerald-800" :
     score >= 50 ? "bg-amber-100 text-amber-800" :
@@ -79,18 +67,15 @@ function ConfidenceBadge({ score }: { score: number }) {
   );
 }
 
-// ── Evidence chip parsing and rendering ───────────────────────────────────────
+// ── Evidence chips ────────────────────────────────────────────────────────────
 
-// High-trust evidence types → green chips
 const HIGH_TRUST = new Set([
   "mailing_address", "contact_name", "company_name", "related_entity",
 ]);
 
-// Quebec business prefixes that suggest a tenant rather than the owner
 const TENANT_PREFIX_RE =
   /CLINIQUE|CLINIC|PHARMACIE|RESTAURANT|GARAGE|ATELIER|BOUTIQUE|ÉPICERIE|EPICERIE|DÉPANNEUR|DEPANNEUR|COIFFURE|SALON|DENTAIRE|DENTAL|VÉTÉRINAIRE|VETERINAIRE|OPTIQUE|NOTAIRE|COMPTABLE|AVOCAT|HÔTEL|HOTEL|CAFÉ|CAFE|BAR|BANQUE/i;
 
-// Friendly French labels for each evidence token
 function evidenceLabel(token: string): string {
   const t = token.trim();
   if (t === "mailing_address") return "Adresse mail. ✓";
@@ -101,95 +86,47 @@ function evidenceLabel(token: string): string {
   if (t === "related_entity")  return "Entité reliée ✓";
   if (t === "fetched_page")    return "Page lue";
   if (t.startsWith("public_directory:")) {
-    // Truncate long domains to keep chips readable
     let domain = t.slice("public_directory:".length);
     if (domain.length > 22) domain = domain.slice(0, 20) + "…";
     return `Annuaire (${domain})`;
   }
-  // Fallback: return raw token
   return t;
 }
 
 type ChipColor = "green" | "amber" | "warning";
 
 function chipStyle(color: ChipColor): React.CSSProperties {
-  if (color === "green") {
-    return {
-      background: "#d1fae5",
-      color: "#065f46",
-      border: "1px solid #6ee7b7",
-    };
-  }
-  if (color === "amber") {
-    return {
-      background: "#fef9c3",
-      color: "#78350f",
-      border: "1px solid #fde68a",
-    };
-  }
-  // warning (tenant possible)
-  return {
-    background: "#fff3cd",
-    color: "#92400e",
-    border: "1px solid #fcd34d",
-  };
+  if (color === "green") return { background: "#d1fae5", color: "#065f46", border: "1px solid #6ee7b7" };
+  if (color === "amber") return { background: "#fef9c3", color: "#78350f", border: "1px solid #fde68a" };
+  return { background: "#fff3cd", color: "#92400e", border: "1px solid #fcd34d" };
 }
 
 const CHIP_BASE: React.CSSProperties = {
-  display: "inline-block",
-  fontSize: 11,
-  fontWeight: 500,
-  padding: "2px 6px",
-  borderRadius: 9999,
-  whiteSpace: "nowrap",
+  display: "inline-block", fontSize: 11, fontWeight: 500,
+  padding: "2px 6px", borderRadius: 9999, whiteSpace: "nowrap",
 };
 
 function EvidenceChips({
-  matchedOn,
-  snippet,
-  companyName,
-}: {
-  matchedOn: string | null;
-  snippet: string | null;
-  companyName: string | null | undefined;
-}) {
+  matchedOn, snippet, companyName,
+}: { matchedOn: string | null; snippet: string | null; companyName: string | null | undefined }) {
   if (!matchedOn) return null;
-
-  // Parse semicolon-delimited tokens; skip empty strings
-  const tokens = matchedOn
-    .split(";")
-    .map((t) => t.trim())
-    .filter(Boolean);
-
+  const tokens = matchedOn.split(";").map((t) => t.trim()).filter(Boolean);
   if (tokens.length === 0) return null;
-
-  // Determine chip color per token
   const chips: Array<{ label: string; color: ChipColor }> = tokens.map((t) => {
     const base = t.startsWith("public_directory:") ? "public_directory" : t;
-    const color: ChipColor = HIGH_TRUST.has(base) ? "green" : "amber";
-    return { label: evidenceLabel(t), color };
+    return { label: evidenceLabel(t), color: HIGH_TRUST.has(base) ? "green" : "amber" };
   });
-
-  // Tenant heuristic: check first 80 chars of snippet for a Quebec business prefix
-  // but only when that prefix is NOT already found in the owner's company_name
   const snippetHead = (snippet ?? "").slice(0, 80);
   const company = (companyName ?? "").toLowerCase();
   const tenantMatch = TENANT_PREFIX_RE.exec(snippetHead);
-  const tenantChip =
-    tenantMatch !== null &&
-    !company.includes(tenantMatch[0].toLowerCase());
-
+  const tenantChip = tenantMatch !== null && !company.includes(tenantMatch[0].toLowerCase());
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
       {chips.map((chip, i) => (
-        <span key={i} style={{ ...CHIP_BASE, ...chipStyle(chip.color) }}>
-          {chip.label}
-        </span>
+        <span key={i} style={{ ...CHIP_BASE, ...chipStyle(chip.color) }}>{chip.label}</span>
       ))}
       {tenantChip && (
-        <span style={{ ...CHIP_BASE, ...chipStyle("warning") }}>
-          Tenant possible — vérifier
-        </span>
+        <span style={{ ...CHIP_BASE, ...chipStyle("warning") }}>Tenant possible — vérifier</span>
       )}
     </div>
   );
@@ -270,12 +207,7 @@ function formatPhone(raw: string | null): string {
 const SNIPPET_COLLAPSE_THRESHOLD = 200;
 
 function CandidateCard({
-  cand,
-  selected,
-  snippetExpanded,
-  onToggleSelect,
-  onToggleSnippet,
-  onAction,
+  cand, selected, snippetExpanded, onToggleSelect, onToggleSnippet, onAction,
 }: {
   cand: PhoneCandidate;
   selected: boolean;
@@ -284,6 +216,7 @@ function CandidateCard({
   onToggleSnippet: (id: string) => void;
   onAction: (id: string, action: "approve" | "reject" | "retry" | "keep_unresolved", note?: string) => void;
 }) {
+  const { t } = useLocale();
   const [isPending, startTransition] = useTransition();
   const [note, setNote] = useState("");
 
@@ -295,15 +228,12 @@ function CandidateCard({
 
   const snippet = cand.snippet ?? "";
   const isLong = snippet.length > SNIPPET_COLLAPSE_THRESHOLD;
-  const visibleSnippet =
-    isLong && !snippetExpanded
-      ? snippet.slice(0, SNIPPET_COLLAPSE_THRESHOLD)
-      : snippet;
+  const visibleSnippet = isLong && !snippetExpanded
+    ? snippet.slice(0, SNIPPET_COLLAPSE_THRESHOLD)
+    : snippet;
 
   function act(action: "approve" | "reject" | "retry" | "keep_unresolved") {
-    startTransition(() => {
-      onAction(cand.id, action, note || undefined);
-    });
+    startTransition(() => { onAction(cand.id, action, note || undefined); });
   }
 
   return (
@@ -314,9 +244,7 @@ function CandidateCard({
       {/* Checkbox + Header */}
       <div className="flex items-start gap-3">
         <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(cand.id)}
+          type="checkbox" checked={selected} onChange={() => onToggleSelect(cand.id)}
           className="mt-1 h-4 w-4 rounded border-zinc-300 text-emerald-600 cursor-pointer"
           aria-label={`Sélectionner ${name}`}
         />
@@ -358,7 +286,7 @@ function CandidateCard({
         )}
       </div>
 
-      {/* Evidence chips (between phone row and snippet) */}
+      {/* Evidence chips */}
       <EvidenceChips
         matchedOn={cand.matched_on}
         snippet={cand.snippet}
@@ -380,7 +308,7 @@ function CandidateCard({
         </div>
       )}
 
-      {/* Snippet — auto-collapsed when > 200 chars */}
+      {/* Snippet */}
       {snippet && (
         <div className="text-xs text-zinc-500 bg-zinc-50 rounded-lg p-2 border border-zinc-100 whitespace-pre-wrap">
           {visibleSnippet}
@@ -397,12 +325,8 @@ function CandidateCard({
       )}
       {cand.source_url && (
         <div className="text-xs">
-          <a
-            href={cand.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline truncate block"
-          >
+          <a href={cand.source_url} target="_blank" rel="noopener noreferrer"
+            className="text-blue-600 hover:underline truncate block">
             {cand.source_url}
           </a>
         </div>
@@ -411,10 +335,12 @@ function CandidateCard({
       {/* OpenClaw analysis */}
       {(cand.openclaw_reasoning || cand.openclaw_evidence) && (
         <details className="text-xs text-zinc-500">
-          <summary className="cursor-pointer font-medium text-zinc-700">OpenClaw analysis</summary>
+          <summary className="cursor-pointer font-medium text-zinc-700">
+            {t.review.openClawAnalysis}
+          </summary>
           <div className="mt-2 space-y-1">
             {cand.openclaw_confidence != null && (
-              <div>Confidence: <strong>{cand.openclaw_confidence}%</strong></div>
+              <div>{t.review.confidence} <strong>{cand.openclaw_confidence}%</strong></div>
             )}
             {cand.openclaw_evidence && <div>{cand.openclaw_evidence}</div>}
             {cand.openclaw_reasoning && (
@@ -434,7 +360,7 @@ function CandidateCard({
       {/* Note */}
       <input
         type="text"
-        placeholder="Optional note (stored with your decision)"
+        placeholder={t.review.notePlaceholder}
         value={note}
         onChange={(e) => setNote(e.target.value)}
         className="w-full text-sm border border-zinc-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-zinc-300"
@@ -448,28 +374,28 @@ function CandidateCard({
           disabled={isPending}
           className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl px-4 py-2 disabled:opacity-50 transition"
         >
-          ✓ Approve — make callable
+          {t.review.approve}
         </button>
         <button
           onClick={() => act("reject")}
           disabled={isPending}
           className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium rounded-xl px-4 py-2 disabled:opacity-50 transition border border-red-200"
         >
-          ✗ Reject
+          {t.review.reject}
         </button>
         <button
           onClick={() => act("retry")}
           disabled={isPending}
           className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-sm rounded-xl px-3 py-2 disabled:opacity-50 transition"
         >
-          ↺ Retry
+          {t.review.retryPipeline}
         </button>
         <button
           onClick={() => act("keep_unresolved")}
           disabled={isPending}
           className="bg-zinc-50 hover:bg-zinc-100 text-zinc-500 text-sm rounded-xl px-3 py-2 disabled:opacity-50 transition border border-zinc-200"
         >
-          Keep unresolved
+          {t.review.keepUnresolved}
         </button>
       </div>
     </div>
@@ -485,40 +411,30 @@ export default function PhoneReviewClient({
 }: {
   initialCandidates: PhoneCandidate[];
 }) {
+  const { t } = useLocale();
   const router = useRouter();
   const [candidates, setCandidates] = useState(initialCandidates);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeBucket, setActiveBucket] = useState<ConfidenceBucket>("all");
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
-  // Per-card expanded snippet state (Set of candidate ids that are expanded)
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
 
   const toggleSnippet = useCallback((id: string) => {
     setExpandedSnippets((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }, []);
 
-  // Filtered list based on active bucket
   const filtered = useMemo(
     () => candidates.filter((c) => matchBucket(c.initial_confidence, activeBucket)),
     [candidates, activeBucket],
   );
 
-  // Count per bucket for pill labels
   const bucketCounts = useMemo<Record<ConfidenceBucket, number>>(() => {
-    const counts: Record<ConfidenceBucket, number> = {
-      all: candidates.length,
-      ge80: 0,
-      "70-79": 0,
-      "60-69": 0,
-      "50-59": 0,
-      lt50: 0,
-    };
+    const counts: Record<ConfidenceBucket, number> = { all: candidates.length, ge80: 0, "70-79": 0, "60-69": 0, "50-59": 0, lt50: 0 };
     for (const c of candidates) {
       if (c.initial_confidence >= 80) counts.ge80++;
       else if (c.initial_confidence >= 70) counts["70-79"]++;
@@ -529,30 +445,25 @@ export default function PhoneReviewClient({
     return counts;
   }, [candidates]);
 
-  const allFilteredSelected =
-    filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+  function bucketLabel(b: ConfidenceBucket, count: number): string {
+    if (b === "all") return t.review.bucketAll(count);
+    return `${b === "ge80" ? "≥ 80" : b === "lt50" ? "< 50" : b} (${count})`;
+  }
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
 
   function toggleSelectAll() {
     if (allFilteredSelected) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        filtered.forEach((c) => next.delete(c.id));
-        return next;
-      });
+      setSelectedIds((prev) => { const next = new Set(prev); filtered.forEach((c) => next.delete(c.id)); return next; });
     } else {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        filtered.forEach((c) => next.add(c.id));
-        return next;
-      });
+      setSelectedIds((prev) => { const next = new Set(prev); filtered.forEach((c) => next.add(c.id)); return next; });
     }
   }
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }
@@ -568,14 +479,7 @@ export default function PhoneReviewClient({
       body: JSON.stringify({ action, note }),
     });
     const data = await res.json() as { ok: boolean; error?: string };
-
-    if (!data.ok) {
-      setErrors((prev) => ({ ...prev, [id]: data.error ?? "Unknown error" }));
-      return;
-    }
-
-    // Remove from queue on success (approve, reject, keep_unresolved)
-    // Keep on retry so user can see it's been re-queued
+    if (!data.ok) { setErrors((prev) => ({ ...prev, [id]: data.error ?? "Unknown error" })); return; }
     if (action !== "retry") {
       setCandidates((prev) => prev.filter((c) => c.id !== id));
       setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
@@ -584,14 +488,9 @@ export default function PhoneReviewClient({
   }
 
   async function runBulkAction(action: "approve" | "reject" | "keep_unresolved") {
-    const ids = Array.from(selectedIds).filter((id) =>
-      filtered.some((c) => c.id === id),
-    );
+    const ids = Array.from(selectedIds).filter((id) => filtered.some((c) => c.id === id));
     if (ids.length === 0) return;
-
     setBulkProgress({ done: 0, total: ids.length });
-
-    // Process in batches of BULK_CONCURRENCY
     let done = 0;
     for (let i = 0; i < ids.length; i += BULK_CONCURRENCY) {
       const batch = ids.slice(i, i + BULK_CONCURRENCY);
@@ -605,7 +504,6 @@ export default function PhoneReviewClient({
             });
             const data = await res.json() as { ok: boolean; error?: string };
             if (data.ok) {
-              // Bulk actions are never "retry", so always remove from list
               setCandidates((prev) => prev.filter((c) => c.id !== id));
               setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
             } else {
@@ -619,10 +517,7 @@ export default function PhoneReviewClient({
         }),
       );
     }
-
     setBulkProgress(null);
-
-    // After bulk approve, redirect with _just_approved flag
     if (action === "approve") {
       router.push("/phone-review?_just_approved=1");
       router.refresh();
@@ -637,8 +532,8 @@ export default function PhoneReviewClient({
     return (
       <div className="bg-white border border-zinc-200 rounded-2xl p-10 text-center text-zinc-500">
         <div className="text-2xl mb-2">✓</div>
-        <div className="font-medium">Review queue is empty</div>
-        <div className="text-sm mt-1">All phone candidates have been reviewed.</div>
+        <div className="font-medium">{t.review.empty}</div>
+        <div className="text-sm mt-1">{t.review.emptyDetail}</div>
       </div>
     );
   }
@@ -654,13 +549,8 @@ export default function PhoneReviewClient({
             key={b}
             onClick={() => setActiveBucket(b)}
             style={{
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "4px 12px",
-              borderRadius: 999,
-              border: "1px solid",
-              cursor: "pointer",
-              transition: "all 0.15s",
+              fontSize: 12, fontWeight: 600, padding: "4px 12px",
+              borderRadius: 999, border: "1px solid", cursor: "pointer", transition: "all 0.15s",
               borderColor: activeBucket === b ? "#059669" : "#e5e7eb",
               background: activeBucket === b ? "#059669" : "#f9fafb",
               color: activeBucket === b ? "#fff" : "#374151",
@@ -671,46 +561,34 @@ export default function PhoneReviewClient({
         ))}
       </div>
 
-      {/* ── Master checkbox + select all label ── */}
+      {/* ── Master checkbox ── */}
       {filtered.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px" }}>
           <input
-            type="checkbox"
-            checked={allFilteredSelected}
-            onChange={toggleSelectAll}
+            type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
             className="h-4 w-4 rounded border-zinc-300 text-emerald-600 cursor-pointer"
             aria-label="Tout sélectionner"
           />
           <span style={{ fontSize: 13, color: "#6b7280" }}>
             {allFilteredSelected
-              ? `Tout désélectionner (${filtered.length})`
-              : `Tout sélectionner (${filtered.length})`}
+              ? t.review.deselectAll(filtered.length)
+              : t.review.selectAll(filtered.length)}
           </span>
         </div>
       )}
 
       {/* ── Bulk action bar ── */}
       {selectedCount > 0 && (
-        <div
-          style={{
-            position: "sticky",
-            top: 12,
-            zIndex: 20,
-            background: "#1f2937",
-            color: "#f9fafb",
-            borderRadius: 12,
-            padding: "10px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-          }}
-        >
+        <div style={{
+          position: "sticky", top: 12, zIndex: 20,
+          background: "#1f2937", color: "#f9fafb", borderRadius: 12,
+          padding: "10px 16px", display: "flex", alignItems: "center",
+          gap: 12, flexWrap: "wrap", boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+        }}>
           <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 120 }}>
             {bulkProgress
-              ? `Approbation en cours… ${bulkProgress.done} / ${bulkProgress.total}`
-              : `${selectedCount} candidat${selectedCount !== 1 ? "e" : ""}${selectedCount !== 1 ? "s" : ""} sélectionné${selectedCount !== 1 ? "e" : ""}${selectedCount !== 1 ? "s" : ""}`}
+              ? t.review.approving(bulkProgress.done, bulkProgress.total)
+              : t.review.selected(selectedCount)}
           </span>
           <button
             onClick={() => runBulkAction("approve")}
@@ -721,7 +599,7 @@ export default function PhoneReviewClient({
               cursor: "pointer", opacity: bulkProgress ? 0.6 : 1,
             }}
           >
-            Approuver tous
+            {t.review.bulkApprove}
           </button>
           <button
             onClick={() => runBulkAction("reject")}
@@ -732,7 +610,7 @@ export default function PhoneReviewClient({
               cursor: "pointer", opacity: bulkProgress ? 0.6 : 1,
             }}
           >
-            Rejeter tous
+            {t.review.bulkReject}
           </button>
           <button
             onClick={() => runBulkAction("keep_unresolved")}
@@ -743,7 +621,7 @@ export default function PhoneReviewClient({
               cursor: "pointer", opacity: bulkProgress ? 0.6 : 1,
             }}
           >
-            Garder non-résolu
+            {t.review.bulkKeep}
           </button>
         </div>
       )}
@@ -767,7 +645,7 @@ export default function PhoneReviewClient({
 
       {filtered.length === 0 && candidates.length > 0 && (
         <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center text-zinc-400 text-sm">
-          Aucun candidat dans ce filtre de confiance.
+          {t.review.noneInFilter}
         </div>
       )}
     </div>

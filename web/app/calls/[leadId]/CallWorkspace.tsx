@@ -1,45 +1,12 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/components/locale-provider";
 
 // ── Twilio call state ────────────────────────────────────────────────────────
 type TwilioCallState = "idle" | "initiating" | "ringing" | "answered" | "completed" | "failed";
-const CALL_STATE_LABELS: Record<TwilioCallState, string> = {
-  idle:       "",
-  initiating: "Connexion…",
-  ringing:    "Ton téléphone sonne…",
-  answered:   "En ligne",
-  completed:  "Appel terminé",
-  failed:     "Erreur",
-};
 
 type Phone = { id: string; e164: string; display: string | null; status: string; source: string; confidence: number };
-
-const QUICK_OUTCOMES = [
-  { value: "no_answer",     label: "No answer",       color: "bg-zinc-200 hover:bg-zinc-300 text-zinc-800" },
-  { value: "voicemail_left",label: "Voicemail",        color: "bg-zinc-200 hover:bg-zinc-300 text-zinc-800" },
-  { value: "wrong_number",  label: "Wrong #",          color: "bg-amber-100 hover:bg-amber-200 text-amber-900" },
-  { value: "bad_number",    label: "Bad #",            color: "bg-amber-100 hover:bg-amber-200 text-amber-900" },
-  { value: "not_interested",label: "Not interested",   color: "bg-red-100 hover:bg-red-200 text-red-800" },
-  { value: "do_not_contact",label: "Do not contact",   color: "bg-red-200 hover:bg-red-300 text-red-900" },
-  { value: "maybe_later",   label: "Maybe later",      color: "bg-blue-100 hover:bg-blue-200 text-blue-800" },
-] as const;
-
-const HOT_OUTCOMES = [
-  { value: "wants_more_info",  label: "Wants info" },
-  { value: "open_to_selling",  label: "Open to selling" },
-  { value: "wants_offer",      label: "Wants offer" },
-  { value: "hot_seller",       label: "🔥 Hot seller" },
-  { value: "follow_up_booked", label: "Follow-up booked" },
-] as const;
-
-type QuickOutcome = typeof QUICK_OUTCOMES[number]["value"];
-type HotOutcome   = typeof HOT_OUTCOMES[number]["value"];
-type Outcome      = QuickOutcome | HotOutcome | "call_back_later";
-
-const ESCALATING: ReadonlySet<Outcome> = new Set<Outcome>([
-  "wants_more_info", "open_to_selling", "wants_offer", "hot_seller", "follow_up_booked",
-]);
 
 /** Default datetime-local value: tomorrow at 10:00 */
 function defaultCallbackTime(): string {
@@ -59,11 +26,13 @@ export default function CallWorkspace({
   userForwardTo: string | null;
 }) {
   const router = useRouter();
+  const { t } = useLocale();
+
   const [phoneId, setPhoneId] = useState<string | null>(phones[0]?.id ?? null);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [submitForm, setSubmitForm] = useState<null | Outcome>(null);
+  const [submitForm, setSubmitForm] = useState<string | null>(null);
 
   // call_back_later state
   const [showCallbackPicker, setShowCallbackPicker] = useState(false);
@@ -81,6 +50,43 @@ export default function CallWorkspace({
   const [callError, setCallError] = useState<string | null>(null);
   const activeCallLogId = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Outcome labels come from the dictionary so they flip with locale
+  const QUICK_OUTCOMES = [
+    { value: "no_answer",      color: "bg-zinc-200 hover:bg-zinc-300 text-zinc-800" },
+    { value: "voicemail_left", color: "bg-zinc-200 hover:bg-zinc-300 text-zinc-800" },
+    { value: "wrong_number",   color: "bg-amber-100 hover:bg-amber-200 text-amber-900" },
+    { value: "bad_number",     color: "bg-amber-100 hover:bg-amber-200 text-amber-900" },
+    { value: "not_interested", color: "bg-red-100 hover:bg-red-200 text-red-800" },
+    { value: "do_not_contact", color: "bg-red-200 hover:bg-red-300 text-red-900" },
+    { value: "maybe_later",    color: "bg-blue-100 hover:bg-blue-200 text-blue-800" },
+  ] as const;
+
+  const HOT_OUTCOMES = [
+    "wants_more_info",
+    "open_to_selling",
+    "wants_offer",
+    "hot_seller",
+    "follow_up_booked",
+  ] as const;
+
+  type QuickOutcome = typeof QUICK_OUTCOMES[number]["value"];
+  type HotOutcome   = typeof HOT_OUTCOMES[number];
+  type Outcome      = QuickOutcome | HotOutcome | "call_back_later";
+
+  const ESCALATING = new Set<string>([
+    "wants_more_info", "open_to_selling", "wants_offer", "hot_seller", "follow_up_booked",
+  ]);
+
+  // Twilio call state → translated label
+  const CALL_STATE_LABELS: Record<TwilioCallState, string> = {
+    idle:       "",
+    initiating: t.workspace.connecting,
+    ringing:    t.workspace.ringing,
+    answered:   t.workspace.answered,
+    completed:  t.workspace.callCompleted,
+    failed:     t.workspace.callFailed,
+  };
 
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -106,9 +112,9 @@ export default function CallWorkspace({
   useEffect(() => () => stopPolling(), []);
 
   async function startCall() {
-    if (!phoneId) { setCallError("Sélectionne un numéro de téléphone."); return; }
+    if (!phoneId) { setCallError(t.workspace.selectPhone); return; }
     if (!userForwardTo) {
-      setCallError("Ton numéro de renvoi n'est pas configuré — demande à Anthony de l'ajouter dans ton profil.");
+      setCallError(t.workspace.noForwardNumber);
       return;
     }
     setCallState("initiating");
@@ -120,19 +126,21 @@ export default function CallWorkspace({
         body: JSON.stringify({ leadId, phoneId }),
       });
       const j = await r.json();
-      if (!j.ok) { setCallState("failed"); setCallError(j.error ?? "Impossible de lancer l'appel."); return; }
+      if (!j.ok) {
+        setCallState("failed");
+        setCallError(j.error ?? t.workspace.callLaunchFailed);
+        return;
+      }
       activeCallLogId.current = j.data.callLogId;
       setCallState("ringing");
       startPolling(j.data.callLogId);
     } catch {
       setCallState("failed");
-      setCallError("Erreur réseau — réessaie.");
+      setCallError(t.workspace.networkError);
     }
   }
 
   // ── Call lock lifecycle ──────────────────────────────────────────────────
-  // Acquire lock on mount so /api/calls/next skips this lead for other callers.
-  // Released by the log route server-side, or here on unmount as a safety-net.
   const lockAcquired = useRef(false);
 
   useEffect(() => {
@@ -159,9 +167,7 @@ export default function CallWorkspace({
       if (released) return;
       released = true;
       if (lockAcquired.current) {
-        // Fire-and-forget; keep=true so the request survives navigation
         navigator.sendBeacon(`/api/calls/lock?leadId=${leadId}`, new Blob([], { type: "text/plain" }));
-        // Fallback fetch for DELETE (sendBeacon only POSTs)
         fetch(`/api/calls/lock?leadId=${leadId}`, { method: "DELETE", keepalive: true }).catch(() => {});
       }
     };
@@ -214,7 +220,7 @@ export default function CallWorkspace({
   async function submitToAnthony() {
     if (!submitForm) return;
     if (callerSummary.trim().length < 5) {
-      setError("Summary too short — give Anthony at least one sentence.");
+      setError(t.workspace.summaryTooShort);
       return;
     }
     setBusy(true);
@@ -240,17 +246,18 @@ export default function CallWorkspace({
 
   // ── Submission form (escalating outcomes) ────────────────────────────────
   if (submitForm) {
+    const outcomeLabel = t.outcome[submitForm] ?? submitForm;
     return (
       <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-emerald-900">Send to Anthony</h2>
+          <h2 className="text-lg font-semibold text-emerald-900">{t.workspace.submitTitle}</h2>
           <p className="text-sm text-emerald-800">
-            Call logged as <strong>{submitForm}</strong>. Add the details Anthony needs to take it from here.
+            {t.workspace.submitSubtitle(outcomeLabel)}
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Interest level">
+          <Field label={t.workspace.interestLevel}>
             <select value={interest} onChange={e => setInterest(e.target.value as typeof interest)}
               className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
               <option value="cold">cold</option>
@@ -259,7 +266,7 @@ export default function CallWorkspace({
               <option value="wants_offer">wants offer</option>
             </select>
           </Field>
-          <Field label="Timeline">
+          <Field label={t.workspace.timeline}>
             <select value={timeline} onChange={e => setTimeline(e.target.value as typeof timeline)}
               className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
               <option value="immediate">immediate</option>
@@ -271,32 +278,32 @@ export default function CallWorkspace({
           </Field>
         </div>
 
-        <Field label="Motivation (why are they considering selling?)">
+        <Field label={t.workspace.motivation}>
           <input value={motivation} onChange={e => setMotivation(e.target.value)}
             className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="e.g. retiring, divorce, mortgage maturity" />
+            placeholder={t.workspace.motivationPlaceholder} />
         </Field>
 
-        <Field label="Asking price (if mentioned)">
+        <Field label={t.workspace.askingPrice}>
           <input type="number" value={askingPrice} onChange={e => setAskingPrice(e.target.value)}
             className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
             placeholder="e.g. 1600000" />
         </Field>
 
-        <Field label="Summary for Anthony (required)">
+        <Field label={t.workspace.summary}>
           <textarea value={callerSummary} onChange={e => setCallerSummary(e.target.value)} rows={4}
             className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="What happened? What does Anthony need to know to call this owner back?" />
+            placeholder={t.workspace.summaryPlaceholder} />
         </Field>
 
         <div className="flex gap-2">
           <button onClick={submitToAnthony} disabled={busy}
             className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-medium">
-            {busy ? "Sending…" : "Submit to Anthony"}
+            {busy ? t.workspace.submitting : t.workspace.submitBtn}
           </button>
           <button onClick={() => router.push("/calls/queue")}
             className="bg-white border border-zinc-300 rounded-lg px-4 py-2 text-sm">
-            Skip submission
+            {t.workspace.skipSubmission}
           </button>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -310,12 +317,12 @@ export default function CallWorkspace({
       <div className="flex justify-end">
         <button onClick={goNext} disabled={busy}
           className="text-xs text-zinc-500 hover:text-zinc-900 underline">
-          Skip · next lead →
+          {t.workspace.skipNextLead}
         </button>
       </div>
 
       {phones.length > 0 ? (
-        <Field label="Phone dialed">
+        <Field label={t.workspace.phoneDialed}>
           <select value={phoneId ?? ""} onChange={e => setPhoneId(e.target.value || null)}
             className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm font-mono">
             {phones.map(p => (
@@ -327,7 +334,7 @@ export default function CallWorkspace({
         </Field>
       ) : (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
-          No phone numbers on file for this contact.
+          {t.workspace.noPhones}
         </div>
       )}
 
@@ -340,7 +347,7 @@ export default function CallWorkspace({
               disabled={!phoneId}
               className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm font-semibold"
             >
-              📞 Appeler
+              {t.workspace.call}
             </button>
           ) : (
             <button disabled className="flex items-center gap-2 bg-zinc-200 text-zinc-600 rounded-lg px-4 py-2 text-sm font-semibold cursor-not-allowed">
@@ -352,12 +359,12 @@ export default function CallWorkspace({
           )}
           <span className="text-xs text-zinc-500 flex-1">
             {callState === "idle" && (userForwardTo
-              ? <>Sonnera sur <span className="font-mono">{userForwardTo}</span></>
-              : <span className="text-amber-600">Numéro de renvoi non configuré</span>
+              ? <>{t.workspace.willRingOn} <span className="font-mono">{userForwardTo}</span></>
+              : <span className="text-amber-600">{t.workspace.forwardNotConfigured}</span>
             )}
-            {callState === "ringing"   && "Décroche ton téléphone…"}
-            {callState === "answered"  && "Connecté · parle avec le propriétaire"}
-            {callState === "completed" && "✓ Appel terminé — sélectionne un résultat ci-dessous"}
+            {callState === "ringing"   && t.workspace.pickup}
+            {callState === "answered"  && t.workspace.connected}
+            {callState === "completed" && t.workspace.selectOutcome}
           </span>
         </div>
       )}
@@ -365,20 +372,22 @@ export default function CallWorkspace({
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{callError}</p>
       )}
 
-      <Field label="Notes (optional)">
+      <Field label={t.workspace.notesLabel}>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
           className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-          placeholder="What did they say?" />
+          placeholder={t.workspace.notesPlaceholder} />
       </Field>
 
       {/* Quick outcomes */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Quick outcome</div>
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+          {t.workspace.quickOutcome}
+        </div>
         <div className="flex flex-wrap gap-2">
           {QUICK_OUTCOMES.map(o => (
             <button key={o.value} disabled={busy} onClick={() => logOutcome(o.value)}
               className={`rounded-lg px-3 py-2 text-sm font-medium ${o.color} disabled:opacity-50`}>
-              {o.label}
+              {t.outcome[o.value] ?? o.value}
             </button>
           ))}
         </div>
@@ -386,7 +395,9 @@ export default function CallWorkspace({
 
       {/* Scheduled callback */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Schedule callback</div>
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+          {t.workspace.scheduleCallback}
+        </div>
         {showCallbackPicker ? (
           <div className="flex items-center gap-2 flex-wrap">
             <input
@@ -400,13 +411,13 @@ export default function CallWorkspace({
               disabled={busy || !callbackTime}
               className="rounded-lg px-3 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
             >
-              {busy ? "Saving…" : "Confirm callback"}
+              {busy ? t.workspace.savingCallback : t.workspace.confirmCallback}
             </button>
             <button
               onClick={() => setShowCallbackPicker(false)}
               className="text-xs text-zinc-400 hover:text-zinc-700 underline"
             >
-              cancel
+              {t.workspace.cancelCallback}
             </button>
           </div>
         ) : (
@@ -415,19 +426,21 @@ export default function CallWorkspace({
             onClick={handleCallBackLater}
             className="rounded-lg px-3 py-2 text-sm font-medium bg-indigo-100 hover:bg-indigo-200 text-indigo-900 disabled:opacity-50"
           >
-            📅 Call back later
+            {t.workspace.callBackLater}
           </button>
         )}
       </div>
 
       {/* Hot / escalating outcomes → send to Anthony */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Send to Anthony</div>
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+          {t.workspace.sendToAnthony}
+        </div>
         <div className="flex flex-wrap gap-2">
-          {HOT_OUTCOMES.map(o => (
-            <button key={o.value} disabled={busy} onClick={() => logOutcome(o.value)}
+          {HOT_OUTCOMES.map(value => (
+            <button key={value} disabled={busy} onClick={() => logOutcome(value)}
               className="rounded-lg px-3 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
-              {o.label}
+              {t.outcome[value] ?? value}
             </button>
           ))}
         </div>

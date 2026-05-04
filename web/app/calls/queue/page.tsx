@@ -1,75 +1,8 @@
 import React from "react";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import NextStepBanner from "@/components/next-step-banner";
-
-type QueueLead = {
-  lead_id: string;
-  full_name: string | null;
-  company_name: string | null;
-  address: string;
-  city: string | null;
-  num_units: number | null;
-  best_phone: string | null;
-  status: string;
-  campaign_name: string | null;
-  last_contacted_at: string | null;
-  next_action_at: string | null;
-  priority: number | null;
-};
-
-function formatPhone(phone: string | null) {
-  if (!phone) return null;
-  const m = phone.replace(/\D/g, "");
-  if (m.length === 11 && m[0] === "1")
-    return `(${m.slice(1, 4)}) ${m.slice(4, 7)}-${m.slice(7)}`;
-  if (m.length === 10)
-    return `(${m.slice(0, 3)}) ${m.slice(3, 6)}-${m.slice(6)}`;
-  return phone;
-}
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return "jamais";
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  return `${days}j`;
-}
-
-/** Returns a short label if the scheduled callback is overdue, or null if not. */
-function overdueLabel(nextActionAt: string | null): string | null {
-  if (!nextActionAt) return null;
-  const diff = Date.now() - new Date(nextActionAt).getTime();
-  if (diff <= 0) return null; // in the future — should have been filtered, but guard
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `Rappel en retard — ${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `Rappel en retard — ${hrs}h`;
-  return `Rappel en retard — ${Math.floor(hrs / 24)}j`;
-}
-
-function statusLabel(s: string) {
-  const map: Record<string, string> = {
-    new: "Nouveau",
-    ready_to_call: "À appeler",
-    in_outreach: "En démarche",
-    no_answer: "Sans réponse",
-    phone_verified: "Tél. vérifié",
-  };
-  return map[s] ?? s;
-}
-
-function rowBorderStyle(p: number | null, isOverdue: boolean): React.CSSProperties {
-  if (isOverdue) return { borderLeft: "4px solid var(--crm-blue)" };
-  if (p == null) return { borderLeft: "4px solid var(--crm-card-border)" };
-  if (p >= 80) return { borderLeft: "4px solid var(--crm-red)" };
-  if (p >= 50) return { borderLeft: "4px solid var(--crm-gold)" };
-  return { borderLeft: "4px solid var(--crm-card-border)" };
-}
+import QueueLeadList, { type QueueLead } from "./QueueLeadList";
 
 const CALLABLE_STATUSES = [
   "new", "ready_to_call", "in_outreach", "no_answer", "phone_verified",
@@ -107,7 +40,9 @@ export default async function CallQueuePage() {
   ]);
 
   // Build a set of lead IDs currently locked by someone else
-  const lockedByOthers = new Set((locksRes.data ?? []).map((r: { lead_id: string }) => r.lead_id));
+  const lockedByOthers = new Set(
+    (locksRes.data ?? []).map((r: { lead_id: string }) => r.lead_id),
+  );
 
   const leads = ((queueRes.data ?? []) as QueueLead[]).filter(
     (l) => !lockedByOthers.has(l.lead_id),
@@ -127,109 +62,19 @@ export default async function CallQueuePage() {
     });
   }
 
-  const overdueCount = leads.filter((l) => l.next_action_at && new Date(l.next_action_at) <= new Date()).length;
-
   return (
-    <main className="crm-page-narrow">
+    <>
       {leads.length === 0 && (
         <NextStepBanner
           kind="queue_empty"
           counts={{ ready: 0, review: 0, hotSellers }}
         />
       )}
-
-      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-        <div>
-          <h1 className="crm-page-title">File d&rsquo;appels</h1>
-          <p className="crm-page-sub">
-            {leads.length} lead{leads.length === 1 ? "" : "s"} à appeler
-            {overdueCount > 0 && (
-              <> · <span style={{ color: "var(--crm-blue)", fontWeight: 600 }}>{overdueCount} rappel{overdueCount !== 1 ? "s" : ""} en retard</span></>
-            )}
-          </p>
-        </div>
-        <Link href="/leads" className="crm-btn">Tous les leads</Link>
-      </header>
-
-      {leads.length === 0 ? (
-        <div className="crm-card" style={{ padding: "32px 24px", textAlign: "center", color: "var(--crm-text3)" }}>
-          File vide — rien à appeler pour le moment.
-          <div style={{ marginTop: 12 }}>
-            <Link href="/leads" style={{ fontSize: 13, color: "var(--crm-blue)", textDecoration: "none" }}>Parcourir les leads</Link>
-          </div>
-        </div>
-      ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-          {leads.map((l) => {
-            const callCount = callCounts[l.lead_id] ?? 0;
-            const formatted = formatPhone(l.best_phone);
-            const overdue = overdueLabel(l.next_action_at);
-
-            return (
-              <li key={l.lead_id}>
-                <Link
-                  href={`/calls/${l.lead_id}` as never}
-                  style={{
-                    display: "block",
-                    background: "var(--crm-card)",
-                    border: "1px solid var(--crm-card-border)",
-                    borderRadius: 12,
-                    padding: "12px 16px",
-                    textDecoration: "none",
-                    transition: "border-color 0.15s, box-shadow 0.15s",
-                    ...rowBorderStyle(l.priority, !!overdue),
-                  }}
-                  className="hover:border-[var(--crm-gold-border)] hover:shadow-sm"
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {/* Line 1: name + status + overdue badge */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
-                        <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {l.full_name ?? l.company_name ?? "—"}
-                        </span>
-                        <span className={`crm-pill crm-pill--${l.status === "no_answer" ? "sans-reponse" : l.status === "in_outreach" ? "contacte" : l.status === "phone_verified" ? "a-appeler" : "nouveau"}`}>
-                          {statusLabel(l.status)}
-                        </span>
-                        {overdue && (
-                          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--crm-blue)", background: "color-mix(in srgb, var(--crm-blue) 12%, transparent)", borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap" }}>
-                            {overdue}
-                          </span>
-                        )}
-                      </div>
-                      {/* Line 2: address */}
-                      <div style={{ fontSize: 12, color: "var(--crm-text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
-                        {l.address}{l.city ? `, ${l.city}` : ""}
-                      </div>
-                      {/* Line 3: units · campaign · call count · last contact */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--crm-text3)", flexWrap: "wrap" }}>
-                        {l.num_units != null && <span className="crm-chip crm-chip-units">{l.num_units} log.</span>}
-                        {l.campaign_name && <span>{l.campaign_name}</span>}
-                        {callCount > 0 && <span>· {callCount} appel{callCount !== 1 ? "s" : ""}</span>}
-                        {l.last_contacted_at && <span>· il y a {timeAgo(l.last_contacted_at)}</span>}
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      {formatted ? (
-                        <div className="crm-phone-link" style={{ fontSize: 14 }}>{formatted}</div>
-                      ) : (
-                        <div className="crm-no-phone">sans tél.</div>
-                      )}
-                    </div>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {leads.length > 0 && (
-        <div style={{ marginTop: 20, textAlign: "center", fontSize: 11, color: "var(--crm-text3)" }}>
-          Priorité · rappels en retard en premier · plus ancien contact en dernier
-        </div>
-      )}
-    </main>
+      <QueueLeadList
+        leads={leads}
+        callCounts={callCounts}
+        hotSellers={hotSellers}
+      />
+    </>
   );
 }
