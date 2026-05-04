@@ -22,16 +22,32 @@ export default async function LeadsPage({
   const params = await searchParams;
   const justEnriched = params["_just_enriched"] === "1";
 
+  // Callers only see stats for their own assigned leads.
+  // Admins see system-wide stats.
+  const isCaller = role === "caller";
+
   const [totalRes, callableRes, unassignedRes, noPhoneRes, readyRes, reviewRes] = await Promise.all([
-    sb.from("leads").select("id", { count: "exact", head: true }),
-    sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES),
-    sb.from("leads").select("id", { count: "exact", head: true })
-      .in("status", CALLABLE_STATUSES)
-      .is("assigned_to", null),
+    isCaller
+      ? sb.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", user.id)
+      : sb.from("leads").select("id", { count: "exact", head: true }),
+    isCaller
+      ? sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES).eq("assigned_to", user.id)
+      : sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES),
+    // Non assignés only meaningful for admins
+    isCaller
+      ? Promise.resolve({ count: 0 })
+      : sb.from("leads").select("id", { count: "exact", head: true })
+          .in("status", CALLABLE_STATUSES)
+          .is("assigned_to", null),
     // Sans téléphone = callable leads with no verified phone in leads_view
-    sb.from("leads_view").select("lead_id", { count: "exact", head: true })
-      .in("status", CALLABLE_STATUSES)
-      .is("best_phone", null),
+    isCaller
+      ? sb.from("leads_view").select("lead_id", { count: "exact", head: true })
+          .in("status", CALLABLE_STATUSES)
+          .eq("assigned_to", user.id)
+          .is("best_phone", null)
+      : sb.from("leads_view").select("lead_id", { count: "exact", head: true })
+          .in("status", CALLABLE_STATUSES)
+          .is("best_phone", null),
     // For banner: ready_to_call count
     sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),
     // For banner: needs_anthony_review count
@@ -79,20 +95,34 @@ export default async function LeadsPage({
       <div className="crm-stat-bar" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <div className="crm-stat-pill">
           <span className="crm-stat-pill-value">{stats.total}</span>
-          <span className="crm-stat-pill-label">Total leads</span>
+          <span className="crm-stat-pill-label">{isCaller ? "Mes leads" : "Total leads"}</span>
         </div>
         <div className="crm-stat-pill crm-stat-pill--blue">
           <span className="crm-stat-pill-value">{stats.callable}</span>
           <span className="crm-stat-pill-label">Appelables</span>
         </div>
-        <div className={`crm-stat-pill${stats.unassigned > 0 ? " crm-stat-pill--amber" : ""}`}>
-          <span className="crm-stat-pill-value">{stats.unassigned}</span>
-          <span className="crm-stat-pill-label">Non assignés</span>
-        </div>
-        <div className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}>
-          <span className="crm-stat-pill-value">{stats.noPhone}</span>
-          <span className="crm-stat-pill-label">Sans téléphone</span>
-        </div>
+        {isCaller ? (
+          <div className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}>
+            <span className="crm-stat-pill-value">{stats.noPhone}</span>
+            <span className="crm-stat-pill-label">Sans téléphone</span>
+          </div>
+        ) : (
+          <div className={`crm-stat-pill${stats.unassigned > 0 ? " crm-stat-pill--amber" : ""}`}>
+            <span className="crm-stat-pill-value">{stats.unassigned}</span>
+            <span className="crm-stat-pill-label">Non assignés</span>
+          </div>
+        )}
+        {isCaller ? (
+          <div className="crm-stat-pill crm-stat-pill--blue">
+            <span className="crm-stat-pill-value">{stats.callable - stats.noPhone > 0 ? stats.callable - stats.noPhone : 0}</span>
+            <span className="crm-stat-pill-label">Prêts à appeler</span>
+          </div>
+        ) : (
+          <div className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}>
+            <span className="crm-stat-pill-value">{stats.noPhone}</span>
+            <span className="crm-stat-pill-label">Sans téléphone</span>
+          </div>
+        )}
       </div>
 
       <LeadsViewToggle canEdit={role === "admin"} />
