@@ -182,136 +182,146 @@ function NewDealModal({ onClose, onCreate }: {
 }
 
 // ── Deal Card ─────────────────────────────────────────────────────────────────
+const TEMP_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  froid: { label: "FROID",  bg: "#DBEAFE", color: "#1D4ED8" },
+  tiede: { label: "TIÈDE",  bg: "#FEF3C7", color: "#92400E" },
+  chaud: { label: "CHAUD",  bg: "#FEE2E2", color: "#B91C1C" },
+};
+
+function ContactAvatar({ name }: { name: string | null }) {
+  if (!name) return null;
+  const initials = name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+  // Deterministic color from name
+  const colors = ["#E0E7FF","#D1FAE5","#FEF3C7","#FCE7F3","#E0F2FE","#F3E8FF"];
+  const textColors = ["#4338CA","#065F46","#92400E","#9D174D","#0369A1","#6B21A8"];
+  const idx = name.charCodeAt(0) % colors.length;
+  return (
+    <div style={{
+      width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+      background: colors[idx], color: textColors[idx],
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 10, fontWeight: 800, letterSpacing: "0.5px",
+    }}>
+      {initials}
+    </div>
+  );
+}
+
 function DealCard({ deal, onStageChange }: { deal: Deal; onStageChange: (dealId: string, newStage: string) => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const temp = TEMP_CONFIG[deal.temperature] ?? TEMP_CONFIG.tiede;
+  const tempBadge = TEMP_BADGE[deal.temperature] ?? TEMP_BADGE.tiede;
   const prio = PRIORITY_CONFIG[deal.priority] ?? PRIORITY_CONFIG.medium;
   const { done, total } = checklistProgress(deal.checklists, deal.stage);
-  const docsCount = 0; // document count not loaded in list view
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const allStages = [...ACTIVE_STAGES, ...CLOSED_STAGES];
 
   return (
     <div style={{
       background: "#fff",
-      border: "1px solid #E5E7EB",
-      borderRadius: 12,
+      border: "1px solid #E8EAED",
+      borderRadius: 10,
       padding: "12px 14px",
-      boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
       position: "relative",
-    }}>
+      transition: "box-shadow 0.15s ease",
+    }}
+      onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)")}
+      onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)")}
+    >
       {/* Priority dot */}
       <div style={{
-        position: "absolute", top: 10, right: 10,
-        width: 8, height: 8, borderRadius: "50%",
+        position: "absolute", top: 12, right: 12,
+        width: 7, height: 7, borderRadius: "50%",
         background: prio.dot,
       }} />
 
-      {/* Title */}
-      <Link href={`/pipeline/${deal.id}` as never} style={{ textDecoration: "none" }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginRight: 16, marginBottom: 3, lineHeight: 1.3 }}>
-          {deal.title}
+      {/* Contact row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+        <ContactAvatar name={deal.contact_name} />
+        <span style={{ fontSize: 11, color: "#6B7280", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {deal.contact_name ?? "Contact à définir"}
+        </span>
+        {/* Stage change menu */}
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setMenuOpen(o => !o)} style={{
+            fontSize: 18, background: "none", border: "none",
+            cursor: "pointer", color: "#D1D5DB", padding: "0 2px", lineHeight: 1,
+          }}>⋯</button>
+          {menuOpen && (
+            <div style={{
+              position: "absolute", right: 0, top: "100%", zIndex: 50,
+              background: "#fff", border: "1px solid #E5E7EB",
+              borderRadius: 10, padding: "6px 0", minWidth: 155,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", padding: "4px 12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Déplacer vers</div>
+              {allStages.filter(s => s.key !== deal.stage).map(s => (
+                <button key={s.key} onClick={() => { onStageChange(deal.id, s.key); setMenuOpen(false); }}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left",
+                    padding: "7px 12px", background: "none", border: "none",
+                    cursor: "pointer", fontSize: 12, color: "#374151",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#F9FAFB")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      </Link>
-
-      {/* Address + units */}
-      {deal.address && (
-        <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {deal.address}{deal.units ? ` · ${deal.units} unités` : ""}
-        </div>
-      )}
-
-      {/* Price + temperature */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-        {deal.asking_price && (
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>
-            {formatCAD(deal.asking_price)}
-          </span>
-        )}
-        {deal.offer_price && deal.offer_price !== deal.asking_price && (
-          <span style={{ fontSize: 11, color: "#7C3AED", fontWeight: 600 }}>
-            → offre {formatCAD(deal.offer_price)}
-          </span>
-        )}
-        <span style={{
-          marginLeft: "auto",
-          fontSize: 10, fontWeight: 700,
-          padding: "2px 7px", borderRadius: 8,
-          background: temp.bg, color: temp.text,
-        }}>{temp.label}</span>
       </div>
 
-      {/* Checklist progress */}
-      {total > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#9CA3AF", marginBottom: 3 }}>
-            <span>Checklist {deal.stage}</span>
-            <span style={{ color: done === total ? "#059669" : "#6B7280", fontWeight: 700 }}>{done}/{total}</span>
+      {/* Title */}
+      <Link href={`/pipeline/${deal.id}` as never} style={{ textDecoration: "none" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", lineHeight: 1.35, marginBottom: 2 }}>
+          {deal.title}
+        </div>
+        {deal.address && (
+          <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {deal.address}{deal.units ? ` · ${deal.units} u.` : ""}
           </div>
-          <div style={{ height: 3, background: "#F3F4F6", borderRadius: 2, overflow: "hidden" }}>
+        )}
+      </Link>
+
+      {/* Price row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--crm-gold, #C9A84C)", flex: 1 }}>
+          {deal.asking_price ? formatCAD(deal.asking_price) : "Prix : TBD"}
+        </span>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: "0.4px",
+          padding: "2px 7px", borderRadius: 6,
+          background: tempBadge.bg, color: tempBadge.color,
+        }}>{tempBadge.label}</span>
+      </div>
+
+      {/* Checklist + docs row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#9CA3AF" }}>
+        <span>Checklist {pct}%</span>
+        {total > 0 && (
+          <div style={{ flex: 1, height: 3, background: "#F3F4F6", borderRadius: 2, overflow: "hidden" }}>
             <div style={{
               height: "100%", borderRadius: 2,
-              width: `${total > 0 ? Math.round((done / total) * 100) : 0}%`,
-              background: done === total ? "#059669" : "var(--crm-gold, #C9A84C)",
-              transition: "width 0.3s ease",
+              width: `${pct}%`,
+              background: pct === 100 ? "#059669" : "var(--crm-gold, #C9A84C)",
             }} />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Contact + Actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {deal.contact_name && (
-          <div style={{
-            width: 24, height: 24, borderRadius: "50%",
-            background: "#E5E7EB", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 10, fontWeight: 700, color: "#374151", flexShrink: 0,
-          }}>
-            {deal.contact_name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase()}
-          </div>
-        )}
-        {docsCount > 0 && (
-          <span style={{ fontSize: 10, color: "#6B7280" }}>📎 {docsCount}</span>
-        )}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
-          <Link href={`/pipeline/${deal.id}` as never} style={{
-            fontSize: 10, fontWeight: 600, color: "var(--crm-gold, #C9A84C)",
-            textDecoration: "none", padding: "3px 8px",
-            border: "1px solid var(--crm-gold, #C9A84C)", borderRadius: 6,
-          }}>
-            Ouvrir →
-          </Link>
-          {/* Stage change menu */}
-          <div style={{ position: "relative" }}>
-            <button onClick={() => setMenuOpen(o => !o)} style={{
-              fontSize: 16, background: "none", border: "none",
-              cursor: "pointer", color: "#9CA3AF", padding: "0 4px", lineHeight: 1,
-            }}>⋯</button>
-            {menuOpen && (
-              <div style={{
-                position: "absolute", right: 0, top: "100%", zIndex: 50,
-                background: "#fff", border: "1px solid #E5E7EB",
-                borderRadius: 10, padding: "6px 0", minWidth: 160,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", padding: "4px 12px", textTransform: "uppercase" }}>Déplacer vers</div>
-                {allStages.filter(s => s.key !== deal.stage).map(s => (
-                  <button key={s.key} onClick={() => { onStageChange(deal.id, s.key); setMenuOpen(false); }}
-                    style={{
-                      display: "block", width: "100%", textAlign: "left",
-                      padding: "7px 12px", background: "none", border: "none",
-                      cursor: "pointer", fontSize: 12, color: "#374151",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#F9FAFB")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Open button */}
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+        <Link href={`/pipeline/${deal.id}` as never} style={{
+          fontSize: 11, fontWeight: 700, color: "var(--crm-gold, #C9A84C)",
+          textDecoration: "none", padding: "4px 10px",
+          border: "1px solid #E5E7EB", borderRadius: 6,
+          background: "#FAFAFA",
+        }}>
+          Ouvrir →
+        </Link>
       </div>
     </div>
   );
