@@ -1,10 +1,7 @@
 "use client";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-
 export default function LoginPage() {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +40,7 @@ export default function LoginPage() {
       setBusy(false);
     } else {
       const next = new URLSearchParams(window.location.search).get("next") || "/leads";
-      (router as any).push(next);
+      window.location.href = next;
     }
   }
 
