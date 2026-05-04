@@ -210,6 +210,153 @@ function htmlToText(html: string): string {
     .replace(/\s+/g, ' ');
 }
 
+// ── B2BHint entity extraction ──────────────────────────────────────────────
+
+type B2BHintEntities = {
+  companies: string[];
+  directors: string[];
+  addresses: string[];
+};
+
+function extractB2BHintEntities(html: string): B2BHintEntities {
+  try {
+    const text = htmlToText(html);
+
+    // ── Related company names ──────────────────────────────────────────────
+    const companies: string[] = [];
+    const seenCompanies = new Set<string>();
+
+    // Pattern 1: anchor hrefs like /en/company/... with link text
+    const companyLinkRe = /href="\/en\/company\/[^"]+">([^<]{2,80})<\/a/gi;
+    let m: RegExpExecArray | null;
+    const htmlForLinks = html;
+    const clRe = new RegExp(companyLinkRe.source, companyLinkRe.flags);
+    while ((m = clRe.exec(htmlForLinks)) !== null && companies.length < 5) {
+      const name = m[1].trim();
+      const key = name.toLowerCase();
+      if (name.length >= 2 && !seenCompanies.has(key)) {
+        seenCompanies.add(key);
+        companies.push(name);
+      }
+    }
+
+    // Pattern 2: free-text mentions of legal entity suffixes
+    if (companies.length < 5) {
+      const entitySuffixRe =
+        /([A-ZÀ-ÿ][A-Za-zÀ-ÿ\s''\-]{1,50}(?:Inc\.?|Ltée?\.?|Ltd\.?|Corp\.?|S\.E\.N\.C\.?|Enr\.?|Inc\b|Ltée\b))/g;
+      const eRe = new RegExp(entitySuffixRe.source, entitySuffixRe.flags);
+      while ((m = eRe.exec(text)) !== null && companies.length < 5) {
+        const name = m[1].trim();
+        const key = name.toLowerCase();
+        if (name.length >= 4 && !seenCompanies.has(key)) {
+          seenCompanies.add(key);
+          companies.push(name);
+        }
+      }
+    }
+
+    // ── Officer / director names ───────────────────────────────────────────
+    const directors: string[] = [];
+    const seenDirectors = new Set<string>();
+
+    // Find sections that look like they contain officer/director info
+    const officerSectionRe =
+      /(?:officers?|directors?|président|actionnaire|administrateur|shareholder)[^.]{0,300}/gi;
+    const osRe = new RegExp(officerSectionRe.source, officerSectionRe.flags);
+    const personRe = /\b([A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿ][a-zà-ÿ]+){1,3})\b/g;
+
+    while ((m = osRe.exec(text)) !== null && directors.length < 5) {
+      const section = m[0];
+      const pRe = new RegExp(personRe.source, personRe.flags);
+      let pm: RegExpExecArray | null;
+      while ((pm = pRe.exec(section)) !== null && directors.length < 5) {
+        const name = pm[1].trim();
+        const key = name.toLowerCase();
+        // Reject single words or very long matches
+        if (
+          name.split(/\s+/).length >= 2 &&
+          name.length <= 50 &&
+          !seenDirectors.has(key)
+        ) {
+          seenDirectors.add(key);
+          directors.push(name);
+        }
+      }
+    }
+
+    // Fallback: data-testid patterns (B2BHint sometimes uses these)
+    if (directors.length < 5) {
+      const testidRe = /data-testid="[^"]*(?:officer|director|person)[^"]*"[^>]*>([^<]{5,60})</gi;
+      const tRe = new RegExp(testidRe.source, testidRe.flags);
+      while ((m = tRe.exec(html)) !== null && directors.length < 5) {
+        const name = m[1].trim();
+        const key = name.toLowerCase();
+        if (name.split(/\s+/).length >= 2 && !seenDirectors.has(key)) {
+          seenDirectors.add(key);
+          directors.push(name);
+        }
+      }
+    }
+
+    // ── Registered addresses ───────────────────────────────────────────────
+    const addresses: string[] = [];
+    const seenAddresses = new Set<string>();
+    const addressRe =
+      /\d+\s+(?:rue|avenue|boulevard|chemin|place|rang|route|côte)\s+[A-ZÀ-ÿ][\wÀ-ÿ\s\-']{2,40}/gi;
+    const aRe = new RegExp(addressRe.source, addressRe.flags);
+    while ((m = aRe.exec(text)) !== null && addresses.length < 3) {
+      const addr = m[0].trim().replace(/\s+/g, ' ');
+      const key = addr.toLowerCase();
+      if (!seenAddresses.has(key)) {
+        seenAddresses.add(key);
+        addresses.push(addr);
+      }
+    }
+
+    return { companies, directors, addresses };
+  } catch {
+    return { companies: [], directors: [], addresses: [] };
+  }
+}
+
+// ── B2BHint secondary query builder ───────────────────────────────────────
+
+function buildSecondaryQueries(
+  entities: B2BHintEntities,
+  lc: LeadContext,
+): string[] {
+  const city = (lc.mailing_city ?? lc.property_city ?? '').trim();
+  const queries: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (q: string) => {
+    const trimmed = q.trim();
+    if (trimmed && !seen.has(trimmed) && queries.length < 10) {
+      seen.add(trimmed);
+      queries.push(trimmed);
+    }
+  };
+
+  // Company queries: up to 2 per company (max 5 companies)
+  for (const co of entities.companies.slice(0, 5)) {
+    push(`"${co}" téléphone`);
+    if (city) push(`"${co}" "${city}" téléphone`);
+  }
+
+  // Director queries: 1 per director (max 5 directors)
+  for (const dir of entities.directors.slice(0, 5)) {
+    if (city) push(`"${dir}" "${city}" téléphone`);
+    else push(`"${dir}" téléphone`);
+  }
+
+  // Address queries: 1 per address (max 3 addresses)
+  for (const addr of entities.addresses.slice(0, 3)) {
+    push(`"${addr}" téléphone`);
+  }
+
+  return queries.slice(0, 10);
+}
+
 // ── Scoring ────────────────────────────────────────────────────────────────────
 
 type ScoreResult = { score: number; reasons: string[] };
@@ -571,6 +718,145 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── 5.5. B2BHint secondary pass ──────────────────────────────────────────
+    // Activates only when: (a) zero primary candidates ≥ 50 confidence AND
+    // (b) at least one b2bhint.com URL appeared in the snippet results.
+
+    const primaryAboveThreshold = Array.from(candidatesMap.values())
+      .filter(c => c.confidence >= 50).length;
+
+    // Collect b2bhint URLs seen in snippet results
+    const b2bHintUrl: string | null = (() => {
+      for (const sr of searchResults) {
+        if (!sr.ok || !sr.results) continue;
+        for (const r of sr.results) {
+          if (extractDomain(r.url).includes('b2bhint.com')) return r.url;
+        }
+      }
+      return null;
+    })();
+
+    // secondary_pass telemetry (populated below)
+    const secondaryPassMeta: {
+      triggered: boolean;
+      reason:
+        | 'no_primary_candidates_b2bhint_found'
+        | 'skipped_primary_succeeded'
+        | 'skipped_no_b2bhint_url';
+      b2bhint_url: string | null;
+      b2bhint_fetched: boolean;
+      entities_extracted: { companies: number; directors: number; addresses: number };
+      secondary_queries_run: number;
+      secondary_queries_list: string[];
+      secondary_phones_found: number;
+    } = {
+      triggered: false,
+      reason:
+        primaryAboveThreshold > 0
+          ? 'skipped_primary_succeeded'
+          : b2bHintUrl === null
+          ? 'skipped_no_b2bhint_url'
+          : 'no_primary_candidates_b2bhint_found',
+      b2bhint_url: b2bHintUrl,
+      b2bhint_fetched: false,
+      entities_extracted: { companies: 0, directors: 0, addresses: 0 },
+      secondary_queries_run: 0,
+      secondary_queries_list: [],
+      secondary_phones_found: 0,
+    };
+
+    let secondaryReasoningSuffix = '';
+
+    if (primaryAboveThreshold === 0 && b2bHintUrl !== null) {
+      secondaryPassMeta.triggered = true;
+
+      // Fetch the B2BHint page
+      const b2bCtrl = new AbortController();
+      const b2bTimer = setTimeout(() => b2bCtrl.abort(), PAGE_FETCH_TIMEOUT_MS);
+      let b2bHtml = '';
+      try {
+        const b2bResult = await fetchPage(b2bHintUrl, b2bCtrl.signal);
+        secondaryPassMeta.b2bhint_fetched = b2bResult.ok;
+        if (b2bResult.ok && b2bResult.body) {
+          b2bHtml = b2bResult.body;
+        }
+      } finally {
+        clearTimeout(b2bTimer);
+      }
+
+      if (b2bHtml) {
+        // Extract entities from the B2BHint page
+        const entities = extractB2BHintEntities(b2bHtml);
+        secondaryPassMeta.entities_extracted = {
+          companies: entities.companies.length,
+          directors: entities.directors.length,
+          addresses: entities.addresses.length,
+        };
+
+        // Build secondary queries
+        const secondaryQueries = buildSecondaryQueries(entities, lc);
+        secondaryPassMeta.secondary_queries_list = secondaryQueries;
+        secondaryPassMeta.secondary_queries_run = secondaryQueries.length;
+
+        if (secondaryQueries.length > 0) {
+          // Run secondary Brave searches in parallel
+          const secCtrl = new AbortController();
+          const secTimer = setTimeout(() => secCtrl.abort(), BRAVE_TIMEOUT_MS);
+          let secResults: Awaited<ReturnType<typeof braveSearch>>[];
+          try {
+            secResults = await Promise.all(
+              secondaryQueries.map(q => braveSearch(q, braveApiKey, secCtrl.signal)),
+            );
+          } finally {
+            clearTimeout(secTimer);
+          }
+
+          // Extract phones from secondary snippets and merge into candidatesMap
+          let newPhonesFound = 0;
+          for (const sr of secResults) {
+            if (!sr.ok || !sr.results) continue;
+            for (const result of sr.results) {
+              const domain = extractDomain(result.url);
+              domainsChecked.add(domain);
+              const haystack = result.title + ' ' + result.description;
+              const phones = extractPhonesFromText(haystack);
+
+              for (const { raw, normalized } of phones) {
+                const { score: baseScore, reasons } = scoreText(haystack, domain, lc);
+                // +10 bonus for secondary pass, capped at 100
+                const score = Math.min(100, baseScore + 10);
+                const finalReasons = [...reasons, 'related_entity'];
+
+                const existing = candidatesMap.get(normalized);
+                if (!existing || score > existing.confidence) {
+                  if (!existing) newPhonesFound++;
+                  candidatesMap.set(normalized, {
+                    phone_raw:    raw,
+                    source_url:   result.url,
+                    source_label: domain,
+                    snippet:      result.description.slice(0, 300),
+                    confidence:   score,
+                    matched_on:   finalReasons.join('; '),
+                    search_query: sr.query,
+                    source:       'snippet',
+                  });
+                }
+              }
+            }
+          }
+          secondaryPassMeta.secondary_phones_found = newPhonesFound;
+
+          // Build suffix for reasoning_summary
+          const b2bDomain = extractDomain(b2bHintUrl);
+          const entityDesc =
+            `${entities.companies.length} companies, ${entities.directors.length} directors`;
+          secondaryReasoningSuffix =
+            ` Primary 0 candidates → B2BHint secondary fetched ${b2bDomain}` +
+            ` (${entityDesc}), ${secondaryQueries.length} secondary queries, +${newPhonesFound} candidate(s).`;
+        }
+      }
+    }
+
     // ── 8. Filter to accepted candidates ─────────────────────────────────────
     const allCandidates = Array.from(candidatesMap.values())
       .sort((a, b) => b.confidence - a.confidence);
@@ -631,6 +917,7 @@ export async function POST(request: Request) {
       candidates_above_threshold: finalCandidates.length,
       total_candidates_seen:      candidatesMap.size,
       brave_credential_set:       true,
+      secondary_pass:             secondaryPassMeta,
     };
 
     const queryExamples = queriesRun.slice(0, 3).map(q => `"${q}"`).join(' | ');
@@ -643,14 +930,16 @@ export async function POST(request: Request) {
     if (finalCandidates.length > 0) {
       const top = finalCandidates[0];
       reasoning_summary =
-        `Found ${finalCandidates.length} candidate(s) from ${queriesRun.length} Brave queries + ${pagesFetched.length} page fetches. ` +
-        `Top: ${top.phone_raw} conf ${top.confidence} (${top.matched_on}; source=${top.source}).`;
+        `Found ${finalCandidates.length} candidate(s) from ${queriesRun.length} Brave queries + ${pagesFetched.length} page fetches.` +
+        secondaryReasoningSuffix +
+        ` Top: ${top.phone_raw} conf ${top.confidence} (${top.matched_on}; source=${top.source}).`;
     } else {
       reasoning_summary =
         `No phone candidates accepted. Queries: ${queriesRun.length} (e.g. ${queryExamples}). ` +
         `Snippet domains: ${domainList}. ` +
         `Pages fetched: ${pagesFetched.length} [${pageStatusList}]. ` +
-        `Page errors: ${meta.page_errors}. ${braveErrors.length} Brave queries errored.`;
+        `Page errors: ${meta.page_errors}. ${braveErrors.length} Brave queries errored.` +
+        secondaryReasoningSuffix;
     }
 
     // ── Update job ────────────────────────────────────────────────────────────
