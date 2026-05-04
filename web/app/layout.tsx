@@ -2,11 +2,21 @@ import "./globals.css";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import AppSidebar from "@/components/app-sidebar";
 import ChatWidget from "@/components/chat-widget";
+import MobileBottomNav from "@/components/mobile-bottom-nav";
 import { LocaleProvider } from "@/components/locale-provider";
 
 export const metadata = {
   title: "Socle CRM",
   description: "Québec multifamily acquisition operating system",
+  // PWA: apple-specific meta in <head> below (viewport + icons)
+};
+
+// Viewport must be exported separately from metadata in Next.js 14+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",         // enables env(safe-area-inset-*) on iPhone
+  themeColor: "#C9A84C",
 };
 
 type RecentLead = {
@@ -78,6 +88,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="fr">
+      <head>
+        {/* PWA manifest */}
+        <link rel="manifest" href="/manifest.json" />
+
+        {/* Apple PWA — "Add to Home Screen" behavior */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Socle CRM" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+        {/* Prevent phone number auto-detection from mangling addresses */}
+        <meta name="format-detection" content="telephone=no" />
+      </head>
       <body style={{ background: "var(--crm-bg)", color: "var(--crm-text)", margin: 0, padding: 0 }}>
         <LocaleProvider>
           {userInfo ? (
@@ -91,6 +114,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <div className="crm-main-content">
                 {children}
               </div>
+              <MobileBottomNav />
               <ChatWidget />
             </div>
           ) : (

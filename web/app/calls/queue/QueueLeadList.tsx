@@ -157,7 +157,7 @@ export default function QueueLeadList({
                     transition: "border-color 0.15s, box-shadow 0.15s",
                     ...rowBorderStyle(l.priority, !!overdue),
                   }}
-                  className="hover:border-[var(--crm-gold-border)] hover:shadow-sm"
+                  className="crm-queue-card hover:border-[var(--crm-gold-border)] hover:shadow-sm"
                 >
                   <div
                     style={{
@@ -260,14 +260,15 @@ export default function QueueLeadList({
                       </div>
                     </div>
 
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ textAlign: "right", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                       {formatted ? (
-                        <div className="crm-phone-link" style={{ fontSize: 14 }}>
+                        <div className="crm-queue-phone crm-phone-link" style={{ fontSize: 14 }}>
                           {formatted}
                         </div>
                       ) : (
                         <div className="crm-no-phone">sans tél.</div>
                       )}
+                      <span style={{ fontSize: 12, color: "var(--crm-gold)", fontWeight: 700 }}>→</span>
                     </div>
                   </div>
                 </Link>

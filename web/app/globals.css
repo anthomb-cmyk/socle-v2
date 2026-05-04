@@ -697,10 +697,9 @@ html, body { height: 100%; }
   .crm-sidebar--mobile   { display: none !important; }
 }
 
-/* Mobile (<768px): hide desktop sidebar, show mobile bar, add top padding */
+/* Mobile (<768px): hide desktop sidebar; padding handled in PWA section below */
 @media (max-width: 767px) {
   .crm-sidebar:not(.crm-sidebar--mobile) { display: none !important; }
-  .crm-main-content { padding-top: 52px; }
 }
 
 /* ─── Standard page wrappers ────────────────────────────────────────────────
@@ -885,4 +884,189 @@ html, body { height: 100%; }
 
 .crm-open-lead-link:hover {
   background: #D6E8FF;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PWA / MOBILE STYLES
+   Covers: safe-area insets, bottom nav, mobile padding, touch targets,
+   overflow guard, and caller-specific mobile improvements.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Global mobile overflow guard ──────────────────────────────────────── */
+html, body {
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Mobile bottom tab navigation ──────────────────────────────────────── */
+.crm-mobile-bottom-nav {
+  display: none; /* hidden on desktop — shown only on mobile below */
+}
+
+@media (max-width: 767px) {
+  /* Bottom tab bar */
+  .crm-mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 95;
+    background: var(--crm-card);
+    border-top: 1px solid var(--crm-card-border);
+    /* Safe area for iPhone home indicator */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -1px 8px rgba(0,0,0,0.07);
+  }
+
+  .crm-mobile-bottom-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    text-decoration: none;
+    color: var(--crm-text3);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 6px 4px 4px;
+    min-height: 44px; /* iOS minimum touch target */
+    transition: color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .crm-mobile-bottom-tab svg {
+    opacity: 0.55;
+    flex-shrink: 0;
+  }
+
+  .crm-mobile-bottom-tab--active {
+    color: var(--crm-gold);
+  }
+
+  .crm-mobile-bottom-tab--active svg {
+    opacity: 1;
+    stroke: var(--crm-gold);
+  }
+
+  /* Push page content above the bottom nav */
+  .crm-main-content {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Safe area for top bar (notch/dynamic island) */
+  .crm-mobile-bar {
+    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(52px + env(safe-area-inset-top, 0px));
+  }
+
+  /* Offset page content for the taller safe-area bar */
+  .crm-main-content {
+    padding-top: calc(52px + env(safe-area-inset-top, 0px));
+  }
+
+  /* Tighter page padding on phones */
+  .crm-page {
+    padding: 16px;
+  }
+
+  .crm-page-narrow {
+    padding: 16px;
+    max-width: 100%;
+  }
+
+  /* Full-width cards on mobile */
+  .crm-card {
+    border-radius: 10px;
+  }
+
+  /* Minimum touch targets for all interactive elements */
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Override for small inline links/badges that shouldn't be 44px */
+  .crm-badge, .crm-tag, .crm-panel-link {
+    min-height: unset;
+  }
+}
+
+/* ─── Caller queue mobile improvements ──────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Larger lead cards for thumb tapping */
+  .crm-queue-card {
+    padding: 14px 16px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Phone number pill — big enough to read at a glance */
+  .crm-queue-phone {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px;
+  }
+
+  /* Outcome buttons — 2-column grid on mobile */
+  .crm-outcome-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Call button — full-width, very large on mobile */
+  .crm-call-btn-mobile {
+    width: 100%;
+    padding: 16px !important;
+    font-size: 18px !important;
+    border-radius: 14px !important;
+  }
+
+  /* Tel: tap-to-call link */
+  .crm-tel-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--crm-blue);
+    text-decoration: none;
+    padding: 12px 0;
+    min-height: 52px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .crm-tel-link:active {
+    opacity: 0.7;
+  }
+
+  /* Notes textarea — more thumb-friendly height */
+  .crm-notes-textarea {
+    min-height: 88px !important;
+    font-size: 16px !important; /* prevents iOS auto-zoom on focus */
+  }
+
+  /* Datetime-local inputs — prevent iOS auto-zoom */
+  input[type="datetime-local"],
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  select,
+  textarea {
+    font-size: 16px !important; /* iOS zooms if font-size < 16px */
+  }
+}
+
+/* ─── PWA standalone mode adjustments ───────────────────────────────────── */
+@media (display-mode: standalone) {
+  /* When launched from home screen, extra top safe area for status bar */
+  .crm-mobile-bar {
+    padding-top: env(safe-area-inset-top, 20px);
+    height: calc(52px + env(safe-area-inset-top, 20px));
+  }
+
+  .crm-main-content {
+    padding-top: calc(52px + env(safe-area-inset-top, 20px));
+  }
 }

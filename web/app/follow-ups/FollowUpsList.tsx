@@ -164,9 +164,15 @@ function FollowUpCard({ f, accent, bg, busy, onComplete, onCancel }: {
           )}
           {f.source && <span style={{ fontSize: 11, color: "var(--crm-text3)" }}>via {f.source}</span>}
           {f.lead_id && (
-            <Link href={`/leads/${f.lead_id}` as never} className="crm-open-lead-link">
-              Ouvrir →
-            </Link>
+            <>
+              <Link href={`/calls/${f.lead_id}` as never}
+                style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--crm-green)", borderRadius: 8, padding: "4px 10px", textDecoration: "none", whiteSpace: "nowrap" }}>
+                📞 Appeler
+              </Link>
+              <Link href={`/leads/${f.lead_id}` as never} className="crm-open-lead-link">
+                Fiche →
+              </Link>
+            </>
           )}
         </div>
       </div>
