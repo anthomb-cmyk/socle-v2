@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import StageChecklist from "@/components/stage-checklist";
 
 // Grouped status lists — keep in sync with ALL_LEAD_STATUSES in /api/leads/[id]/route.ts
 const STATUS_GROUPS = [
@@ -169,6 +170,8 @@ export default function LeadDossierClient({
           </select>
         </Field>
       </div>
+
+      <StageChecklist leadId={leadId} status={status} />
 
       <Field label="Notes sur le lead">
         <textarea

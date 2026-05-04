@@ -18,6 +18,116 @@ function formatDuration(sec: number | null): string {
   return `${Math.floor(sec / 60)}m${sec % 60 > 0 ? `${sec % 60}s` : ""}`;
 }
 
+// ── AI Organize result display ────────────────────────────────────────────────
+type OrganizedNotes = {
+  seller_name?: string | null;
+  intent_level?: string | null;
+  asking_price?: number | null;
+  objections?: string[];
+  next_steps?: string[];
+  summary?: string | null;
+};
+
+const INTENT_COLORS: Record<string, { bg: string; text: string }> = {
+  very_hot:       { bg: "#FEF2F2", text: "#B91C1C" },
+  hot:            { bg: "#FFFBEB", text: "#92400E" },
+  warm:           { bg: "#F0FDF4", text: "#166534" },
+  cold:           { bg: "#F9FAFB", text: "#4B5563" },
+  not_interested: { bg: "#F3F4F6", text: "#6B7280" },
+};
+
+function OrganizeBlock({ callLogId }: { callLogId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<OrganizedNotes | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function organize() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/calls/${callLogId}/organize`, { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) { setErr(j.error); return; }
+      setResult(j.data);
+    } catch {
+      setErr("Erreur réseau");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (result) {
+    const ic = INTENT_COLORS[result.intent_level ?? "cold"] ?? INTENT_COLORS.cold;
+    return (
+      <div style={{
+        marginTop: 8, background: "#FAFAFA", border: "1px solid #E5E7EB",
+        borderRadius: 10, padding: "10px 12px", fontSize: 12,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>🤖 Analyse AI</span>
+          {result.seller_name && (
+            <span style={{ color: "#6B7280" }}>{result.seller_name}</span>
+          )}
+          {result.intent_level && (
+            <span style={{
+              padding: "2px 8px", borderRadius: 10, fontWeight: 600, fontSize: 11,
+              background: ic.bg, color: ic.text,
+            }}>
+              {result.intent_level.replace("_", " ")}
+            </span>
+          )}
+          {result.asking_price && (
+            <span style={{ color: "#059669", fontWeight: 600 }}>
+              {new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(result.asking_price)}
+            </span>
+          )}
+        </div>
+
+        {result.summary && (
+          <div style={{ color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>{result.summary}</div>
+        )}
+
+        {result.objections && result.objections.length > 0 && (
+          <div style={{ marginBottom: 4 }}>
+            <span style={{ fontWeight: 600, color: "#6B7280" }}>Objections: </span>
+            <span style={{ color: "#374151" }}>{result.objections.join(" · ")}</span>
+          </div>
+        )}
+
+        {result.next_steps && result.next_steps.length > 0 && (
+          <div>
+            <span style={{ fontWeight: 600, color: "#6B7280" }}>Prochaines étapes:</span>
+            <ul style={{ margin: "2px 0 0 0", paddingLeft: 16 }}>
+              {result.next_steps.map((s, i) => (
+                <li key={i} style={{ color: "#374151", marginBottom: 2 }}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        onClick={organize}
+        disabled={loading}
+        style={{
+          fontSize: 11, color: "#7C3AED", background: "#F5F3FF",
+          border: "1px solid #DDD6FE", borderRadius: 6,
+          padding: "3px 9px", cursor: "pointer",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? "⏳ Analyse en cours…" : "🤖 Organiser avec l'AI"}
+      </button>
+      {err && <span style={{ fontSize: 11, color: "#EF4444", marginLeft: 6 }}>{err}</span>}
+    </div>
+  );
+}
+
+// ── TranscriptBlock ───────────────────────────────────────────────────────────
 function TranscriptBlock({ row }: { row: HistoryRow }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,8 +158,6 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
         if (ts === "completed" || ts === "failed") {
           clearInterval(iv);
           if (ts === "completed") {
-            // Reload transcript text via a simple page refresh signal
-            // (simplest approach: trigger a reload of the transcript text)
             const tr = await fetch(`/api/calls/status?callLogId=${row.id}`);
             const tj = await tr.json();
             if (tj.ok) setText(tj.data?.transcript ?? "");
@@ -66,12 +174,15 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
     <div className="mt-1">
       {status === "completed" && text ? (
         <div>
-          <button
-            onClick={() => setOpen(o => !o)}
-            className="text-xs text-indigo-600 hover:underline"
-          >
-            {open ? "▲ Masquer la transcription" : "▼ Voir la transcription"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setOpen(o => !o)}
+              className="text-xs text-indigo-600 hover:underline"
+            >
+              {open ? "▲ Masquer la transcription" : "▼ Voir la transcription"}
+            </button>
+            <OrganizeBlock callLogId={row.id} />
+          </div>
           {open && (
             <div className="mt-1 bg-zinc-50 border border-zinc-200 rounded-lg p-3 text-xs text-zinc-700 whitespace-pre-wrap leading-relaxed">
               {text}
@@ -81,9 +192,11 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
       ) : status === "processing" ? (
         <span className="text-xs text-zinc-400 animate-pulse">⏳ Transcription en cours…</span>
       ) : status === "failed" ? (
-        <span className="text-xs text-red-500">Transcription échouée · <button onClick={requestTranscript} className="underline">réessayer</button></span>
+        <span className="text-xs text-red-500">
+          Transcription échouée ·{" "}
+          <button onClick={requestTranscript} className="underline">réessayer</button>
+        </span>
       ) : (
-        // "none", "pending_recording", "disabled" — show button if recording exists
         hasRecording && (
           <button
             onClick={requestTranscript}
@@ -99,6 +212,7 @@ function TranscriptBlock({ row }: { row: HistoryRow }) {
   );
 }
 
+// ── CallHistoryPanel ──────────────────────────────────────────────────────────
 export default function CallHistoryPanel({ history }: { history: HistoryRow[] }) {
   return (
     <section className="mt-8">

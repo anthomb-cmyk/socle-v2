@@ -16,9 +16,10 @@ type NavItem = {
   callerOnly?: boolean;
 };
 
-// Primary nav — workflow order: dashboard → leads → calls → phone-review → review → ops
+// Primary nav — workflow order: dashboard → pipeline → leads → calls → phone-review → review → ops
 const PRIMARY_NAV: NavItem[] = [
   { href: "/",                  label: "Tableau de bord",      icon: "dashboard",   adminOnly: true  },
+  { href: "/pipeline",          label: "Pipeline deals",       icon: "pipeline",    adminOnly: true  },
   { href: "/leads",             label: "Leads",                icon: "leads"                         },
   { href: "/calls/queue",       label: "File d'appels",        icon: "calls"                         },
   { href: "/phone-review",      label: "Téléphones à réviser", icon: "phone",       adminOnly: true  },
@@ -45,6 +46,13 @@ type RecentLead = {
   company_name: string | null;
   priority: number | null;
   status: string;
+};
+
+type RecentDeal = {
+  id: string;
+  title: string;
+  stage: string;
+  temperature: string;
 };
 
 type SidebarCounts = {
@@ -113,10 +121,12 @@ export default function AppSidebar({
   email,
   role,
   recentLeads = [],
+  recentDeals = [],
 }: {
   email: string;
   role: "admin" | "caller";
   recentLeads?: RecentLead[];
+  recentDeals?: RecentDeal[];
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -230,6 +240,43 @@ export default function AppSidebar({
         )}
       </nav>
 
+      {/* ── New deal CTA ── */}
+      {isAdmin && (
+        <div style={{ padding: "0 10px", marginBottom: 6 }}>
+          <Link
+            href={"/pipeline" as never}
+            className="crm-sidebar-link"
+            onClick={() => setMobileOpen(false)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 6, background: "var(--crm-gold, #C9A84C)", color: "#fff",
+              borderRadius: 10, padding: "9px 12px", fontWeight: 800,
+              fontSize: 12, textDecoration: "none", letterSpacing: "0.3px",
+            }}
+          >
+            + Nouveau deal
+          </Link>
+        </div>
+      )}
+
+      {/* ── Recent deals ── */}
+      {isAdmin && recentDeals.length > 0 && (
+        <div className="crm-sidebar-recent">
+          <div className="crm-sidebar-section-label" style={{ marginBottom: 4 }}>Deals récents</div>
+          {recentDeals.slice(0, 5).map((d) => (
+            <Link
+              key={d.id}
+              href={`/pipeline/${d.id}` as never}
+              className="crm-sidebar-recent-item"
+              onClick={() => setMobileOpen(false)}
+            >
+              <span className={`crm-sidebar-recent-dot${d.temperature === "chaud" ? " hot" : d.temperature === "tiede" ? " warm" : ""}`} />
+              <span className="crm-sidebar-recent-name">{d.title}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
       {/* ── Recent leads ── */}
       {recentLeads.length > 0 && (
         <div className="crm-sidebar-recent">
@@ -314,6 +361,7 @@ function NavIcon({ name, small }: { name: string; small?: boolean }) {
   const size = small ? 14 : 16;
   const paths: Record<string, string> = {
     dashboard:   "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+    pipeline:    "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2",
     leads:       "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
     import:      "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12",
     calls:       "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",

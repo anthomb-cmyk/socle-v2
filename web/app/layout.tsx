@@ -15,9 +15,17 @@ type RecentLead = {
   status: string;
 };
 
+type RecentDeal = {
+  id: string;
+  title: string;
+  stage: string;
+  temperature: string;
+};
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   let userInfo: { id: string; email: string; role: "admin" | "caller" } | null = null;
   let recentLeads: RecentLead[] = [];
+  let recentDeals: RecentDeal[] = [];
 
   try {
     const supabase = await createSupabaseServerClient();
@@ -45,6 +53,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       } catch {
         // Non-critical — sidebar still renders without recent leads
       }
+
+      // Fetch recent deals for sidebar (admin only)
+      if (userInfo.role === "admin") {
+        try {
+          const sbAdmin = createSupabaseAdminClient();
+          const { data: dealData } = await sbAdmin
+            .from("deals")
+            .select("id,title,stage,temperature")
+            .not("stage", "in", '("cloture","abandonne")')
+            .order("updated_at", { ascending: false })
+            .limit(5);
+          recentDeals = (dealData ?? []) as RecentDeal[];
+        } catch {
+          // Non-critical
+        }
+      }
     }
   } catch {
     // No session — render without sidebar (login page, etc.)
@@ -59,6 +83,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               email={userInfo.email}
               role={userInfo.role}
               recentLeads={recentLeads}
+              recentDeals={recentDeals}
             />
             <div className="crm-main-content">
               {children}

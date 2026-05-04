@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
-import LeadsTable from "@/components/leads-table";
 import PageHeader from "@/components/page-header";
 import Link from "next/link";
 import NextStepBanner from "@/components/next-step-banner";
+import LeadsViewToggle from "./LeadsViewToggle";
 
 export default async function LeadsPage({
   searchParams,
@@ -95,7 +95,7 @@ export default async function LeadsPage({
         </div>
       </div>
 
-      <LeadsTable canAssign={role === "admin"} />
+      <LeadsViewToggle canEdit={role === "admin"} />
     </main>
   );
 }
