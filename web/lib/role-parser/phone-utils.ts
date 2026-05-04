@@ -7,7 +7,7 @@ const VALID_NANP_EXCH = /^[2-9]\d\d$/;
 
 // Reject things that look like Quebec rôle codes but aren't phones.
 const LOOKS_LIKE_MATRICULE = /^\s*\d{4}[\s\-]\d{2}[\s\-]\d{4}[\s\-]\d[\s\-]\d{3}[\s\-]\d{4}\s*$/;
-const LOOKS_LIKE_CADASTRE = /^\s*\d{7,}\s*$/;
+const LOOKS_LIKE_CADASTRE = /^\s*\d{11,}\s*$/;
 const LOOKS_LIKE_NUMBERED_CO = /^\s*\d{4}[\s\-]\d{4}\s+(?:qu[eé]bec|que|qc|inc)\b/i;
 
 export function isValidNanp(area: string, exch: string, sub: string): boolean {
