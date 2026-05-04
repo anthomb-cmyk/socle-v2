@@ -16,6 +16,7 @@
 // Twilio signature validation is left as a future hardening step.
 
 import { getAppUrl, escapeXml, twimlResponse, normalizePhone } from "@/lib/twilio";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 export async function POST(request: Request) {
   const url = new URL(request.url);
@@ -64,10 +65,9 @@ export async function POST(request: Request) {
   </Dial>
 </Response>`;
 
-  // Log the bridge attempt in the call_log for debugging
-  // (fire-and-forget — do not block the TwiML response)
+  // Return TwiML immediately — Twilio has a short webhook timeout.
+  // Log the bridge attempt fire-and-forget after the response is sent.
   if (callLogId) {
-    const { createSupabaseAdminClient } = await import("@/lib/supabase-server");
     const sb = createSupabaseAdminClient();
     sb.from("call_logs")
       .update({ raw: { bridge_attempted_at: new Date().toISOString(), lead_name: leadName } })

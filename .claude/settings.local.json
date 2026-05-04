@@ -13,7 +13,10 @@
       "mcp__claude_ai_Supabase__list_migrations",
       "mcp__claude_ai_Supabase__apply_migration",
       "Bash(rm .git/index.lock)",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(rm -f .git/HEAD.lock .git/index.lock .git/index2.lock)",
+      "Bash(rm -f .git/index.lock .git/HEAD.lock .git/index2.lock)",
+      "Bash(git merge *)"
     ]
   }
 }
