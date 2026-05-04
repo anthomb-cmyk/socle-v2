@@ -8,7 +8,11 @@
       "Bash(git reset *)",
       "Bash(git commit -m ' *)",
       "Bash(git ls-tree *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__list_migrations",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(rm .git/index.lock)"
     ]
   }
 }

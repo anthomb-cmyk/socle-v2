@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 type Campaign = { name: string } | null;
@@ -67,14 +67,131 @@ function matchBucket(conf: number, b: ConfidenceBucket): boolean {
 // ── Badge components ──────────────────────────────────────────────────────────
 
 function ConfidenceBadge({ score }: { score: number }) {
+  // Three-band coloring: ≥80 green, 50-79 amber, <50 red
   const color =
-    score >= 75 ? "bg-emerald-100 text-emerald-800" :
+    score >= 80 ? "bg-emerald-100 text-emerald-800" :
     score >= 50 ? "bg-amber-100 text-amber-800" :
     "bg-red-100 text-red-700";
   return (
     <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${color}`}>
       {score}%
     </span>
+  );
+}
+
+// ── Evidence chip parsing and rendering ───────────────────────────────────────
+
+// High-trust evidence types → green chips
+const HIGH_TRUST = new Set([
+  "mailing_address", "contact_name", "company_name", "related_entity",
+]);
+
+// Quebec business prefixes that suggest a tenant rather than the owner
+const TENANT_PREFIX_RE =
+  /CLINIQUE|CLINIC|PHARMACIE|RESTAURANT|GARAGE|ATELIER|BOUTIQUE|ÉPICERIE|EPICERIE|DÉPANNEUR|DEPANNEUR|COIFFURE|SALON|DENTAIRE|DENTAL|VÉTÉRINAIRE|VETERINAIRE|OPTIQUE|NOTAIRE|COMPTABLE|AVOCAT|HÔTEL|HOTEL|CAFÉ|CAFE|BAR|BANQUE/i;
+
+// Friendly French labels for each evidence token
+function evidenceLabel(token: string): string {
+  const t = token.trim();
+  if (t === "mailing_address") return "Adresse mail. ✓";
+  if (t === "city")            return "Ville ✓";
+  if (t === "postal_prefix")   return "Code postal ✓";
+  if (t === "contact_name")    return "Nom ✓";
+  if (t === "company_name")    return "Compagnie ✓";
+  if (t === "related_entity")  return "Entité reliée ✓";
+  if (t === "fetched_page")    return "Page lue";
+  if (t.startsWith("public_directory:")) {
+    // Truncate long domains to keep chips readable
+    let domain = t.slice("public_directory:".length);
+    if (domain.length > 22) domain = domain.slice(0, 20) + "…";
+    return `Annuaire (${domain})`;
+  }
+  // Fallback: return raw token
+  return t;
+}
+
+type ChipColor = "green" | "amber" | "warning";
+
+function chipStyle(color: ChipColor): React.CSSProperties {
+  if (color === "green") {
+    return {
+      background: "#d1fae5",
+      color: "#065f46",
+      border: "1px solid #6ee7b7",
+    };
+  }
+  if (color === "amber") {
+    return {
+      background: "#fef9c3",
+      color: "#78350f",
+      border: "1px solid #fde68a",
+    };
+  }
+  // warning (tenant possible)
+  return {
+    background: "#fff3cd",
+    color: "#92400e",
+    border: "1px solid #fcd34d",
+  };
+}
+
+const CHIP_BASE: React.CSSProperties = {
+  display: "inline-block",
+  fontSize: 11,
+  fontWeight: 500,
+  padding: "2px 6px",
+  borderRadius: 9999,
+  whiteSpace: "nowrap",
+};
+
+function EvidenceChips({
+  matchedOn,
+  snippet,
+  companyName,
+}: {
+  matchedOn: string | null;
+  snippet: string | null;
+  companyName: string | null | undefined;
+}) {
+  if (!matchedOn) return null;
+
+  // Parse semicolon-delimited tokens; skip empty strings
+  const tokens = matchedOn
+    .split(";")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (tokens.length === 0) return null;
+
+  // Determine chip color per token
+  const chips: Array<{ label: string; color: ChipColor }> = tokens.map((t) => {
+    const base = t.startsWith("public_directory:") ? "public_directory" : t;
+    const color: ChipColor = HIGH_TRUST.has(base) ? "green" : "amber";
+    return { label: evidenceLabel(t), color };
+  });
+
+  // Tenant heuristic: check first 80 chars of snippet for a Quebec business prefix
+  // but only when that prefix is NOT already found in the owner's company_name
+  const snippetHead = (snippet ?? "").slice(0, 80);
+  const company = (companyName ?? "").toLowerCase();
+  const tenantMatch = TENANT_PREFIX_RE.exec(snippetHead);
+  const tenantChip =
+    tenantMatch !== null &&
+    !company.includes(tenantMatch[0].toLowerCase());
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+      {chips.map((chip, i) => (
+        <span key={i} style={{ ...CHIP_BASE, ...chipStyle(chip.color) }}>
+          {chip.label}
+        </span>
+      ))}
+      {tenantChip && (
+        <span style={{ ...CHIP_BASE, ...chipStyle("warning") }}>
+          Tenant possible — vérifier
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -150,15 +267,21 @@ function formatPhone(raw: string | null): string {
 
 // ── CandidateCard ─────────────────────────────────────────────────────────────
 
+const SNIPPET_COLLAPSE_THRESHOLD = 200;
+
 function CandidateCard({
   cand,
   selected,
+  snippetExpanded,
   onToggleSelect,
+  onToggleSnippet,
   onAction,
 }: {
   cand: PhoneCandidate;
   selected: boolean;
+  snippetExpanded: boolean;
   onToggleSelect: (id: string) => void;
+  onToggleSnippet: (id: string) => void;
   onAction: (id: string, action: "approve" | "reject" | "retry" | "keep_unresolved", note?: string) => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -169,6 +292,13 @@ function CandidateCard({
   const name = contact?.full_name ?? contact?.company_name ?? "—";
   const address = property?.address ?? "—";
   const city = property?.city ?? "";
+
+  const snippet = cand.snippet ?? "";
+  const isLong = snippet.length > SNIPPET_COLLAPSE_THRESHOLD;
+  const visibleSnippet =
+    isLong && !snippetExpanded
+      ? snippet.slice(0, SNIPPET_COLLAPSE_THRESHOLD)
+      : snippet;
 
   function act(action: "approve" | "reject" | "retry" | "keep_unresolved") {
     startTransition(() => {
@@ -228,6 +358,13 @@ function CandidateCard({
         )}
       </div>
 
+      {/* Evidence chips (between phone row and snippet) */}
+      <EvidenceChips
+        matchedOn={cand.matched_on}
+        snippet={cand.snippet}
+        companyName={contact?.company_name}
+      />
+
       {/* Match context */}
       {(cand.candidate_name || cand.candidate_address) && (
         <div className="text-xs text-zinc-500 space-y-0.5">
@@ -243,10 +380,19 @@ function CandidateCard({
         </div>
       )}
 
-      {/* Evidence */}
-      {cand.snippet && (
-        <div className="text-xs text-zinc-500 bg-zinc-50 rounded-lg p-2 border border-zinc-100 max-h-20 overflow-y-auto whitespace-pre-wrap">
-          {cand.snippet}
+      {/* Snippet — auto-collapsed when > 200 chars */}
+      {snippet && (
+        <div className="text-xs text-zinc-500 bg-zinc-50 rounded-lg p-2 border border-zinc-100 whitespace-pre-wrap">
+          {visibleSnippet}
+          {isLong && !snippetExpanded && <span className="text-zinc-300">…</span>}
+          {isLong && (
+            <button
+              onClick={() => onToggleSnippet(cand.id)}
+              className="block mt-1 text-blue-500 hover:text-blue-700 text-xs font-medium"
+            >
+              {snippetExpanded ? "[voir moins]" : "[voir plus]"}
+            </button>
+          )}
         </div>
       )}
       {cand.source_url && (
@@ -345,6 +491,17 @@ export default function PhoneReviewClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeBucket, setActiveBucket] = useState<ConfidenceBucket>("all");
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  // Per-card expanded snippet state (Set of candidate ids that are expanded)
+  const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
+
+  const toggleSnippet = useCallback((id: string) => {
+    setExpandedSnippets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Filtered list based on active bucket
   const filtered = useMemo(
@@ -597,7 +754,9 @@ export default function PhoneReviewClient({
           <CandidateCard
             cand={c}
             selected={selectedIds.has(c.id)}
+            snippetExpanded={expandedSnippets.has(c.id)}
             onToggleSelect={toggleSelect}
+            onToggleSnippet={toggleSnippet}
             onAction={handleAction}
           />
           {errors[c.id] && (

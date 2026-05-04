@@ -453,8 +453,11 @@ function countStrongEvidence(matched_on: string): number {
 }
 
 function isAutoAttachable(c: Candidate): boolean {
-  return c.confidence >= 80
-      && !!(c.source_url && c.source_url.length > 0)
+  // Auto-attach when ≥2 strong evidence types matched + source URL present.
+  // Confidence score floor was removed: address+city matches (40+25=65) are
+  // strong enough for Quebec multifamily owners (whose mailing address is
+  // typically their professional office, with a phone reachable for them).
+  return !!(c.source_url && c.source_url.length > 0)
       && countStrongEvidence(c.matched_on) >= 2;
 }
 
@@ -1080,6 +1083,7 @@ export async function POST(request: Request) {
       auto_attached_phone_ids:  autoAttachedPhoneIds,
       auto_attached_phones:     autoAttachedPhones,
       dedup_updates:            dedupUpdates,
+      threshold_rule:           'source_url present && strong_evidence >= 2 (confidence floor removed for QC multifamily owners)',
     };
 
     const meta = {

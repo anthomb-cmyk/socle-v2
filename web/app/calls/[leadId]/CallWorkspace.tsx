@@ -2,6 +2,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
+// ── Twilio call state ────────────────────────────────────────────────────────
+type TwilioCallState = "idle" | "initiating" | "ringing" | "answered" | "completed" | "failed";
+const CALL_STATE_LABELS: Record<TwilioCallState, string> = {
+  idle:       "",
+  initiating: "Connexion…",
+  ringing:    "Ton téléphone sonne…",
+  answered:   "En ligne",
+  completed:  "Appel terminé",
+  failed:     "Erreur",
+};
+
 type Phone = { id: string; e164: string; display: string | null; status: string; source: string; confidence: number };
 
 const QUICK_OUTCOMES = [
@@ -38,7 +49,15 @@ function defaultCallbackTime(): string {
   return d.toISOString().slice(0, 16);
 }
 
-export default function CallWorkspace({ leadId, phones }: { leadId: string; phones: Phone[] }) {
+export default function CallWorkspace({
+  leadId,
+  phones,
+  userForwardTo,
+}: {
+  leadId: string;
+  phones: Phone[];
+  userForwardTo: string | null;
+}) {
   const router = useRouter();
   const [phoneId, setPhoneId] = useState<string | null>(phones[0]?.id ?? null);
   const [notes, setNotes] = useState("");
@@ -56,6 +75,60 @@ export default function CallWorkspace({ leadId, phones }: { leadId: string; phon
   const [motivation, setMotivation]   = useState("");
   const [askingPrice, setAskingPrice] = useState("");
   const [callerSummary, setCallerSummary] = useState("");
+
+  // Twilio call state
+  const [callState, setCallState] = useState<TwilioCallState>("idle");
+  const [callError, setCallError] = useState<string | null>(null);
+  const activeCallLogId = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  function startPolling(callLogId: string) {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/calls/status?callLogId=${callLogId}`);
+        const j = await r.json();
+        if (!j.ok) return;
+        const events = (j.data?.statusEvents ?? []) as { status: string }[];
+        const last = events[events.length - 1]?.status ?? "";
+        if (last === "in-progress") setCallState("answered");
+        if (last === "completed" || (j.data?.durationSec != null)) {
+          setCallState("completed"); stopPolling();
+        }
+      } catch { /* non-fatal */ }
+    }, 3000);
+  }
+
+  useEffect(() => () => stopPolling(), []);
+
+  async function startCall() {
+    if (!phoneId) { setCallError("Sélectionne un numéro de téléphone."); return; }
+    if (!userForwardTo) {
+      setCallError("Ton numéro de renvoi n'est pas configuré — demande à Anthony de l'ajouter dans ton profil.");
+      return;
+    }
+    setCallState("initiating");
+    setCallError(null);
+    try {
+      const r = await fetch("/api/twilio/calls/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId, phoneId }),
+      });
+      const j = await r.json();
+      if (!j.ok) { setCallState("failed"); setCallError(j.error ?? "Impossible de lancer l'appel."); return; }
+      activeCallLogId.current = j.data.callLogId;
+      setCallState("ringing");
+      startPolling(j.data.callLogId);
+    } catch {
+      setCallState("failed");
+      setCallError("Erreur réseau — réessaie.");
+    }
+  }
 
   // ── Call lock lifecycle ──────────────────────────────────────────────────
   // Acquire lock on mount so /api/calls/next skips this lead for other callers.
@@ -256,6 +329,40 @@ export default function CallWorkspace({ leadId, phones }: { leadId: string; phon
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
           No phone numbers on file for this contact.
         </div>
+      )}
+
+      {/* ── Twilio call launcher ─────────────────────────────────────── */}
+      {phones.length > 0 && (
+        <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex items-center gap-3">
+          {(callState === "idle" || callState === "failed" || callState === "completed") ? (
+            <button
+              onClick={startCall}
+              disabled={!phoneId}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm font-semibold"
+            >
+              📞 Appeler
+            </button>
+          ) : (
+            <button disabled className="flex items-center gap-2 bg-zinc-200 text-zinc-600 rounded-lg px-4 py-2 text-sm font-semibold cursor-not-allowed">
+              {callState === "initiating" && <span className="animate-pulse">⏳</span>}
+              {callState === "ringing"    && <span>📱</span>}
+              {callState === "answered"   && <span className="text-red-500">🔴</span>}
+              {CALL_STATE_LABELS[callState]}
+            </button>
+          )}
+          <span className="text-xs text-zinc-500 flex-1">
+            {callState === "idle" && (userForwardTo
+              ? <>Sonnera sur <span className="font-mono">{userForwardTo}</span></>
+              : <span className="text-amber-600">Numéro de renvoi non configuré</span>
+            )}
+            {callState === "ringing"   && "Décroche ton téléphone…"}
+            {callState === "answered"  && "Connecté · parle avec le propriétaire"}
+            {callState === "completed" && "✓ Appel terminé — sélectionne un résultat ci-dessous"}
+          </span>
+        </div>
+      )}
+      {callError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{callError}</p>
       )}
 
       <Field label="Notes (optional)">
