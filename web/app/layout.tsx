@@ -1,6 +1,7 @@
 import "./globals.css";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import AppSidebar from "@/components/app-sidebar";
+import ChatWidget from "@/components/chat-widget";
 
 export const metadata = {
   title: "Socle CRM",
@@ -88,6 +89,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div className="crm-main-content">
               {children}
             </div>
+            <ChatWidget />
           </div>
         ) : (
           <div style={{ minHeight: "100vh", background: "var(--crm-bg)" }}>
