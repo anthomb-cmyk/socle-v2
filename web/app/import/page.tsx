@@ -95,11 +95,34 @@ export default function ImportPage() {
     stopPolling();
     confirmStartRef.current = Date.now();
 
+    let consecutivePollFailures = 0;
+    const MAX_TOLERATED_FAILURES = 5;   // ~7-8s outage tolerated silently
+    const MAX_TOTAL_FAILURES = 30;       // ~45s — give up
+    const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 min hard ceiling
+
     pollRef.current = setInterval(async () => {
+      // Hard ceiling — if we've polled for more than 10 min and never seen completed/failed, stop
+      if (confirmStartRef.current && Date.now() - confirmStartRef.current > MAX_POLL_DURATION_MS) {
+        stopPolling();
+        setConfirming(false);
+        setError("Le suivi de l'import a expiré. Vérifiez /admin/enrichment ou les logs Railway.");
+        return;
+      }
+
       try {
         const resp = await fetch(`/api/import/${jobId}`);
+        if (!resp.ok) {
+          consecutivePollFailures++;
+          if (consecutivePollFailures >= MAX_TOTAL_FAILURES) {
+            stopPolling();
+            setConfirming(false);
+            setError("Connexion perdue pendant le suivi de l'import. L'import peut quand même être en cours côté serveur — vérifiez /admin/enrichment dans une minute.");
+          }
+          return;
+        }
         const json = await resp.json();
         if (!json.ok) return;
+        consecutivePollFailures = 0; // reset on any successful poll
         const job: JobPollData = json.data;
         setPollData(job);
 
@@ -152,7 +175,13 @@ export default function ImportPage() {
           }
         }
       } catch {
-        // Network hiccup — keep polling
+        // Network hiccup — count it but keep polling
+        consecutivePollFailures++;
+        if (consecutivePollFailures >= MAX_TOTAL_FAILURES) {
+          stopPolling();
+          setConfirming(false);
+          setError("Connexion perdue pendant le suivi de l'import. L'import peut quand même être en cours côté serveur — vérifiez /admin/enrichment dans une minute.");
+        }
       }
     }, POLL_INTERVAL_MS);
   }
@@ -189,10 +218,18 @@ export default function ImportPage() {
     // Fire POST — it will run for up to 5 minutes server-side.
     // We don't await in a way that blocks UI; the interval above handles state.
     fetch(`/api/import/${jobId}/confirm`, { method: "POST" }).then(async resp => {
-      const json = await resp.json();
+      let json: { ok: boolean; error?: string } = { ok: true };
+      try { json = await resp.json(); } catch { /* non-JSON response — keep polling */ }
       if (!json.ok) {
-        // If the server returned an error synchronously (e.g. 409 wrong status),
-        // stop polling and surface the error.
+        // If the server returned a 'wrong status' error, the import is
+        // already running — keep polling, just surface a friendlier note
+        // (the polling will pick up the completed state shortly).
+        const errStr = String(json.error ?? "");
+        if (/processing|preview/i.test(errStr) && /expected|status/i.test(errStr)) {
+          // Don't tear down — the prior import is in flight, polling will catch it
+          return;
+        }
+        // Real error — stop polling and surface it
         stopPolling();
         setConfirming(false);
         setError(json.error ?? "Erreur lors de la confirmation.");
@@ -200,9 +237,10 @@ export default function ImportPage() {
       // On success the polling interval will have already transitioned the UI
       // once it sees status === 'completed'. We just let it run.
     }).catch(() => {
-      stopPolling();
-      setConfirming(false);
-      setError("Connexion perdue pendant l'import. Vérifiez le statut dans quelques instants.");
+      // Connection drop on the LONG confirm POST is normal during a Railway
+      // redeploy or transient network blip. The job is almost certainly still
+      // running server-side. Don't tear down — let the polling loop confirm
+      // completion (or fail it via the polling-side failure counter).
     });
   }
 
