@@ -391,7 +391,21 @@ export function parseFormatB(rawRows: Record<string, unknown>[]): ParsedRow[] {
         owner.full_name = titleCase(bestFullName);
       } else if (kind === "company" || kind === "numbered_co" || kind === "trust") {
         owner.company_name = rawName;
-        owner.full_name = rawName; // preserve original casing for companies
+
+        // For company-owned leads, "Propriétaire Prénom" / "Propriétaire Nom"
+        // (or the Longueuil B2 fallback "sub.nom" when Prénom is present)
+        // hold the DIRECTOR's name — separate from the inc name in the
+        // "Propriétaire" column. Use it as full_name so callers see who
+        // to ask for, not the inc name twice.
+        const dirLast = (nomFamille || (prenom ? (sub["nom"] || "") : "")).trim();
+        const directorName = [prenom, dirLast].filter(Boolean).join(" ").trim();
+        if (directorName) {
+          owner.full_name = titleCase(directorName);
+          owner.first_name = titleCase(prenom) || undefined;
+          owner.last_name = titleCase(dirLast) || undefined;
+        } else {
+          owner.full_name = rawName; // legacy fallback: no director info
+        }
 
         // Longueuil B2: when a company has Prénom + Nom fields, those represent
         // the contact PERSON behind the company.  Add as a separate owner entry
