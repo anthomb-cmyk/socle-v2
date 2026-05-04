@@ -179,15 +179,6 @@ export async function POST(request: Request) {
   // Pre-check the env var so we can distinguish "URL not configured" (webhook_missing)
   // from "URL set but fetch errored" (webhook_failed).
   const webhookConfigured = !!process.env.OPENCLAW_WEBHOOK_URL;
-  const sharedKeySet      = !!process.env.N8N_SHARED_KEY;
-  let webhookHost = "";
-  try { webhookHost = process.env.OPENCLAW_WEBHOOK_URL ? new URL(process.env.OPENCLAW_WEBHOOK_URL).host : ""; }
-  catch { webhookHost = "(invalid URL)"; }
-  const dispatchTarget = {
-    webhookConfigured,
-    webhookHost,
-    sharedKeySet,
-  };
 
   let dispatched = false;
   let dispatchReason: string | null = null;
@@ -236,7 +227,6 @@ export async function POST(request: Request) {
         enrichmentJobId,
         status:   "unresolved_after_openclaw",
         reason:   errMsg,
-        dispatch: dispatchTarget,
         message:  userMessage,
       },
     });
@@ -253,8 +243,7 @@ export async function POST(request: Request) {
       leadId:          lead.id,
       enrichmentJobId,
       status:          "openclaw_researching",
-      dispatch:        dispatchTarget,
-      message:         `OpenClaw dispatched to ${webhookHost}. Lead set to openclaw_researching — check /admin/enrichment for callback. If no callback within 10 min, /admin/enrichment shows a Mark Stale button.`,
+      message:         "OpenClaw dispatched. Lead set to openclaw_researching — check /admin/enrichment for callback.",
     },
   });
 }
