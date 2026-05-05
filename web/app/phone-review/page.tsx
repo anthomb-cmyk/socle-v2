@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
+import CallerAppShell from "@/components/caller/CallerAppShell";
 import PhoneReviewClient, { type PhoneCandidate } from "./PhoneReviewClient";
 import PhoneReviewHeader from "./PhoneReviewHeader";
 import PhoneReviewRules from "./PhoneReviewRules";
@@ -72,9 +73,11 @@ export default async function PhoneReviewPage({
 
   if (candidatesRes.error) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
-        <p className="text-red-600">Failed to load review queue: {candidatesRes.error.message}</p>
-      </main>
+      <CallerAppShell width="narrow">
+        <p style={{ color: "var(--so-danger)" }}>
+          Failed to load review queue: {candidatesRes.error.message}
+        </p>
+      </CallerAppShell>
     );
   }
 
@@ -82,7 +85,7 @@ export default async function PhoneReviewPage({
   const readyCount = readyRes.count ?? 0;
 
   return (
-    <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <CallerAppShell width="narrow">
       {justApproved && (
         <NextStepBanner
           kind="review_done"
@@ -95,6 +98,6 @@ export default async function PhoneReviewPage({
       {candidates.length > 0 && <PhoneReviewRules />}
 
       <PhoneReviewClient initialCandidates={candidates} />
-    </main>
+    </CallerAppShell>
   );
 }

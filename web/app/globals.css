@@ -1575,3 +1575,81 @@ html, body {
   color: var(--so-fg-5);
 }
 
+/* ─── Phase 2: caller shell ───────────────────────────────────────────────
+   Page-level <main> wrapper for caller-module routes. The global sidebar
+   + mobile bottom nav (in app/layout.tsx) sit AROUND this; the shell
+   provides the inner content frame with consistent padding, max-width,
+   vertical rhythm, and safe-area handling on mobile.
+─────────────────────────────────────────────────────────────────────────── */
+.so-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0 auto;
+  padding: 28px 24px 24px;
+  width: 100%;
+  min-height: 100%;
+}
+.so-shell--narrow { max-width: 760px; }
+.so-shell--wide   { max-width: 1280px; }
+
+.so-shell__header { display: flex; flex-direction: column; gap: 6px; }
+.so-shell__stats  { display: flex; flex-direction: column; gap: 12px; }
+.so-shell__main   { display: flex; flex-direction: column; gap: 18px; flex: 1 1 auto; min-width: 0; }
+/* .so-shell__bottom is reserved for Phase 4 (mobile sticky call bar) */
+
+@media (max-width: 767px) {
+  .so-shell {
+    padding: 14px 14px;
+    /* Leave room for the existing fixed-bottom mobile nav; safe-area is
+       already applied to the nav itself in globals.css. */
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    gap: 14px;
+  }
+  .so-shell__main { gap: 14px; }
+}
+
+/* ─── Phase 2: caller page header ─────────────────────────────────────── */
+.so-page-header { display: flex; flex-direction: column; gap: 4px; }
+.so-page-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--so-fg-3);
+  text-decoration: none;
+  align-self: flex-start;
+  -webkit-tap-highlight-color: transparent;
+}
+.so-page-header__back:hover { color: var(--so-fg-1); }
+.so-page-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.so-page-header__titles { min-width: 0; flex: 1 1 auto; }
+.so-page-header__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  line-height: 1.2;
+  margin: 0;
+}
+.so-page-header__sub {
+  font-size: 13px;
+  color: var(--so-fg-3);
+  margin: 4px 0 0;
+}
+.so-page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 767px) {
+  .so-page-header__title { font-size: 19px; }
+}
+

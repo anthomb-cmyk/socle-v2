@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import CallerAppShell from "@/components/caller/CallerAppShell";
 import FollowUpsList from "./FollowUpsList";
 import PageHeader from "@/components/page-header";
 import Link from "next/link";
@@ -11,7 +12,7 @@ export default async function FollowUpsPage() {
   const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
 
   return (
-    <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <CallerAppShell width="narrow">
       <PageHeader
         title="Suivis"
         subtitle={role === "admin" ? "Tous les suivis en attente." : "Vos suivis assignés."}
@@ -19,6 +20,6 @@ export default async function FollowUpsPage() {
         <Link href="/calendar" className="crm-btn">Calendrier →</Link>
       </PageHeader>
       <FollowUpsList />
-    </main>
+    </CallerAppShell>
   );
 }

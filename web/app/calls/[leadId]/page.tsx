@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
+import CallerAppShell from "@/components/caller/CallerAppShell";
 import CallWorkspace from "./CallWorkspace";
 import CallHistoryPanel from "./CallHistoryPanel";
 import CallLeadHeader from "./CallLeadHeader";
@@ -41,7 +42,7 @@ export default async function CallLeadPage(
   const userForwardTo: string | null = metaRes.data?.twilio_forward_to?.trim() || null;
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
+    <CallerAppShell width="narrow">
       <CallLeadHeader lead={lead as Parameters<typeof CallLeadHeader>[0]["lead"]} />
 
       <CallWorkspace
@@ -53,6 +54,6 @@ export default async function CallLeadPage(
       {history.length > 0 && (
         <CallHistoryPanel history={history} />
       )}
-    </main>
+    </CallerAppShell>
   );
 }

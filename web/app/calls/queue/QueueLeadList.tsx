@@ -81,7 +81,7 @@ export default function QueueLeadList({
   ).length;
 
   return (
-    <main className="crm-page-narrow">
+    <>
       <header
         style={{
           display: "flex",
@@ -295,6 +295,6 @@ export default function QueueLeadList({
           {t.queue.footer}
         </div>
       )}
-    </main>
+    </>
   );
 }
