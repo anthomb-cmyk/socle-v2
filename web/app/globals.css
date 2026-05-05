@@ -1396,3 +1396,182 @@ html, body {
   .crm-caller-header__name { font-size: 19px; }
 }
 
+/* ─── Phase 1: --so-* design token aliases ────────────────────────────────
+   Cream / charcoal / muted-gold palette from the caller-module design
+   handoff (CLAUDE_CODE_HANDOFF.md §6). Layered ALONGSIDE existing
+   --crm-* tokens; existing tokens are unchanged.
+
+   Convention going forward:
+     - new caller surfaces (CallerAppShell, CallerQueueStats, etc.) consume
+       --so-* tokens
+     - existing admin surfaces continue to consume --crm-* tokens
+─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --so-bg:           #faf6ee;
+  --so-bg-soft:      #f5f0e3;
+  --so-card:         #ffffff;
+
+  /* Foreground */
+  --so-fg-1:         #2b2922;
+  --so-fg-3:         #5a5648;
+  --so-fg-5:         #a39e8e;
+
+  /* Borders */
+  --so-border:       rgba(43, 41, 34, 0.10);
+  --so-border-faint: rgba(43, 41, 34, 0.06);
+
+  /* Gold */
+  --so-gold-300:     #ecd99a;
+  --so-gold-500:     #c9a84c;
+  --so-gold-700:     #8c6f1a;
+  --so-gold-light:   #faf3de;
+
+  /* Semantic */
+  --so-success:      #4f7a4a;
+  --so-warn:         #b78c2b;
+  --so-danger:       #a23b3b;
+
+  /* Soft shadow used by the caller card aesthetic */
+  --so-shadow-card:  0 1px 0 rgba(0, 0, 0, 0.02), 0 8px 22px rgba(43, 41, 34, 0.05);
+}
+
+/* ─── Phase 1 atom classes ────────────────────────────────────────────────
+   Atoms (no new components yet) that phases 2-7 will compose. Scoped to
+   `.so-*`; do not interfere with existing `.crm-*` classes.
+─────────────────────────────────────────────────────────────────────────── */
+
+/* Card primitive (slimmer than .crm-card, with soft cream shadow) */
+.so-card {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 14px;
+  box-shadow: var(--so-shadow-card);
+}
+
+/* KPI stat tile (used by upcoming CallerQueueStats) */
+.so-stat-tile {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.so-stat-tile__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--so-fg-5);
+}
+.so-stat-tile__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  font-feature-settings: "tnum" 1;
+  line-height: 1.1;
+}
+.so-stat-tile__hint {
+  font-size: 11px;
+  color: var(--so-fg-3);
+}
+
+/* Status / priority / variant badge primitive */
+.so-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--so-bg-soft);
+  color: var(--so-fg-3);
+  border: 1px solid var(--so-border-faint);
+  white-space: nowrap;
+}
+.so-badge--gold    { background: var(--so-gold-light); color: var(--so-gold-700); border-color: var(--so-gold-300); }
+.so-badge--success { background: color-mix(in srgb, var(--so-success) 12%, transparent); color: var(--so-success); border-color: color-mix(in srgb, var(--so-success) 25%, transparent); }
+.so-badge--warn    { background: color-mix(in srgb, var(--so-warn) 12%, transparent);    color: var(--so-warn);    border-color: color-mix(in srgb, var(--so-warn) 25%, transparent); }
+.so-badge--danger  { background: color-mix(in srgb, var(--so-danger) 10%, transparent);  color: var(--so-danger);  border-color: color-mix(in srgb, var(--so-danger) 25%, transparent); }
+.so-badge--info    { background: color-mix(in srgb, var(--crm-blue) 10%, transparent);   color: var(--crm-blue);   border-color: color-mix(in srgb, var(--crm-blue) 25%, transparent); }
+
+/* Priority accent rail (left border for cards/rows) */
+.so-priority-rail        { border-left: 3px solid var(--so-border); }
+.so-priority-rail--hot    { border-left-color: var(--so-danger); }
+.so-priority-rail--warm   { border-left-color: var(--so-gold-500); }
+.so-priority-rail--cold   { border-left-color: var(--crm-blue); }
+.so-priority-rail--normal { border-left-color: var(--so-border); }
+
+/* Confidence badge (3-bucket variant for /phone-review) */
+.so-confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-feature-settings: "tnum" 1;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--so-bg-soft);
+  color: var(--so-fg-3);
+}
+.so-confidence-badge--high { background: color-mix(in srgb, var(--so-success) 14%, transparent); color: var(--so-success); }
+.so-confidence-badge--mid  { background: color-mix(in srgb, var(--so-warn) 14%, transparent);    color: var(--so-warn); }
+.so-confidence-badge--low  { background: color-mix(in srgb, var(--so-danger) 12%, transparent);  color: var(--so-danger); }
+
+/* Icon chip (icon + small label, e.g. "12 log.") */
+.so-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--so-fg-3);
+  background: var(--so-bg-soft);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+/* Loading skeleton primitive */
+.so-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--so-bg-soft) 0%,
+    color-mix(in srgb, var(--so-bg-soft) 80%, white) 50%,
+    var(--so-bg-soft) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 8px;
+  animation: so-skeleton-shimmer 1.4s linear infinite;
+}
+@keyframes so-skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Empty-state shell */
+.so-empty-state {
+  background: var(--so-card);
+  border: 1px dashed var(--so-border);
+  border-radius: 14px;
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--so-fg-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.so-empty-state__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+}
+.so-empty-state__sub {
+  font-size: 12px;
+  color: var(--so-fg-5);
+}
+

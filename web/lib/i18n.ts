@@ -22,9 +22,28 @@ const dict = {
     lang: "Français",
 
     // ── Sidebar nav labels ────────────────────────────────────────────────────
+    // FR strings mirror the hardcoded `label` fields currently in
+    // app-sidebar.tsx PRIMARY_NAV / ADMIN_NAV. Adding keys here is purely
+    // additive — the sidebar continues to use its hardcoded labels until a
+    // future phase wires them through useLocale().
     nav: {
-      queue:       "File d'appels",
-      phoneReview: "Téléphones à réviser",
+      queue:         "File d'appels",
+      phoneReview:   "Téléphones à réviser",
+      dashboard:     "Tableau de bord",
+      pipeline:      "Pipeline deals",
+      leads:         "Leads",
+      review:        "Revue",
+      import:        "Import rôle",
+      enrichment:    "Enrichissement",
+      followUps:     "Suivis",
+      calendar:      "Calendrier",
+      map:           "Carte",
+      users:         "Utilisateurs",
+      events:        "Journal événements",
+      dataHealth:    "Santé données",
+      properties:    "Propriétés",
+      contacts:      "Contacts",
+      callerSection: "Module appels",
     },
 
     // ── Queue page ────────────────────────────────────────────────────────────
@@ -41,6 +60,16 @@ const dict = {
       timeAgoMin:    "m",
       timeAgoHour:   "h",
       timeAgoDay:    "j",
+
+      // Stat strip + filters (used by upcoming CallerQueueStats / Filters)
+      statTotalToday:   "À appeler",
+      statHotPriority:  "Priorité haute",
+      statOverdue:      "En retard",
+      statLastCall:     "Dernier appel",
+      filterAll:        "Tous",
+      filterHot:        "Priorité haute",
+      filterCallable:   "À appeler",
+      searchPlaceholder:"Rechercher (nom, adresse, ville)…",
     },
 
     // ── Lead status labels (used in queue cards and workspace) ────────────────
@@ -124,6 +153,16 @@ const dict = {
       callLaunchFailed:  "Impossible de lancer l'appel.",
       networkError:      "Erreur réseau — réessaie.",
       savingCallback:    "Enregistrement…",
+
+      // Callback preset chips (used by upcoming CallbackScheduler)
+      callbackPresetIn15m:      "Dans 15 min",
+      callbackPreset1h:         "Dans 1 h",
+      callbackPresetTomorrowAm: "Demain matin",
+      callbackPresetTomorrowPm: "Demain après-midi",
+      callbackPresetCustom:     "Personnalisé",
+
+      // Soft banner when a caller deep-links into a lead held by another caller
+      lockedByOther:            (name: string) => `Ce lead est verrouillé par ${name}.`,
     },
 
     // ── Call history panel ────────────────────────────────────────────────────
@@ -168,6 +207,12 @@ const dict = {
       confidence:         "Confiance :",
       bucketAll:          (n: number) => `Tous (${n})`,
     },
+
+    // ── Common shared strings (loading / retry / etc.) ────────────────────────
+    common: {
+      skeleton:    "Chargement…",
+      errorRetry:  "Réessayer",
+    },
   },
 
   en: {
@@ -177,8 +222,23 @@ const dict = {
 
     // ── Sidebar nav labels ────────────────────────────────────────────────────
     nav: {
-      queue:       "Call queue",
-      phoneReview: "Phone review",
+      queue:         "Call queue",
+      phoneReview:   "Phone review",
+      dashboard:     "Dashboard",
+      pipeline:      "Pipeline",
+      leads:         "Leads",
+      review:        "Review",
+      import:        "Role import",
+      enrichment:    "Enrichment",
+      followUps:     "Follow-ups",
+      calendar:      "Calendar",
+      map:           "Map",
+      users:         "Users",
+      events:        "Event log",
+      dataHealth:    "Data health",
+      properties:    "Properties",
+      contacts:      "Contacts",
+      callerSection: "Caller module",
     },
 
     // ── Queue page ────────────────────────────────────────────────────────────
@@ -195,6 +255,16 @@ const dict = {
       timeAgoMin:    "m",
       timeAgoHour:   "h",
       timeAgoDay:    "d",
+
+      // Stat strip + filters
+      statTotalToday:   "To call",
+      statHotPriority:  "Hot priority",
+      statOverdue:      "Overdue",
+      statLastCall:     "Last call",
+      filterAll:        "All",
+      filterHot:        "Hot priority",
+      filterCallable:   "Callable",
+      searchPlaceholder:"Search (name, address, city)…",
     },
 
     // ── Lead status labels ────────────────────────────────────────────────────
@@ -278,6 +348,16 @@ const dict = {
       callLaunchFailed:  "Unable to start call.",
       networkError:      "Network error — please retry.",
       savingCallback:    "Saving…",
+
+      // Callback preset chips
+      callbackPresetIn15m:      "In 15 min",
+      callbackPreset1h:         "In 1 h",
+      callbackPresetTomorrowAm: "Tomorrow morning",
+      callbackPresetTomorrowPm: "Tomorrow afternoon",
+      callbackPresetCustom:     "Custom",
+
+      // Soft banner when a caller deep-links into a lead held by another caller
+      lockedByOther:            (name: string) => `This lead is locked by ${name}.`,
     },
 
     // ── Call history panel ────────────────────────────────────────────────────
@@ -321,6 +401,12 @@ const dict = {
       openClawAnalysis:   "OpenClaw analysis",
       confidence:         "Confidence:",
       bucketAll:          (n: number) => `All (${n})`,
+    },
+
+    // ── Common shared strings ──────────────────────────────────────────────────
+    common: {
+      skeleton:    "Loading…",
+      errorRetry:  "Retry",
     },
   },
 } as const;
