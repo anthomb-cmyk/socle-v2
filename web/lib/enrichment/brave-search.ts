@@ -32,7 +32,7 @@ async function braveSearch(query: string): Promise<BraveWebResult[]> {
   const apiKey = process.env.BRAVE_API_KEY;
   if (!apiKey) throw new Error("BRAVE_API_KEY not configured");
 
-  const url = `${BRAVE_SEARCH_URL}?q=${encodeURIComponent(query)}&count=5&country=CA&search_lang=fr`;
+  const url = `${BRAVE_SEARCH_URL}?q=${encodeURIComponent(query)}&count=10&country=CA&search_lang=fr`;
   const res = await fetch(url, {
     headers: {
       "Accept": "application/json",
@@ -150,6 +150,12 @@ export async function runAddressSearch(ctx: LeadContext): Promise<StageResult> {
   const postalStr = postal ? ` ${postal}` : "";
   const provinceSuffix = "Québec";
 
+  // For civic ranges like "145-680" or "10-20" strip the low number so Brave
+  // can match "680 avenue Victoria" pages (management co, Pages Jaunes, etc.)
+  // that Google returns at the top but Brave buries under tenant noise.
+  const rangeMatch = addr.match(/^\d+-(\d+\s+.+)$/);
+  const addrSimple = rangeMatch ? rangeMatch[1] : null; // e.g. "680 avenue Victoria"
+
   const queries: string[] = [
     `${addr}${cityStr}${postalStr} téléphone`,
     `${addr}${cityStr} entreprise téléphone`,
@@ -157,6 +163,14 @@ export async function runAddressSearch(ctx: LeadContext): Promise<StageResult> {
   ];
   if (postalStr) queries.push(`${addr}${postalStr}`);
   if (cityStr)   queries.push(`${addr}${cityStr} Canada`);
+
+  // Extra variants for range addresses — strip the range prefix and try
+  // "gestion immobilière" / "immeuble" which surfaces management companies.
+  if (addrSimple) {
+    queries.push(`${addrSimple}${cityStr} gestion immobilière téléphone`);
+    queries.push(`${addrSimple}${cityStr}${postalStr} téléphone`);
+    queries.push(`immeuble ${addrSimple}${cityStr} téléphone`);
+  }
 
   const seen = new Set<string>();
   const candidates: PhoneCandidate[] = [];
@@ -171,10 +185,14 @@ export async function runAddressSearch(ctx: LeadContext): Promise<StageResult> {
     const found = extractCandidatesFromResults(results, query, score, "address_search", seen);
     candidates.push(...found);
 
-    // Stop querying early if we already have a high-confidence hit
+    // Stop querying early if we already have a high-confidence hit.
+    // For range addresses we keep going even with weak early results so the
+    // simplified-address "gestion" queries can surface the management company.
     const HIGH = 80;
     if (candidates.some(c => c.initialConfidence >= HIGH)) break;
-    if (candidates.length >= 3) break;
+    // Only stop on candidate count if this is NOT a range-address lead
+    // (range leads need the extra query variants to fire).
+    if (!addrSimple && candidates.length >= 3) break;
   }
 
   if (candidates.length === 0) return { found: false };
