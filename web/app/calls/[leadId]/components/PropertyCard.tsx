@@ -1,32 +1,24 @@
 "use client";
 import { useLocale } from "@/components/locale-provider";
 
+
 type Props = {
   address: string;
   city: string | null;
   units: number | null;
-  assessedValue: number | null;
 };
 
 /**
- * Phase 4 — property identity card. B-3: yearBuilt removed — leads_view
- * does not expose the column; cell removed and grid rebalanced to 2-up.
- * Pure presentation. Cells whose value is null are not rendered (no "—"
- * placeholder), per spec "missing-fields: collapse cells whose value is null".
+ * Phase 4 — property identity card.
+ * assessedValue removed: callers don't need the municipal assessment value.
  */
-export default function PropertyCard({ address, city, units, assessedValue }: Props) {
-  const { t, locale } = useLocale();
+export default function PropertyCard({ address, city, units }: Props) {
+  const { t } = useLocale();
   const fullAddress = city ? `${address}, ${city}` : address;
-  const fmtCurrency = new Intl.NumberFormat(locale === "fr" ? "fr-CA" : "en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 0,
-  });
 
   type Cell = { label: string; value: string };
   const cells: Cell[] = [];
-  if (units != null)         cells.push({ label: t.workspace.unitsLabel,    value: String(units) });
-  if (assessedValue != null) cells.push({ label: t.workspace.assessedLabel, value: fmtCurrency.format(assessedValue) });
+  if (units != null) cells.push({ label: t.workspace.unitsLabel, value: String(units) });
 
   return (
     <div className="cw-card cw-property-card">

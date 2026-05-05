@@ -421,7 +421,7 @@ export default function CallWorkspace({
         <button
           onClick={goNext}
           disabled={busy}
-          className="cw-toolbar__skip"
+          className="cw-toolbar__skip-cta"
         >
           {t.workspace.skipNextLead}
         </button>
@@ -441,11 +441,6 @@ export default function CallWorkspace({
             address={lead.address}
             city={lead.city}
             units={lead.num_units}
-            assessedValue={
-              typeof lead.evaluation_total === "number"
-                ? lead.evaluation_total
-                : (lead.evaluation_total != null ? Number(lead.evaluation_total) : null)
-            }
           />
           <PhoneActionCard
             phones={phones}

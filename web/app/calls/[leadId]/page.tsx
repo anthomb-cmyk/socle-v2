@@ -3,6 +3,7 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/sup
 import CallerAppShell from "@/components/caller/CallerAppShell";
 import CallWorkspace from "./CallWorkspace";
 import CallHistoryPanel from "./CallHistoryPanel";
+import CallPageTabs from "./CallPageTabs";
 
 export default async function CallLeadPage(
   { params }: { params: Promise<{ leadId: string }> }
@@ -42,17 +43,16 @@ export default async function CallLeadPage(
 
   return (
     <CallerAppShell width="wide">
-      <CallWorkspace
-        leadId={leadId}
-        phones={phones}
-        userForwardTo={userForwardTo}
-        lead={lead as Parameters<typeof CallWorkspace>[0]["lead"]}
-        callCount={history.length}
-      />
-
-      {history.length > 0 && (
+      <CallPageTabs historyCount={history.length}>
+        <CallWorkspace
+          leadId={leadId}
+          phones={phones}
+          userForwardTo={userForwardTo}
+          lead={lead as Parameters<typeof CallWorkspace>[0]["lead"]}
+          callCount={history.length}
+        />
         <CallHistoryPanel history={history} />
-      )}
+      </CallPageTabs>
     </CallerAppShell>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useEffect } from "react";
+import { useLocale } from "@/components/locale-provider";
 import type { PhoneCandidate } from "../PhoneReviewClient";
 
 type Props = {
@@ -35,6 +36,7 @@ function confidenceVariant(score: number): "high" | "mid" | "low" {
 export default function PhoneReviewListItem({
   candidate, selected, isFocused, summary, onToggleSelect, onSelect, onQuickAction,
 }: Props) {
+  const { t } = useLocale();
   const liRef = useRef<HTMLLIElement>(null);
   const contact = candidate.leads?.contacts;
   const property = candidate.leads?.properties;
@@ -95,18 +97,18 @@ export default function PhoneReviewListItem({
         <button
           type="button"
           className="pr-list-item__approve"
-          title="Approuver (Enter)"
+          title={t.review.approveTitle}
           onMouseDown={(e) => { e.preventDefault(); onQuickAction(candidate.id, "approve"); }}
-          aria-label="Approuver"
+          aria-label={t.review.approveAria}
         >
           ✓
         </button>
         <button
           type="button"
           className="pr-list-item__reject"
-          title="Rejeter (Space)"
+          title={t.review.rejectTitle}
           onMouseDown={(e) => { e.preventDefault(); onQuickAction(candidate.id, "reject"); }}
-          aria-label="Rejeter"
+          aria-label={t.review.rejectAria}
         >
           ✕
         </button>
@@ -116,9 +118,11 @@ export default function PhoneReviewListItem({
 }
 
 function StagePill({ stage }: { stage: string }) {
+  const { t } = useLocale();
+  const ev = t.review.evidence;
   const labels: Record<string, string> = {
-    address_search: "Adresse",
-    company_search: "Entreprise",
+    address_search: ev.stageAddress,
+    company_search: ev.stageCompany,
     openclaw:       "OpenClaw",
   };
   const variant: string =

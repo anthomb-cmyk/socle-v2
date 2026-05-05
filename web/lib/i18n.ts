@@ -145,8 +145,8 @@ const dict = {
       bad_number:     "Mauvais numéro",
       not_interested: "Pas intéressé",
       do_not_contact: "Ne pas contacter",
-      maybe_later:    "Peut-être plus tard",
-      call_back_later:"Rappeler plus tard",
+      maybe_later:    "Dans 2 semaines",
+      call_back_later:"Date précise…",
       wants_more_info:"Veut info",
       open_to_selling:"Ouvert à vendre",
       wants_offer:    "Veut offre",
@@ -167,8 +167,10 @@ const dict = {
       scheduleCallback:     "Planifier un rappel",
       confirmCallback:      "Confirmer le rappel",
       cancelCallback:       "annuler",
-      callBackLater:        "Rappeler plus tard",
+      callBackLater:        "Rappel à date précise",
       sendToAnthony:        "Envoyer à Anthony",
+      tabCall:              "Appel",
+      tabHistory:           "Historique d'appels",
 
       // Twilio call button / states
       call:                 "Appeler",
@@ -314,6 +316,10 @@ const dict = {
       verdictLikely:       "Correspond",
       verdictUncertain:    "Incertain",
       verdictUnlikely:     "Ne correspond pas",
+      approveAria:         "Approuver",
+      rejectAria:          "Rejeter",
+      approveTitle:        "Approuver (Enter)",
+      rejectTitle:         "Rejeter (Space)",
 
       // B-2 — evidence panel chip labels
       evidence: {
@@ -555,8 +561,8 @@ const dict = {
       bad_number:      "Bad number",
       not_interested:  "Not interested",
       do_not_contact:  "Do not contact",
-      maybe_later:     "Maybe later",
-      call_back_later: "Call back later",
+      maybe_later:     "In 2 weeks",
+      call_back_later: "Pick a date…",
       wants_more_info: "Wants info",
       open_to_selling: "Open to selling",
       wants_offer:     "Wants offer",
@@ -577,8 +583,10 @@ const dict = {
       scheduleCallback:     "Schedule callback",
       confirmCallback:      "Confirm callback",
       cancelCallback:       "cancel",
-      callBackLater:        "Call back later",
+      callBackLater:        "Pick callback date",
       sendToAnthony:        "Send to Anthony",
+      tabCall:              "Call",
+      tabHistory:           "Call history",
 
       // Twilio call button / states
       call:                 "Call",
@@ -724,6 +732,10 @@ const dict = {
       verdictLikely:       "Matches",
       verdictUncertain:    "Uncertain",
       verdictUnlikely:     "Does not match",
+      approveAria:         "Approve",
+      rejectAria:          "Reject",
+      approveTitle:        "Approve (Enter)",
+      rejectTitle:         "Reject (Space)",
 
       // B-2 — evidence panel chip labels
       evidence: {

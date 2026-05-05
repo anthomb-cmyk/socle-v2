@@ -2022,6 +2022,81 @@ html, body {
 }
 .cw-toolbar__skip:hover { color: var(--so-fg-1); }
 
+/* Prominent skip CTA — replaces the old tiny underline link */
+.cw-toolbar__skip-cta {
+  background: transparent;
+  border: 1px solid var(--so-border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--so-fg-2);
+  padding: 8px 16px;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cw-toolbar__skip-cta::after { content: " →"; }
+.cw-toolbar__skip-cta:hover {
+  background: var(--so-gold-50);
+  border-color: var(--so-gold-400);
+  color: var(--so-gold-700);
+}
+.cw-toolbar__skip-cta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Page-level tab bar (Appel / Historique) ──────────────────────────── */
+.cw-page-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.cw-page-tabs__bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--so-border);
+  margin-bottom: 20px;
+}
+.cw-page-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--so-fg-4);
+  padding: 10px 18px;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: color 0.15s;
+}
+.cw-page-tab:hover { color: var(--so-fg-1); }
+.cw-page-tab--active {
+  color: var(--so-gold-700);
+  border-bottom-color: var(--so-gold-500);
+  font-weight: 600;
+}
+.cw-page-tab__badge {
+  background: var(--so-fg-6);
+  color: var(--so-fg-2);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 7px;
+  line-height: 1.5;
+}
+.cw-page-tab--active .cw-page-tab__badge {
+  background: var(--so-gold-100);
+  color: var(--so-gold-700);
+}
+
 .cw-grid {
   display: grid;
   grid-template-columns: 1fr;

@@ -33,6 +33,14 @@ export type QueueLead = {
   priority: number | null;
 };
 
+export type AugmentedLead = {
+  lead: QueueLead;
+  callCount: number;
+  formattedPhone: string | null;
+  overdueLabel: string | null;
+  lastContactedAgo: string | null;
+};
+
 /**
  * Server-fetched diagnostic counts that explain *why* the queue is empty.
  * Populated only when leads.length === 0 (page.tsx). Pure UX info — no
@@ -49,14 +57,6 @@ export type QueueEmptyDiagnostics = {
   myLockedByOthers: number;
   /** Lets the empty state show admin-only actions (e.g. "Voir tous les leads"). */
   isAdmin: boolean;
-};
-
-export type AugmentedLead = {
-  lead: QueueLead;
-  callCount: number;
-  formattedPhone: string | null;
-  overdueLabel: string | null;
-  lastContactedAgo: string | null;
 };
 
 function formatPhone(phone: string | null): string | null {
