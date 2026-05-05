@@ -436,7 +436,6 @@ export default function CallWorkspace({
                 ? lead.evaluation_total
                 : (lead.evaluation_total != null ? Number(lead.evaluation_total) : null)
             }
-            yearBuilt={null}
           />
           <PhoneActionCard
             phones={phones}

@@ -204,7 +204,6 @@ const dict = {
       // Property-card cell labels
       unitsLabel:     "Logements",
       assessedLabel:  "Évaluation",
-      yearBuiltLabel: "Année",
 
       // Outcome group sub-headings (Phase 4)
       interestOutcome: "Niveau d'intérêt",
@@ -256,6 +255,53 @@ const dict = {
       noSelectionTitle:   "Sélectionne un candidat",
       noSelectionSub:     "Touche une ligne pour voir les détails et agir.",
       dismissAria:        "Retour",
+
+      // B-2 — evidence panel chip labels
+      evidence: {
+        mailingAddress:        "Adresse mail. ✓",
+        city:                  "Ville ✓",
+        postalPrefix:          "Code postal ✓",
+        contactName:           "Nom ✓",
+        companyName:           "Compagnie ✓",
+        relatedEntity:         "Entité reliée ✓",
+        fetchedPage:           "Page lue",
+        directory:             (domain: string) => `Annuaire (${domain})`,
+        mailingPrefix:         "Mail :",
+        nameFound:             "Nom trouvé :",
+        sourceAddress:         "Adresse source :",
+        query:                 "Requête :",
+        showMore:              "[voir plus]",
+        showLess:              "[voir moins]",
+        tenantWarning:         "Tenant possible — vérifier",
+        stageAddress:          "Adresse",
+        stageCompany:          "Entreprise",
+        matchedMailingAddress: "adresse postale",
+        matchedPostal:         "code postal",
+        matchedAddressCompany: "co. à l'adresse",
+        matchedPropertyAddress:"adresse immeuble",
+        matchedCompanyName:    "nom entreprise",
+        matchedDirectorName:   "nom directeur",
+        matchedRelatedCompany: "co. liée",
+        matchedSameAddress:    "co. même adresse",
+        matchedPublicDirectory:"annuaire public",
+        matchedCompanyWebsite: "site web co.",
+        matchedB2BHint:        "B2BHint public",
+      },
+    },
+
+    // ── Follow-ups page ───────────────────────────────────────────────────────
+    followUps: {
+      loading:       "Chargement des suivis…",
+      emptyTitle:    "Aucun suivi en attente",
+      emptySub:      "Tout est à jour. Bon travail !",
+      cancelConfirm: "Annuler ce suivi ?",
+      overdue:       "En retard",
+      today:         "Aujourd'hui",
+      upcoming:      "À venir",
+      priorityAria:  (n: number) => `Priorité ${n}`,
+      viewLead:      "Fiche →",
+      done:          "✓ Fait",
+      cancel:        "Annuler",
     },
 
     // ── Common shared strings (loading / retry / etc.) ────────────────────────
@@ -449,7 +495,6 @@ const dict = {
       // Property-card cell labels
       unitsLabel:     "Units",
       assessedLabel:  "Assessed",
-      yearBuiltLabel: "Year built",
 
       // Outcome group sub-headings (Phase 4)
       interestOutcome: "Interest level",
@@ -501,6 +546,53 @@ const dict = {
       noSelectionTitle:   "Select a candidate",
       noSelectionSub:     "Tap a row to see the details and act.",
       dismissAria:        "Back",
+
+      // B-2 — evidence panel chip labels
+      evidence: {
+        mailingAddress:        "Mailing addr. ✓",
+        city:                  "City ✓",
+        postalPrefix:          "Postal ✓",
+        contactName:           "Name ✓",
+        companyName:           "Company ✓",
+        relatedEntity:         "Related entity ✓",
+        fetchedPage:           "Page read",
+        directory:             (domain: string) => `Directory (${domain})`,
+        mailingPrefix:         "Mail:",
+        nameFound:             "Name found:",
+        sourceAddress:         "Source address:",
+        query:                 "Query:",
+        showMore:              "[show more]",
+        showLess:              "[show less]",
+        tenantWarning:         "Possible tenant — verify",
+        stageAddress:          "Address",
+        stageCompany:          "Company",
+        matchedMailingAddress: "mailing address",
+        matchedPostal:         "postal code",
+        matchedAddressCompany: "co. at address",
+        matchedPropertyAddress:"property address",
+        matchedCompanyName:    "company name",
+        matchedDirectorName:   "director name",
+        matchedRelatedCompany: "related co.",
+        matchedSameAddress:    "same addr. co.",
+        matchedPublicDirectory:"public directory",
+        matchedCompanyWebsite: "company website",
+        matchedB2BHint:        "B2BHint public",
+      },
+    },
+
+    // ── Follow-ups page ───────────────────────────────────────────────────────
+    followUps: {
+      loading:       "Loading follow-ups…",
+      emptyTitle:    "No pending follow-ups",
+      emptySub:      "All up to date. Good work!",
+      cancelConfirm: "Cancel this follow-up?",
+      overdue:       "Overdue",
+      today:         "Today",
+      upcoming:      "Upcoming",
+      priorityAria:  (n: number) => `Priority ${n}`,
+      viewLead:      "Lead →",
+      done:          "✓ Done",
+      cancel:        "Cancel",
     },
 
     // ── Common shared strings ──────────────────────────────────────────────────
