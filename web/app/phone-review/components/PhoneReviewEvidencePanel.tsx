@@ -364,7 +364,7 @@ export default function PhoneReviewEvidencePanel({
 
         {analysis.pros.length === 0 && analysis.cons.length === 0 && (
           <div style={{ fontSize: 13, color: "var(--so-fg-5)", fontStyle: "italic" }}>
-            Aucun signal clair détecté — le score est basé uniquement sur la correspondance d'adresse.
+            {"Aucun signal clair détecté — le score est basé uniquement sur la correspondance d'adresse."}
           </div>
         )}
 
