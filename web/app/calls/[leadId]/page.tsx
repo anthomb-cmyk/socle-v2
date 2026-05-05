@@ -49,6 +49,8 @@ export default async function CallLeadPage(
         leadId={leadId}
         phones={phones}
         userForwardTo={userForwardTo}
+        lead={lead as Parameters<typeof CallWorkspace>[0]["lead"]}
+        callCount={history.length}
       />
 
       {history.length > 0 && (

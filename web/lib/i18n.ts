@@ -169,14 +169,44 @@ const dict = {
       savingCallback:    "Enregistrement…",
 
       // Callback preset chips (used by upcoming CallbackScheduler)
-      callbackPresetIn15m:      "Dans 15 min",
-      callbackPreset1h:         "Dans 1 h",
-      callbackPresetTomorrowAm: "Demain matin",
-      callbackPresetTomorrowPm: "Demain après-midi",
-      callbackPresetCustom:     "Personnalisé",
+      callbackPresetIn15m:         "Dans 15 min",
+      callbackPreset1h:            "Dans 1 h",
+      callbackPresetThisAfternoon: "Cet après-midi",
+      callbackPresetTomorrowAm:    "Demain matin",
+      callbackPresetTomorrowPm:    "Demain après-midi",
+      callbackPresetCustom:        "Personnalisé",
+      callbackPreview:             (when: string) => `Rappel prévu : ${when}.`,
 
       // Soft banner when a caller deep-links into a lead held by another caller
       lockedByOther:            (name: string) => `Ce lead est verrouillé par ${name}.`,
+
+      // Phase 4 — workspace cards and panels
+      attempts:        (n: number) => `${n} appel${n !== 1 ? "s" : ""}`,
+      noPhonesTitle:   "Aucun téléphone approuvé",
+      markForReview:   "Marquer pour révision",
+      mainPhone:       "Téléphone principal",
+      tapToCall:       "Appel direct",
+      hangup:          "Raccrocher",
+      hangupHint:      "Raccrochez depuis votre téléphone",
+
+      // Submission form labels (values stay as routing keys; only display text changes)
+      interestLow:      "Faible",
+      interestMid:      "Moyen",
+      interestHigh:     "Élevé",
+      interestVeryHigh: "Très élevé",
+      timelineSoon:     "Moins de 30 j",
+      timeline3m:       "1 à 3 mois",
+      timeline6m:       "3 à 6 mois",
+      timelineLater:    "Plus de 6 mois",
+      timelineUnknown:  "Inconnu",
+
+      // Property-card cell labels
+      unitsLabel:     "Logements",
+      assessedLabel:  "Évaluation",
+      yearBuiltLabel: "Année",
+
+      // Outcome group sub-headings (Phase 4)
+      interestOutcome: "Niveau d'intérêt",
     },
 
     // ── Call history panel ────────────────────────────────────────────────────
@@ -378,14 +408,44 @@ const dict = {
       savingCallback:    "Saving…",
 
       // Callback preset chips
-      callbackPresetIn15m:      "In 15 min",
-      callbackPreset1h:         "In 1 h",
-      callbackPresetTomorrowAm: "Tomorrow morning",
-      callbackPresetTomorrowPm: "Tomorrow afternoon",
-      callbackPresetCustom:     "Custom",
+      callbackPresetIn15m:         "In 15 min",
+      callbackPreset1h:            "In 1 h",
+      callbackPresetThisAfternoon: "This afternoon",
+      callbackPresetTomorrowAm:    "Tomorrow morning",
+      callbackPresetTomorrowPm:    "Tomorrow afternoon",
+      callbackPresetCustom:        "Custom",
+      callbackPreview:             (when: string) => `Callback: ${when}.`,
 
       // Soft banner when a caller deep-links into a lead held by another caller
       lockedByOther:            (name: string) => `This lead is locked by ${name}.`,
+
+      // Phase 4 — workspace cards and panels
+      attempts:        (n: number) => `${n} attempt${n !== 1 ? "s" : ""}`,
+      noPhonesTitle:   "No approved phone",
+      markForReview:   "Mark for review",
+      mainPhone:       "Main phone",
+      tapToCall:       "Direct dial",
+      hangup:          "Hang up",
+      hangupHint:      "End the call from your phone",
+
+      // Submission form labels
+      interestLow:      "Low",
+      interestMid:      "Medium",
+      interestHigh:     "High",
+      interestVeryHigh: "Very high",
+      timelineSoon:     "Within 30 d",
+      timeline3m:       "1–3 months",
+      timeline6m:       "3–6 months",
+      timelineLater:    "More than 6 months",
+      timelineUnknown:  "Unknown",
+
+      // Property-card cell labels
+      unitsLabel:     "Units",
+      assessedLabel:  "Assessed",
+      yearBuiltLabel: "Year built",
+
+      // Outcome group sub-headings (Phase 4)
+      interestOutcome: "Interest level",
     },
 
     // ── Call history panel ────────────────────────────────────────────────────

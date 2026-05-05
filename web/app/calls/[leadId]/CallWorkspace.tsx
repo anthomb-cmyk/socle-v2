@@ -1,34 +1,74 @@
 "use client";
+// Phase 4: CallWorkspace remains the single state owner for /calls/[leadId].
+// All state, effects, fetches, polling, lock acquire/release, and outcome
+// routing live here unchanged. Only the JSX has been reorganized into the
+// new presentational components in ./components/. The single new state
+// (durationSec) is explicitly allowed by Phase 4: it persists the
+// j.data?.durationSec value the polling already extracts so child
+// components can render the live duration.
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
-import CallerSelect from "@/components/caller/CallerSelect";
-import CallerInput from "@/components/caller/CallerInput";
-import CallerDateTimeInput from "@/components/caller/CallerDateTimeInput";
-import CallerField from "@/components/caller/CallerField";
 import OutcomeButtonGroup, { type OutcomeOption } from "@/components/caller/OutcomeButtonGroup";
+
+import LockStatusBanner from "./components/LockStatusBanner";
+import OwnerCard from "./components/OwnerCard";
+import PropertyCard from "./components/PropertyCard";
+import PhoneActionCard from "./components/PhoneActionCard";
+import CallNotesPanel from "./components/CallNotesPanel";
+import CallbackScheduler from "./components/CallbackScheduler";
+import HotSellerSubmissionPanel, {
+  type SubmissionValues,
+} from "./components/HotSellerSubmissionPanel";
+import MobileBottomCallBar from "./components/MobileBottomCallBar";
 
 // ── Twilio call state ────────────────────────────────────────────────────────
 type TwilioCallState = "idle" | "initiating" | "ringing" | "answered" | "completed" | "failed";
 
-type Phone = { id: string; e164: string; display: string | null; status: string; source: string; confidence: number };
+type Phone = {
+  id: string;
+  e164: string;
+  display: string | null;
+  status: string;
+  source: string;
+  confidence: number;
+};
+
+type WorkspaceLead = {
+  full_name: string | null;
+  company_name: string | null;
+  address: string;
+  city: string | null;
+  num_units: number | null;
+  contact_kind: string | null;
+  status: string;
+  campaign_name: string | null;
+  priority: number | null;
+  evaluation_total?: number | null;
+};
 
 /** Default datetime-local value: tomorrow at 10:00 */
 function defaultCallbackTime(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   d.setHours(10, 0, 0, 0);
-  return d.toISOString().slice(0, 16);
+  // yyyy-mm-ddThh:mm — local, no timezone shift
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function CallWorkspace({
   leadId,
   phones,
   userForwardTo,
+  lead,
+  callCount,
 }: {
   leadId: string;
   phones: Phone[];
   userForwardTo: string | null;
+  lead: WorkspaceLead;
+  callCount: number;
 }) {
   const router = useRouter();
   const { t } = useLocale();
@@ -53,19 +93,25 @@ export default function CallWorkspace({
   // Twilio call state
   const [callState, setCallState] = useState<TwilioCallState>("idle");
   const [callError, setCallError] = useState<string | null>(null);
+  // Phase 4 new state: persists the polled j.data?.durationSec so children
+  // can render a live MM:SS counter. Polling cadence and completion logic
+  // unchanged.
+  const [durationSec, setDurationSec] = useState<number>(0);
   const activeCallLogId = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Outcome catalogs ──────────────────────────────────────────────────────
-  // Variants are visual only; the value strings remain unchanged for routing.
+  // ── Outcome catalogs (visual groups; routing values unchanged) ─────────────
   const QUICK_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
     { value: "no_answer",      variant: "neutral"  },
     { value: "voicemail_left", variant: "neutral"  },
     { value: "wrong_number",   variant: "negative" },
     { value: "bad_number",     variant: "negative" },
-    { value: "not_interested", variant: "danger"   },
-    { value: "do_not_contact", variant: "danger"   },
-    { value: "maybe_later",    variant: "info"     },
+  ];
+
+  const INTEREST_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
+    { value: "not_interested", variant: "danger" },
+    { value: "do_not_contact", variant: "danger" },
+    { value: "maybe_later",    variant: "info"   },
   ];
 
   const HOT_OUTCOMES = [
@@ -82,15 +128,7 @@ export default function CallWorkspace({
     "wants_more_info", "open_to_selling", "wants_offer", "hot_seller", "follow_up_booked",
   ]);
 
-  const CALL_STATE_LABELS: Record<TwilioCallState, string> = {
-    idle:       "",
-    initiating: t.workspace.connecting,
-    ringing:    t.workspace.ringing,
-    answered:   t.workspace.answered,
-    completed:  t.workspace.callCompleted,
-    failed:     t.workspace.callFailed,
-  };
-
+  // ── Polling lifecycle ─────────────────────────────────────────────────────
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
@@ -105,6 +143,9 @@ export default function CallWorkspace({
         const events = (j.data?.statusEvents ?? []) as { status: string }[];
         const last = events[events.length - 1]?.status ?? "";
         if (last === "in-progress") setCallState("answered");
+        if (typeof j.data?.durationSec === "number") {
+          setDurationSec(j.data.durationSec);
+        }
         if (last === "completed" || (j.data?.durationSec != null)) {
           setCallState("completed"); stopPolling();
         }
@@ -122,6 +163,7 @@ export default function CallWorkspace({
     }
     setCallState("initiating");
     setCallError(null);
+    setDurationSec(0);
     try {
       const r = await fetch("/api/twilio/calls/start", {
         method: "POST",
@@ -177,7 +219,6 @@ export default function CallWorkspace({
   }, [leadId]);
 
   // ── Outcome handlers ─────────────────────────────────────────────────────
-
   async function logOutcome(outcome: Outcome, nextCallAt?: string) {
     setBusy(true);
     setError(null);
@@ -247,7 +288,20 @@ export default function CallWorkspace({
     await goNext();
   }
 
+  // ── Derived values for child components ──────────────────────────────────
+  const ownerName = lead.full_name ?? lead.company_name ?? "—";
+  const priorityBucket: "hot" | "normal" | "low" =
+    (lead.priority ?? 0) >= 80 ? "hot"
+    : (lead.priority ?? 0) < 30 ? "low"
+    : "normal";
+
   const quickOptions: OutcomeOption[] = QUICK_OUTCOMES.map((o) => ({
+    value: o.value,
+    label: t.outcome[o.value] ?? o.value,
+    variant: o.variant,
+  }));
+
+  const interestOptions: OutcomeOption[] = INTEREST_OUTCOMES.map((o) => ({
     value: o.value,
     label: t.outcome[o.value] ?? o.value,
     variant: o.variant,
@@ -259,316 +313,153 @@ export default function CallWorkspace({
     variant: "escalating",
   }));
 
-  const selectedPhone = phones.find((p) => p.id === phoneId) ?? null;
+  const callbackOptions: OutcomeOption[] = [
+    { value: "call_back_later", label: t.outcome.call_back_later ?? "call_back_later", variant: "info" },
+  ];
 
-  // ── Submission form (escalating outcomes) ────────────────────────────────
-  if (submitForm) {
-    const outcomeLabel = t.outcome[submitForm] ?? submitForm;
-    return (
-      <div
-        className="crm-card"
-        style={{
-          padding: 20,
-          borderColor: "var(--crm-gold-border)",
-          background: "var(--crm-gold-light)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--crm-text)", margin: 0 }}>
-            {t.workspace.submitTitle}
-          </h2>
-          <p style={{ fontSize: 13, color: "var(--crm-text2)", margin: "4px 0 0" }}>
-            {t.workspace.submitSubtitle(outcomeLabel)}
-          </p>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <CallerField label={t.workspace.interestLevel}>
-            <CallerSelect value={interest} onChange={(e) => setInterest(e.target.value as typeof interest)}>
-              <option value="cold">cold</option>
-              <option value="warm">warm</option>
-              <option value="hot">hot</option>
-              <option value="wants_offer">wants offer</option>
-            </CallerSelect>
-          </CallerField>
-          <CallerField label={t.workspace.timeline}>
-            <CallerSelect value={timeline} onChange={(e) => setTimeline(e.target.value as typeof timeline)}>
-              <option value="immediate">immediate</option>
-              <option value="3_months">3 months</option>
-              <option value="6_months">6 months</option>
-              <option value="no_rush">no rush</option>
-              <option value="unknown">unknown</option>
-            </CallerSelect>
-          </CallerField>
-        </div>
-
-        <CallerField label={t.workspace.motivation}>
-          <CallerInput
-            value={motivation}
-            onChange={(e) => setMotivation(e.target.value)}
-            placeholder={t.workspace.motivationPlaceholder}
-          />
-        </CallerField>
-
-        <CallerField label={t.workspace.askingPrice}>
-          <CallerInput
-            type="number"
-            value={askingPrice}
-            onChange={(e) => setAskingPrice(e.target.value)}
-            placeholder="e.g. 1600000"
-          />
-        </CallerField>
-
-        <CallerField label={t.workspace.summary}>
-          <textarea
-            value={callerSummary}
-            onChange={(e) => setCallerSummary(e.target.value)}
-            rows={4}
-            className="crm-notes-textarea crm-input"
-            placeholder={t.workspace.summaryPlaceholder}
-          />
-        </CallerField>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button
-            onClick={submitToAnthony}
-            disabled={busy}
-            className="crm-btn crm-btn-gold"
-            style={{ minHeight: 44 }}
-          >
-            {busy ? t.workspace.submitting : t.workspace.submitBtn}
-          </button>
-          <button
-            onClick={() => router.push("/calls/queue")}
-            className="crm-btn"
-            style={{ minHeight: 44 }}
-          >
-            {t.workspace.skipSubmission}
-          </button>
-        </div>
-        {error && (
-          <p style={{ fontSize: 13, color: "var(--crm-red)", margin: 0 }}>{error}</p>
-        )}
-      </div>
-    );
+  // Submission-form values bundled for HotSellerSubmissionPanel
+  const submissionValues: SubmissionValues = {
+    interest, timeline, motivation, askingPrice, callerSummary,
+  };
+  function updateSubmission<K extends keyof SubmissionValues>(key: K, value: SubmissionValues[K]) {
+    if (key === "interest")        setInterest(value as SubmissionValues["interest"]);
+    else if (key === "timeline")   setTimeline(value as SubmissionValues["timeline"]);
+    else if (key === "motivation") setMotivation(value as string);
+    else if (key === "askingPrice") setAskingPrice(value as string);
+    else if (key === "callerSummary") setCallerSummary(value as string);
   }
 
-  // ── Main workspace ────────────────────────────────────────────────────────
+  // Outcome button click router — special-cases call_back_later, escalating
+  // outcomes auto-route via logOutcome's existing logic.
+  function handleOutcomeClick(value: string) {
+    if (value === "call_back_later") {
+      handleCallBackLater();
+      return;
+    }
+    logOutcome(value);
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+    <div className="cw-shell">
+      {/* Lock banner — Phase 4 plumbing only; lockedBy is null until a future
+          phase parses 409 responses for the holder identity. */}
+      <LockStatusBanner lockedBy={null} />
+
+      <div className="cw-toolbar">
         <button
           onClick={goNext}
           disabled={busy}
-          style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 12,
-            color: "var(--crm-text3)",
-            textDecoration: "underline",
-          }}
+          className="cw-toolbar__skip"
         >
           {t.workspace.skipNextLead}
         </button>
       </div>
 
-      {phones.length > 0 ? (
-        <CallerField label={t.workspace.phoneDialed}>
-          <CallerSelect
-            value={phoneId ?? ""}
-            onChange={(e) => setPhoneId(e.target.value || null)}
-            style={{ fontFeatureSettings: '"tnum" 1' }}
-          >
-            {phones.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.display ?? p.e164}
-                {p.status !== "unverified" ? ` (${p.status})` : ""} · {p.source} · conf {p.confidence}
-              </option>
-            ))}
-          </CallerSelect>
-        </CallerField>
-      ) : (
-        <div
-          className="crm-card"
-          style={{
-            padding: "12px 14px",
-            background: "var(--crm-amber-light)",
-            borderColor: "color-mix(in srgb, var(--crm-amber) 25%, transparent)",
-            color: "var(--crm-amber)",
-            fontSize: 13,
-          }}
-        >
-          {t.workspace.noPhones}
+      <div className="cw-grid">
+        {/* LEFT — sticky on desktop ≥1180px */}
+        <div className="cw-grid__left">
+          <OwnerCard
+            name={ownerName}
+            statusKey={lead.status}
+            priority={priorityBucket}
+            campaign={lead.campaign_name}
+            attempts={callCount}
+          />
+          <PropertyCard
+            address={lead.address}
+            city={lead.city}
+            units={lead.num_units}
+            assessedValue={
+              typeof lead.evaluation_total === "number"
+                ? lead.evaluation_total
+                : (lead.evaluation_total != null ? Number(lead.evaluation_total) : null)
+            }
+            yearBuilt={null}
+          />
+          <PhoneActionCard
+            phones={phones}
+            selectedPhoneId={phoneId}
+            onSelectPhone={setPhoneId}
+            userForwardTo={userForwardTo}
+            callState={callState}
+            durationSec={durationSec}
+            callError={callError}
+            onTwilioCall={startCall}
+          />
         </div>
-      )}
 
-      {/* ── Phone CTA card: tap-to-call + Twilio launcher ─────────────────── */}
-      {phones.length > 0 && selectedPhone && (
-        <div className="crm-phone-cta">
-          <a
-            href={`tel:${selectedPhone.e164}`}
-            className="crm-phone-cta__number"
-            aria-label={selectedPhone.display ?? selectedPhone.e164}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span style={{ fontFeatureSettings: '"tnum" 1' }}>
-              {selectedPhone.display ?? selectedPhone.e164}
-            </span>
-          </a>
-
-          <div className="crm-phone-cta__row">
-            {(callState === "idle" || callState === "failed" || callState === "completed") ? (
-              <button onClick={startCall} disabled={!phoneId} className="crm-call-btn">
-                {t.workspace.call}
-              </button>
-            ) : (
-              <button disabled className="crm-call-btn crm-call-btn--busy">
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 9999,
-                    background:
-                      callState === "answered" ? "var(--crm-red)" : "var(--crm-amber)",
-                    display: "inline-block",
-                    animation: "crm-pulse 1.2s ease-in-out infinite",
-                  }}
-                />
-                {CALL_STATE_LABELS[callState]}
-              </button>
-            )}
-            <span className="crm-phone-cta__hint" style={{ flex: 1, minWidth: 160 }}>
-              {callState === "idle" && (userForwardTo ? (
-                <>
-                  {t.workspace.willRingOn}{" "}
-                  <span style={{ fontFeatureSettings: '"tnum" 1', color: "var(--crm-text2)", fontWeight: 600 }}>
-                    {userForwardTo}
-                  </span>
-                </>
-              ) : (
-                <span style={{ color: "var(--crm-amber)" }}>
-                  {t.workspace.forwardNotConfigured}
-                </span>
-              ))}
-              {callState === "ringing"   && t.workspace.pickup}
-              {callState === "answered"  && t.workspace.connected}
-              {callState === "completed" && t.workspace.selectOutcome}
-            </span>
+        {/* RIGHT — normal scroll on desktop, full-width on mobile */}
+        <div className="cw-grid__right">
+          {/* Outcome groups */}
+          <div className="cw-outcome-group">
+            <div className="cw-outcome-group__label">{t.workspace.quickOutcome}</div>
+            <OutcomeButtonGroup options={quickOptions} onSelect={handleOutcomeClick} disabled={busy} />
           </div>
-        </div>
-      )}
-      {callError && (
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--crm-red)",
-            background: "var(--crm-red-light)",
-            border: "1px solid color-mix(in srgb, var(--crm-red) 25%, transparent)",
-            borderRadius: 10,
-            padding: "8px 12px",
-            margin: 0,
-          }}
-        >
-          {callError}
-        </p>
-      )}
 
-      <CallerField label={t.workspace.notesLabel}>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          className="crm-notes-textarea crm-input"
-          placeholder={t.workspace.notesPlaceholder}
-        />
-      </CallerField>
+          <div className="cw-outcome-group">
+            <div className="cw-outcome-group__label">{t.workspace.interestOutcome}</div>
+            <OutcomeButtonGroup options={interestOptions} onSelect={handleOutcomeClick} disabled={busy} />
+          </div>
 
-      {/* Quick outcomes */}
-      <div>
-        <div className="crm-field-label" style={{ marginBottom: 8 }}>
-          {t.workspace.quickOutcome}
-        </div>
-        <OutcomeButtonGroup options={quickOptions} onSelect={(v) => logOutcome(v)} disabled={busy} />
-      </div>
+          <div className="cw-outcome-group">
+            <div className="cw-outcome-group__label">{t.workspace.scheduleCallback}</div>
+            <OutcomeButtonGroup options={callbackOptions} onSelect={handleOutcomeClick} disabled={busy} />
+          </div>
 
-      {/* Scheduled callback */}
-      <div>
-        <div className="crm-field-label" style={{ marginBottom: 8 }}>
-          {t.workspace.scheduleCallback}
-        </div>
-        {showCallbackPicker ? (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <CallerDateTimeInput
-              value={callbackTime}
-              onChange={(e) => setCallbackTime(e.target.value)}
-              style={{ width: "auto", flex: "1 1 220px" }}
+          <div className="cw-outcome-group">
+            <div className="cw-outcome-group__label">{t.workspace.sendToAnthony}</div>
+            <OutcomeButtonGroup options={hotOptions} onSelect={handleOutcomeClick} disabled={busy} />
+          </div>
+
+          {/* Conditional: callback scheduler when user picked call_back_later */}
+          {showCallbackPicker && (
+            <>
+              <CallbackScheduler value={callbackTime} onChange={setCallbackTime} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={handleCallBackLater}
+                  disabled={busy || !callbackTime}
+                  className="cw-call-btn cw-call-btn--primary"
+                  style={{ flex: "1 1 200px", height: 48 }}
+                >
+                  {busy ? t.workspace.savingCallback : t.workspace.confirmCallback}
+                </button>
+                <button
+                  onClick={() => setShowCallbackPicker(false)}
+                  className="crm-btn"
+                >
+                  {t.workspace.cancelCallback}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Conditional: submission form when user picked an escalating outcome */}
+          {submitForm && (
+            <HotSellerSubmissionPanel
+              outcome={submitForm}
+              values={submissionValues}
+              onChange={updateSubmission}
+              submitting={busy}
+              error={error}
+              onSubmit={submitToAnthony}
+              onSkip={() => router.push("/calls/queue")}
             />
-            <button
-              onClick={handleCallBackLater}
-              disabled={busy || !callbackTime}
-              className="crm-outcome-btn crm-outcome-btn--info"
-              style={{ flex: "0 0 auto" }}
-            >
-              {busy ? t.workspace.savingCallback : t.workspace.confirmCallback}
-            </button>
-            <button
-              onClick={() => setShowCallbackPicker(false)}
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 12,
-                color: "var(--crm-text3)",
-                textDecoration: "underline",
-              }}
-            >
-              {t.workspace.cancelCallback}
-            </button>
-          </div>
-        ) : (
-          <button
-            disabled={busy}
-            onClick={handleCallBackLater}
-            className="crm-outcome-btn crm-outcome-btn--info"
-            style={{ width: "auto" }}
-          >
-            {t.workspace.callBackLater}
-          </button>
-        )}
-      </div>
+          )}
 
-      {/* Hot / escalating outcomes → send to Anthony */}
-      <div>
-        <div className="crm-field-label" style={{ marginBottom: 8 }}>
-          {t.workspace.sendToAnthony}
+          <CallNotesPanel value={notes} onChange={setNotes} />
+
+          {error && !submitForm && (
+            <p style={{ fontSize: 13, color: "var(--so-danger)", margin: 0 }}>{error}</p>
+          )}
         </div>
-        <OutcomeButtonGroup options={hotOptions} onSelect={(v) => logOutcome(v)} disabled={busy} />
       </div>
 
-      {error && (
-        <p style={{ fontSize: 13, color: "var(--crm-red)", margin: 0 }}>{error}</p>
-      )}
-
-      {/* Local keyframes for the call-state pulse */}
-      <style jsx>{`
-        @keyframes crm-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.35; }
-        }
-      `}</style>
+      {/* Mobile bottom call bar — visible only during 'answered' on mobile */}
+      <MobileBottomCallBar
+        visible={callState === "answered"}
+        durationSec={durationSec}
+      />
     </div>
   );
 }
