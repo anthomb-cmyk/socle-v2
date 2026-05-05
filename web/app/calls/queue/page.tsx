@@ -2,7 +2,6 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import CallerAppShell from "@/components/caller/CallerAppShell";
-import CallerQueueStats from "@/components/caller/CallerQueueStats";
 import type { AdminScope } from "@/components/caller/CallerQueueScopeBar";
 import NextStepBanner from "@/components/next-step-banner";
 import QueueLeadList, {
@@ -155,7 +154,6 @@ export default async function CallQueuePage({
   return (
     <CallerAppShell
       width="wide"
-      stats={<CallerQueueStats leads={leads} />}
     >
       {leads.length === 0 && (
         <NextStepBanner
