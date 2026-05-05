@@ -22,19 +22,31 @@ const HIGH_TRUST = new Set([
 const TENANT_PREFIX_RE =
   /CLINIQUE|CLINIC|PHARMACIE|RESTAURANT|GARAGE|ATELIER|BOUTIQUE|ÉPICERIE|EPICERIE|DÉPANNEUR|DEPANNEUR|COIFFURE|SALON|DENTAIRE|DENTAL|VÉTÉRINAIRE|VETERINAIRE|OPTIQUE|NOTAIRE|COMPTABLE|AVOCAT|HÔTEL|HOTEL|CAFÉ|CAFE|BAR|BANQUE/i;
 
-function evidenceLabel(token: string): string {
+type EvidenceDict = {
+  mailingAddress: string;
+  city: string;
+  postalPrefix: string;
+  contactName: string;
+  companyName: string;
+  relatedEntity: string;
+  fetchedPage: string;
+  directory: (domain: string) => string;
+  [key: string]: string | ((domain: string) => string);
+};
+
+function evidenceLabel(token: string, ev: EvidenceDict): string {
   const t = token.trim();
-  if (t === "mailing_address") return "Adresse mail. ✓";
-  if (t === "city")            return "Ville ✓";
-  if (t === "postal_prefix")   return "Code postal ✓";
-  if (t === "contact_name")    return "Nom ✓";
-  if (t === "company_name")    return "Compagnie ✓";
-  if (t === "related_entity")  return "Entité reliée ✓";
-  if (t === "fetched_page")    return "Page lue";
+  if (t === "mailing_address") return ev.mailingAddress;
+  if (t === "city")            return ev.city;
+  if (t === "postal_prefix")   return ev.postalPrefix;
+  if (t === "contact_name")    return ev.contactName;
+  if (t === "company_name")    return ev.companyName;
+  if (t === "related_entity")  return ev.relatedEntity;
+  if (t === "fetched_page")    return ev.fetchedPage;
   if (t.startsWith("public_directory:")) {
     let domain = t.slice("public_directory:".length);
     if (domain.length > 22) domain = domain.slice(0, 20) + "…";
-    return `Annuaire (${domain})`;
+    return (ev.directory as (d: string) => string)(domain);
   }
   return t;
 }
@@ -58,6 +70,8 @@ function confidenceVariant(score: number): "high" | "mid" | "low" {
  * state (note input, action-pending transition). The note value flows
  * straight into onAction(id, action, note?), preserving the existing
  * orchestrator handler signatures byte-identical.
+ *
+ * B-2: all hardcoded FR-only strings routed through t.review.evidence.
  */
 export default function PhoneReviewEvidencePanel({
   candidate, snippetExpanded, errorText, onToggleSnippet, onAction,
@@ -93,6 +107,8 @@ export default function PhoneReviewEvidencePanel({
     ? snippet.slice(0, SNIPPET_COLLAPSE_THRESHOLD)
     : snippet;
 
+  const ev = t.review.evidence;
+
   return (
     <div className="pr-evidence">
       {/* Header */}
@@ -104,7 +120,7 @@ export default function PhoneReviewEvidencePanel({
         </div>
         {contact?.mailing_address && (
           <div className="pr-evidence__mailing">
-            Mail : {contact.mailing_address}
+            {ev.mailingPrefix} {contact.mailing_address}
             {contact.mailing_city ? `, ${contact.mailing_city}` : ""}
             {contact.mailing_postal ? ` ${contact.mailing_postal}` : ""}
           </div>
@@ -143,13 +159,13 @@ export default function PhoneReviewEvidencePanel({
       {(candidate.candidate_name || candidate.candidate_address) && (
         <div className="pr-evidence__context">
           {candidate.candidate_name && (
-            <div><strong>Nom trouvé : </strong>{candidate.candidate_name}</div>
+            <div><strong>{ev.nameFound} </strong>{candidate.candidate_name}</div>
           )}
           {candidate.candidate_address && (
-            <div><strong>Adresse source : </strong>{candidate.candidate_address}</div>
+            <div><strong>{ev.sourceAddress} </strong>{candidate.candidate_address}</div>
           )}
           {candidate.search_query && (
-            <div className="pr-evidence__query">Requête : {candidate.search_query}</div>
+            <div className="pr-evidence__query">{ev.query} {candidate.search_query}</div>
           )}
         </div>
       )}
@@ -166,7 +182,7 @@ export default function PhoneReviewEvidencePanel({
               className="crm-link-btn"
               style={{ display: "block", marginTop: 6 }}
             >
-              {snippetExpanded ? "[voir moins]" : "[voir plus]"}
+              {snippetExpanded ? ev.showLess : ev.showMore}
             </button>
           )}
         </div>
@@ -259,12 +275,15 @@ export default function PhoneReviewEvidencePanel({
 function EvidenceChips({
   matchedOn, snippet, companyName,
 }: { matchedOn: string | null; snippet: string | null; companyName: string | null | undefined }) {
+  const { t } = useLocale();
+  const ev = t.review.evidence;
+
   if (!matchedOn) return null;
   const tokens = matchedOn.split(";").map((t) => t.trim()).filter(Boolean);
   if (tokens.length === 0) return null;
   const chips: Array<{ label: string; variant: "high" | "mid" | "warning" }> = tokens.map((t) => {
     const base = t.startsWith("public_directory:") ? "public_directory" : t;
-    return { label: evidenceLabel(t), variant: HIGH_TRUST.has(base) ? "high" : "mid" };
+    return { label: evidenceLabel(t, ev as EvidenceDict), variant: HIGH_TRUST.has(base) ? "high" : "mid" };
   });
   const snippetHead = (snippet ?? "").slice(0, 80);
   const company = (companyName ?? "").toLowerCase();
@@ -279,7 +298,7 @@ function EvidenceChips({
       ))}
       {tenantChip && (
         <span className="crm-evidence-chip crm-evidence-chip--warning">
-          Tenant possible — vérifier
+          {ev.tenantWarning}
         </span>
       )}
     </div>
@@ -306,9 +325,11 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
 }
 
 function StagePill({ stage }: { stage: string }) {
+  const { t } = useLocale();
+  const ev = t.review.evidence;
   const labels: Record<string, string> = {
-    address_search: "Adresse",
-    company_search: "Entreprise",
+    address_search: ev.stageAddress,
+    company_search: ev.stageCompany,
     openclaw:       "OpenClaw",
   };
   const variant: string =
@@ -322,20 +343,23 @@ function StagePill({ stage }: { stage: string }) {
 }
 
 function MatchedOnPill({ matchedOn }: { matchedOn: string | null }) {
+  const { t } = useLocale();
+  const ev = t.review.evidence;
+
   if (!matchedOn) return null;
   const labels: Record<string, string> = {
-    mailing_address:    "adresse postale",
-    mailing_postal:     "code postal",
-    address_company:    "co. à l'adresse",
-    property_address:   "adresse immeuble",
-    company_name:       "nom entreprise",
-    director_name:      "nom directeur",
-    related_company:    "co. liée",
-    same_address_company: "co. même adresse",
-    public_directory:   "annuaire public",
-    company_website:    "site web co.",
-    public_b2bhint_page: "B2BHint public",
-    openclaw:           "OpenClaw",
+    mailing_address:      ev.matchedMailingAddress,
+    mailing_postal:       ev.matchedPostal,
+    address_company:      ev.matchedAddressCompany,
+    property_address:     ev.matchedPropertyAddress,
+    company_name:         ev.matchedCompanyName,
+    director_name:        ev.matchedDirectorName,
+    related_company:      ev.matchedRelatedCompany,
+    same_address_company: ev.matchedSameAddress,
+    public_directory:     ev.matchedPublicDirectory,
+    company_website:      ev.matchedCompanyWebsite,
+    public_b2bhint_page:  ev.matchedB2BHint,
+    openclaw:             "OpenClaw",
   };
   return (
     <span className="crm-pill crm-pill-via">via {labels[matchedOn] ?? matchedOn}</span>
