@@ -95,6 +95,28 @@ export default function EnrichmentDashboard() {
     refresh();
   }
 
+  async function bulkRerun(maxConfidence: number) {
+    setBusy("bulk-rerun"); setMsg(null); setError(null);
+    const r = await fetch("/api/enrichment/bulk-rerun", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ maxConfidence }),
+    });
+    const j = await r.json();
+    setBusy(null);
+    if (!j.ok) { setError(j.error ?? "Bulk re-run failed"); return; }
+    const d = j.data;
+    if (d.queued === 0) {
+      setMsg(`Bulk re-run: no leads found below ${maxConfidence}% confidence.`);
+    } else {
+      setMsg(
+        `Bulk re-run: ${d.queued} leads queued in background` +
+        ` (${d.breakdown?.lowConfidenceReview ?? 0} low-conf + ${d.breakdown?.unresolvedOpenClaw ?? 0} unresolved).` +
+        ` Check phone-review in a few minutes.`
+      );
+    }
+  }
+
   async function reviewResult(id: string, action: "approve" | "reject") {
     setBusy(id); setError(null);
     const r = await fetch(`/api/enrichment-results/${id}`, {
@@ -166,6 +188,39 @@ export default function EnrichmentDashboard() {
           </ul>
         </section>
       )}
+
+      {/* ── Bulk re-run panel ── */}
+      <section className="bg-white rounded-2xl border border-zinc-200 p-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-800">Re-run low-confidence leads</h2>
+            <p className="text-xs text-zinc-500 mt-1 max-w-lg">
+              Finds leads in <em>needs_phone_review</em> where all candidates are below the confidence threshold,
+              plus all <em>unresolved_after_openclaw</em> leads. Clears their weak candidates and
+              re-runs the improved enrichment pipeline in the background. The queue will update in a few minutes.
+            </p>
+          </div>
+          <div className="flex gap-2 items-center flex-shrink-0">
+            <button
+              onClick={() => bulkRerun(60)}
+              disabled={busy === "bulk-rerun"}
+              className="text-sm bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2 whitespace-nowrap"
+            >
+              {busy === "bulk-rerun" ? "Queueing…" : "Re-run all below 60%"}
+            </button>
+            <button
+              onClick={() => bulkRerun(80)}
+              disabled={busy === "bulk-rerun"}
+              className="text-sm bg-zinc-700 hover:bg-zinc-800 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2 whitespace-nowrap"
+            >
+              {busy === "bulk-rerun" ? "Queueing…" : "Re-run all below 80%"}
+            </button>
+          </div>
+        </div>
+        {msg && msg.startsWith("Bulk re-run") && (
+          <p className="text-sm text-emerald-700 mt-3 border-t border-zinc-100 pt-3">{msg}</p>
+        )}
+      </section>
 
       <section className="bg-white rounded-2xl border border-zinc-200 p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
