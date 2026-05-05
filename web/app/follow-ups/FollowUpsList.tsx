@@ -3,12 +3,15 @@
 // the previous implementation: refresh fans out to /api/follow-ups?bucket=…,
 // complete POSTs to /api/follow-ups/{id}/complete, cancel DELETEs
 // /api/follow-ups/{id}. JSX reorganized into FollowUpBucket + FollowUpCard.
+// Phase 8.1: wired all display strings through useLocale().t.followUps.
 
 import { useEffect, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
 import FollowUpBucket from "./components/FollowUpBucket";
 import FollowUpCard, { type FollowUp } from "./components/FollowUpCard";
 
 export default function FollowUpsList() {
+  const { t } = useLocale();
   const [overdue, setOverdue] = useState<FollowUp[]>([]);
   const [today, setToday] = useState<FollowUp[]>([]);
   const [upcoming, setUpcoming] = useState<FollowUp[]>([]);
@@ -42,7 +45,7 @@ export default function FollowUpsList() {
   }
 
   async function cancel(id: string) {
-    if (!confirm("Annuler ce suivi ?")) return;
+    if (!confirm(t.followUps.cancelConfirm)) return;
     setBusyId(id); setError(null);
     const r = await fetch(`/api/follow-ups/${id}`, { method: "DELETE" });
     const j = await r.json();
@@ -55,7 +58,7 @@ export default function FollowUpsList() {
     return (
       <div className="fu-loading">
         <span className="fu-loading__icon" aria-hidden="true">⟳</span>
-        <p className="fu-loading__title">Chargement des suivis…</p>
+        <p className="fu-loading__title">{t.followUps.loading}</p>
       </div>
     );
   }
@@ -65,17 +68,17 @@ export default function FollowUpsList() {
     return (
       <div className="fu-empty">
         <span className="fu-empty__icon" aria-hidden="true">🎉</span>
-        <p className="fu-empty__title">Aucun suivi en attente</p>
-        <p className="fu-empty__sub">Tout est à jour. Bon travail !</p>
+        <p className="fu-empty__title">{t.followUps.emptyTitle}</p>
+        <p className="fu-empty__sub">{t.followUps.emptySub}</p>
       </div>
     );
   }
 
   type Section = { key: "overdue" | "today" | "upcoming"; title: string; items: FollowUp[] };
   const sections: Section[] = [
-    { key: "overdue",  title: "En retard",  items: overdue },
-    { key: "today",    title: "Aujourd'hui", items: today },
-    { key: "upcoming", title: "À venir",    items: upcoming },
+    { key: "overdue",  title: t.followUps.overdue,  items: overdue },
+    { key: "today",    title: t.followUps.today,    items: today },
+    { key: "upcoming", title: t.followUps.upcoming, items: upcoming },
   ];
 
   return (

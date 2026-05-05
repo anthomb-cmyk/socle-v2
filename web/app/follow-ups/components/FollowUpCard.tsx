@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
+import { useLocale } from "@/components/locale-provider";
 
 export type FollowUp = {
   id: string;
@@ -27,31 +28,34 @@ type Props = {
   onCancel: () => void;
 };
 
-function fmtDue(iso: string): string {
-  return new Date(iso).toLocaleString("fr-CA", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 /**
  * Phase 7 — single follow-up card. Pure presentation. The bucket variant
  * controls the left accent rail; complete/cancel callbacks fire the
  * existing FollowUpsList handlers (bodies byte-identical) which hit
  * /api/follow-ups/{id}/complete and DELETE /api/follow-ups/{id}.
  *
+ * Phase 8.1: all display strings now routed through useLocale().t.
+ *
  * Existing 📅 emoji marker is preserved verbatim — directive tolerates
  * pre-existing emojis but forbids adding new ones.
  */
 export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: Props) {
+  const { t, locale } = useLocale();
   const owner = f.lead?.full_name ?? f.lead?.company_name ?? "—";
   const priorityClass =
     f.priority >= 80 ? "fu-card__priority-dot--hot"
     : f.priority >= 50 ? "fu-card__priority-dot--warm"
     : "fu-card__priority-dot--low";
+
+  function fmtDue(iso: string): string {
+    return new Date(iso).toLocaleString(locale === "fr" ? "fr-CA" : "en-CA", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
 
   return (
     <li className={`fu-card fu-card--${bucket}`}>
@@ -61,7 +65,7 @@ export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: 
           {f.lead?.city && <span className="fu-card__city">{f.lead.city}</span>}
           <span
             className={`fu-card__priority-dot ${priorityClass}`}
-            title={`Priorité ${f.priority}`}
+            title={t.followUps.priorityAria(f.priority)}
             aria-hidden="true"
           />
         </div>
@@ -83,10 +87,10 @@ export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: 
           {f.lead_id && (
             <>
               <Link href={`/calls/${f.lead_id}` as never} className="fu-card__open-call">
-                📞 Appeler
+                {t.workspace.call}
               </Link>
               <Link href={`/leads/${f.lead_id}` as never} className="crm-open-lead-link">
-                Fiche →
+                {t.followUps.viewLead}
               </Link>
             </>
           )}
@@ -99,7 +103,7 @@ export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: 
           disabled={busy}
           className="fu-card__btn fu-card__btn--complete"
         >
-          {busy ? "…" : "✓ Fait"}
+          {busy ? "…" : t.followUps.done}
         </button>
         <button
           type="button"
@@ -107,7 +111,7 @@ export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: 
           disabled={busy}
           className="fu-card__btn fu-card__btn--cancel"
         >
-          Annuler
+          {t.followUps.cancel}
         </button>
       </div>
     </li>
