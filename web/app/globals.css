@@ -3446,3 +3446,29 @@ html, body {
   color: var(--so-fg-5);
 }
 
+
+/* ── Dashboard mobile layout ─────────────────────────────────────────────────
+   Stack all three grid sections to a single column on small screens.
+   The stat tiles collapse to 2 columns (3 rows of 2) so numbers stay readable. */
+@media (max-width: 767px) {
+  .crm-dash-tiles {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .crm-dash-panels {
+    grid-template-columns: 1fr !important;
+  }
+  .crm-dash-bottom {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Urgent banner — don't let it overflow */
+  .crm-page > div[style*="FFF3F2"] {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Hide the empty state icon slot when it has no content */
+  .crm-empty-state-icon:empty {
+    display: none;
+  }
+}

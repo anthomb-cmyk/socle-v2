@@ -123,7 +123,7 @@ export default function LeadDossierClient({
     <section className="crm-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--crm-text3)", margin: 0 }}>Actions</h2>
-        {savedTick && <span style={{ fontSize: 11, color: "var(--crm-green)" }}>enregistré ✓</span>}
+        {savedTick && <span style={{ fontSize: 11, color: "var(--crm-green)" }}>enregistré</span>}
         {error && <span style={{ fontSize: 11, color: "var(--crm-red)" }}>{error}</span>}
       </div>
 
@@ -254,8 +254,8 @@ function EnrichmentSection({
     });
     const j = await r.json();
     setBusy(null); setShowJobMenu(false);
-    if (!j.ok) { setMsg(`✗ ${j.error}`); return; }
-    setMsg(`✓ Job created (${jobType}). ${j.data.message}`);
+    if (!j.ok) { setMsg(`Erreur : ${j.error}`); return; }
+    setMsg(`Job created (${jobType}). ${j.data.message}`);
     // Refresh jobs list optimistically
     setJobs([{ id: j.data.jobId, job_type: jobType, status: j.data.webhookCalled ? "processing" : "pending", started_at: null, completed_at: null, error_message: null, created_at: new Date().toISOString() }, ...jobs]);
     router.refresh();
@@ -269,7 +269,7 @@ function EnrichmentSection({
     });
     const j = await r.json();
     setBusy(null);
-    if (!j.ok) { setMsg(`✗ ${j.error}`); return; }
+    if (!j.ok) { setMsg(`Erreur : ${j.error}`); return; }
     setResults(results.map(r => r.id === id ? { ...r, status: action === "approve" ? "verified" : "invalid" } : r));
     router.refresh();
   }
@@ -342,7 +342,7 @@ function EnrichmentSection({
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <button onClick={() => reviewResult(r.id, "approve")} disabled={busy === r.id}
                       className="crm-btn crm-btn-gold" style={{ fontSize: 11, padding: "4px 10px", opacity: busy === r.id ? 0.5 : 1 }}>
-                      {busy === r.id ? "…" : "✓ Approuver"}
+                      {busy === r.id ? "…" : "Approuver"}
                     </button>
                     <button onClick={() => reviewResult(r.id, "reject")} disabled={busy === r.id}
                       className="crm-btn" style={{ fontSize: 11, padding: "4px 10px", opacity: busy === r.id ? 0.5 : 1 }}>

@@ -72,7 +72,7 @@ export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: 
         {f.note && <p className="fu-card__note">{f.note}</p>}
         <div className="fu-card__meta">
           <span className="fu-card__due" style={{ fontFeatureSettings: '"tnum" 1' }}>
-            📅 {fmtDue(f.due_at)}
+            {fmtDue(f.due_at)}
           </span>
           {f.lead?.best_phone && (
             <a

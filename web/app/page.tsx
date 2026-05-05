@@ -148,7 +148,7 @@ export default async function Home() {
         }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "1px", textTransform: "uppercase", color: "var(--crm-red)", marginBottom: 6 }}>
-              ⚠&nbsp; Action requise maintenant
+              Action requise maintenant
             </div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--crm-text)", display: "flex", gap: 16, flexWrap: "wrap" }}>
               {c.urgentReviews > 0 && (
@@ -175,7 +175,7 @@ export default async function Home() {
       )}
 
       {/* ── 6 stat tiles ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, marginBottom: 20 }}>
+      <div className="crm-dash-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, marginBottom: 20 }}>
         <Tile href="/leads?status=new"
           label="Nouveaux leads" value={c.newLeads} sub="à qualifier" />
         <Tile href="/phone-review"
@@ -192,12 +192,12 @@ export default async function Home() {
           variant={c.urgentReviews > 0 ? "red" : undefined} />
         <Tile href={"/follow-ups" as never}
           label="Suivis aujourd'hui" value={c.todayFu}
-          sub={c.overdueFu > 0 ? `⚠ ${c.overdueFu} en retard` : `${c.enriching} enrichissement`}
+          sub={c.overdueFu > 0 ? `${c.overdueFu} en retard` : `${c.enriching} enrichissement`}
           variant={c.overdueFu > 0 ? "amber" : undefined} />
       </div>
 
       {/* ── Three-column panels ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
+      <div className="crm-dash-panels" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
 
         {/* Col 1: Imports récents */}
         <div className="crm-card" style={{ padding: "16px 18px" }}>
@@ -210,7 +210,7 @@ export default async function Home() {
           </div>
           {imports.length === 0 ? (
             <div className="crm-empty-state" style={{ padding: "24px 0" }}>
-              <span className="crm-empty-state-icon">📂</span>
+              
               <p className="crm-empty-state-title">Aucun import récent</p>
               <p className="crm-empty-state-sub">Importez un rôle d&rsquo;évaluation foncière pour commencer.</p>
             </div>
@@ -244,7 +244,7 @@ export default async function Home() {
           </div>
           {calls.length === 0 ? (
             <div className="crm-empty-state" style={{ padding: "24px 0" }}>
-              <span className="crm-empty-state-icon">📞</span>
+              
               <p className="crm-empty-state-title">Aucune activité récente</p>
               <p className="crm-empty-state-sub">Les appels passés apparaîtront ici.</p>
             </div>
@@ -297,7 +297,7 @@ export default async function Home() {
           </div>
           {hotItems.length === 0 ? (
             <div className="crm-empty-state" style={{ padding: "24px 0" }}>
-              <span className="crm-empty-state-icon">✓</span>
+              
               <p className="crm-empty-state-title">File vide</p>
               <p className="crm-empty-state-sub">Aucun vendeur à traiter en ce moment.</p>
             </div>
@@ -338,7 +338,7 @@ export default async function Home() {
       </div>
 
       {/* ── Bottom row: Erreurs auto + Enrichissement ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="crm-dash-bottom" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
 
         {/* Erreurs d'automation */}
         <div className="crm-card" style={{ padding: "16px 18px" }}>
@@ -352,7 +352,7 @@ export default async function Home() {
           </div>
           {failures.length === 0 ? (
             <div className="crm-empty-state" style={{ padding: "20px 0" }}>
-              <span className="crm-empty-state-icon">✓</span>
+              
               <p className="crm-empty-state-title">Aucune erreur récente</p>
               <p className="crm-empty-state-sub">Tous les workflows tournent normalement.</p>
             </div>
@@ -381,7 +381,7 @@ export default async function Home() {
           </div>
           {c.enriching === 0 ? (
             <div className="crm-empty-state" style={{ padding: "20px 0" }}>
-              <span className="crm-empty-state-icon">🔍</span>
+              
               <p className="crm-empty-state-title">Aucun enrichissement actif</p>
               <p className="crm-empty-state-sub">Le pipeline est vide. Les nouveaux leads enrichis apparaîtront ici.</p>
             </div>
@@ -393,7 +393,7 @@ export default async function Home() {
                   <span style={{ fontSize: 12, color: "var(--crm-text2)", marginLeft: 8 }}>dans le pipeline</span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--crm-green)", fontWeight: 700 }}>
-                  {c.phoneReady} vérifiés ✓
+                  {c.phoneReady} vérifiés
                 </div>
               </div>
               <div style={{ height: 7, background: "var(--crm-blue-light)", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
@@ -421,7 +421,12 @@ export default async function Home() {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString("fr-CA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const d = new Date(iso);
+  const mon = d.toLocaleString("fr-CA", { month: "short" });
+  const day = d.getDate();
+  const hh  = String(d.getHours()).padStart(2, "0");
+  const mm  = String(d.getMinutes()).padStart(2, "0");
+  return `${day} ${mon} ${hh}:${mm}`;
 }
 
 function ImportStatusBadge({ status }: { status: string }) {

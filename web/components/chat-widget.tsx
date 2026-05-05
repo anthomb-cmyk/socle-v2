@@ -102,7 +102,7 @@ export default function ChatWidget() {
           transform: open ? "scale(0.92)" : "scale(1)",
         }}
       >
-        {open ? "✕" : "💬"}
+        {open ? "×" : "Chat"}
       </button>
 
       {/* Chat panel */}
@@ -138,7 +138,7 @@ export default function ChatWidget() {
               flexShrink: 0,
             }}
           >
-            <span style={{ fontSize: 18 }}>🤖</span>
+            
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)" }}>
                 Assistant Socle

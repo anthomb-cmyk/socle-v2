@@ -65,7 +65,7 @@ export default function CallHistoryEntry({ row, isCurrent }: Props) {
         <div className="ch-entry__head">
           <span className={`crm-pill crm-pill--${pillKey}`}>{outcomeLabel}</span>
           {dur && <span className="ch-entry__duration" style={{ fontFeatureSettings: '"tnum" 1' }}>{dur}</span>}
-          {row.recording_url && <span className="ch-entry__rec" aria-label="recording">🎙</span>}
+          {row.recording_url && <span className="ch-entry__rec" aria-label="recording" style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase", color: "var(--crm-text3)" }}>Enr.</span>}
           <span className="ch-entry__when">{recordedAt}</span>
         </div>
         {row.notes && <div className="ch-entry__notes">{row.notes}</div>}

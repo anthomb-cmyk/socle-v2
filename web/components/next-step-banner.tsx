@@ -129,7 +129,7 @@ export default function NextStepBanner({ kind, counts, importDone, onEnrichImpor
         {kind === "import_done" && importDone && (
           <>
             <p style={{ margin: "0 0 4px", fontSize: 14, color: "#065f46", fontWeight: 600 }}>
-              ✅ Import réussi ·{" "}
+              Import réussi ·{" "}
               <strong style={{ color: "#059669" }}>{importDone.leadsCreated}</strong>{" "}
               lead{importDone.leadsCreated !== 1 ? "s" : ""} créé{importDone.leadsCreated !== 1 ? "s" : ""}
             </p>
@@ -191,7 +191,7 @@ export default function NextStepBanner({ kind, counts, importDone, onEnrichImpor
           borderRadius: 6,
         }}
       >
-        ✕ Fermer
+        Fermer
       </button>
     </div>
   );

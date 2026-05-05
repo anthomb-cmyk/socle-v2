@@ -67,7 +67,7 @@ export default function FollowUpsList() {
   if (total === 0) {
     return (
       <div className="fu-empty">
-        <span className="fu-empty__icon" aria-hidden="true">🎉</span>
+        
         <p className="fu-empty__title">{t.followUps.emptyTitle}</p>
         <p className="fu-empty__sub">{t.followUps.emptySub}</p>
       </div>

@@ -37,9 +37,9 @@ const CLOSED_STAGES = [
 ] as const;
 
 const TEMP_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  froid: { label: "❄️ Froid",  bg: "#EFF6FF", text: "#1D4ED8" },
-  tiede: { label: "🌤 Tiède",  bg: "#FFFBEB", text: "#92400E" },
-  chaud: { label: "🔥 Chaud",  bg: "#FEF2F2", text: "#B91C1C" },
+  froid: { label: "Froid",  bg: "#EFF6FF", text: "#1D4ED8" },
+  tiede: { label: "Tiède",  bg: "#FFFBEB", text: "#92400E" },
+  chaud: { label: "Chaud",  bg: "#FEF2F2", text: "#B91C1C" },
 };
 
 const PRIORITY_CONFIG: Record<string, { dot: string }> = {

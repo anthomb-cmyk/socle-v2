@@ -124,7 +124,7 @@ export default function TestPanel() {
         </div>
         {seedOutput && (
           <div className={`mt-3 rounded-lg p-3 text-sm border ${seedOutput.ok ? "bg-emerald-100 border-emerald-300" : "bg-red-100 border-red-300"}`}>
-            <strong>{seedOutput.ok ? "✓" : "✗"} {seedOutput.label}</strong>
+            <strong>{seedOutput.ok ? "OK" : "Err"} {seedOutput.label}</strong>
             <pre className="text-xs overflow-x-auto bg-white/50 rounded p-2 mt-2">{JSON.stringify(seedOutput.data, null, 2)}</pre>
           </div>
         )}
@@ -172,7 +172,7 @@ export default function TestPanel() {
 
 function OverallBanner({ diag, onRefresh }: { diag: Diag; onRefresh: () => void }) {
   const config: Record<Diag["overall"], { color: string; label: string; sub: string }> = {
-    ready: { color: "bg-emerald-100 border-emerald-300 text-emerald-900", label: "✓ Platform ready", sub: "All checks passing." },
+    ready: { color: "bg-emerald-100 border-emerald-300 text-emerald-900", label: "Platform ready", sub: "All checks passing." },
     needs_seed: { color: "bg-amber-50 border-amber-200 text-amber-900", label: "Needs seed data", sub: "Migrations + env are good. Run a seeder to populate test data." },
     needs_setup: { color: "bg-amber-50 border-amber-200 text-amber-900", label: "Needs setup", sub: "Some checks failing — see below." },
     missing_env: { color: "bg-red-50 border-red-200 text-red-900", label: "Missing env vars", sub: "Required environment variables not set in .env.local." },
@@ -198,7 +198,7 @@ function OverallBanner({ diag, onRefresh }: { diag: Diag; onRefresh: () => void 
               commit: <strong>{commit.slice(0, 8)}</strong>
             </span>
             <span className={migOk ? "text-emerald-700 font-semibold" : "text-red-700 font-semibold"}>
-              {migOk ? "✓" : "✗"} {migCount} migration check{migCount !== 1 ? "s" : ""} loaded
+              {migOk ? "OK" : "Err"} {migCount} migration check{migCount !== 1 ? "s" : ""} loaded
               {!migOk && " — expected ≥9 (0001–0009)"}
             </span>
             <a href="/api/diagnostics" target="_blank" rel="noopener noreferrer"
@@ -222,7 +222,7 @@ function CheckRow({ check }: { check: Check }) {
     warn: "text-amber-700",
     fail: "text-red-700",
   };
-  const icon: Record<Status, string> = { ok: "✓", warn: "!", fail: "✗" };
+  const icon: Record<Status, string> = { ok: "OK", warn: "!", fail: "X" };
   return (
     <li>
       <button onClick={() => check.fix && setOpen(o => !o)}
@@ -299,7 +299,7 @@ function ImportProofSeeder({
 
       {result && result.ok && result.data && (
         <div className="bg-white border border-blue-200 rounded-lg p-4 space-y-3 text-sm">
-          <p className="font-semibold text-blue-900">✓ Import proof complete</p>
+          <p className="font-semibold text-blue-900">Import proof complete</p>
           <div className="grid grid-cols-3 gap-3 text-xs">
             <Pill label="Properties" value={result.data.counts.properties_created} suffix="created" />
             <Pill label="Contacts" value={result.data.counts.contacts_created} suffix="created" />
@@ -328,7 +328,7 @@ function ImportProofSeeder({
 
       {result && !result.ok && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-          ✗ {result.error ?? "Unknown error"}
+          Err: {result.error ?? "Unknown error"}
         </div>
       )}
     </div>
@@ -436,7 +436,7 @@ function W7EnrichmentTest() {
 
       {result && !result.ok && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-          ✗ {result.error ?? "Unknown error"}
+          Err: {result.error ?? "Unknown error"}
         </div>
       )}
     </div>
@@ -520,7 +520,7 @@ function ForceOpenClawDispatch() {
 
       {forcResult && !forcResult.ok && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-          ✗ {forcResult.error ?? "Unknown error"}
+          Err: {forcResult.error ?? "Unknown error"}
         </div>
       )}
     </div>

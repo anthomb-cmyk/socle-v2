@@ -128,7 +128,7 @@ export default async function MapPage() {
       {totalLeads === 0 ? (
         <div className="crm-card">
           <div className="crm-empty-state">
-            <span className="crm-empty-state-icon">🗺</span>
+            
             <p className="crm-empty-state-title">Aucune propriété</p>
             <p className="crm-empty-state-sub">Importez un rôle d&rsquo;évaluation pour commencer à visualiser les propriétés.</p>
           </div>

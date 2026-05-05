@@ -65,7 +65,7 @@ export default function PropertiesTable() {
                 <td className="p-2">{p.num_units ?? "—"}</td>
                 <td className="p-2">{p.year_built ?? "—"}</td>
                 <td className="p-2">{p.evaluation_total ? `$${Math.round(p.evaluation_total / 1000)}k` : "—"}</td>
-                <td className="p-2">{p.lead_count > 1 ? <span className="text-amber-700">⚠ {p.lead_count}</span> : p.lead_count}</td>
+                <td className="p-2">{p.lead_count > 1 ? <span className="text-amber-700">{p.lead_count}</span> : p.lead_count}</td>
               </tr>
             ))}
           </tbody>

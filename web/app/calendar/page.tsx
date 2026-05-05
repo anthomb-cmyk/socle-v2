@@ -106,7 +106,7 @@ export default async function CalendarPage() {
       {total === 0 ? (
         <div className="crm-card">
           <div className="crm-empty-state">
-            <span className="crm-empty-state-icon">🎉</span>
+            
             <p className="crm-empty-state-title">Calendrier vide</p>
             <p className="crm-empty-state-sub">Aucun suivi prévu dans les 30 prochains jours. Bon travail !</p>
           </div>

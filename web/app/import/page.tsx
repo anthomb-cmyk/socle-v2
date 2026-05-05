@@ -342,7 +342,7 @@ export default function ImportPage() {
             <p style={{ fontSize: 12, color: "var(--crm-text3)" }}>
               Format : <code style={{ background: "var(--crm-bg-alt)", padding: "1px 5px", borderRadius: 4 }}>{preview.format}</code> · {preview.totalRows} lignes scannées
               {!campaignName && (
-                <span style={{ marginLeft: 8, color: "var(--crm-amber)" }}>⚠ Aucun nom de campagne — les leads n&rsquo;auront pas de tag</span>
+                <span style={{ marginLeft: 8, color: "var(--crm-amber)" }}>Aucun nom de campagne — les leads n&rsquo;auront pas de tag</span>
               )}
             </p>
           </div>
@@ -519,7 +519,7 @@ export default function ImportPage() {
       {result && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16, borderColor: "var(--crm-gold-border)", background: "var(--crm-surface)" }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-green)", margin: 0 }}>✓ Import terminé</h2>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-green)", margin: 0 }}>Import terminé</h2>
             <dl style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }} className="sm:grid-cols-4">
               <StatBox label="Propriétés créées" value={result.properties_created} />
               <StatBox label="Propriétés mises à jour" value={result.properties_updated} />
@@ -576,7 +576,7 @@ export default function ImportPage() {
           {assignResult && (
             <div className="crm-card" style={{ padding: "20px 24px", borderColor: "var(--crm-green)" }}>
               <p style={{ fontWeight: 700, color: "var(--crm-green)", fontSize: 14 }}>
-                ✓ {assignResult.count} leads assignés à {assignResult.name}
+                {assignResult.count} leads assignés à {assignResult.name}
               </p>
               <p style={{ fontSize: 13, color: "var(--crm-text2)", marginTop: 4 }}>
                 {assignResult.name} verra ces leads dans sa file d&rsquo;appels immédiatement.

@@ -232,7 +232,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
     setBusy(false);
     if (!json.ok) { setError(json.error); return; }
     const assigneeName = users.find(u => u.user_id === assignTarget)?.display_name ?? "caller";
-    setSuccessMsg(`✓ ${selected.size} leads assignés à ${assigneeName}`);
+    setSuccessMsg(`${selected.size} leads assignés à ${assigneeName}`);
     setSelected(new Set());
     setAssignTarget("");
     refresh();
@@ -594,7 +594,7 @@ function BatchEnrichButton({ leadIds, onDone }: { leadIds: string[]; onDone: (id
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leadIds, jobType: type, force }),
     }).then(r => r.json()).then(j => {
-      if (!j.ok) setErrMsg(`✗ ${j.error}`);
+      if (!j.ok) setErrMsg(`Erreur : ${j.error}`);
     }).catch(() => {
       // swallow — progress panel handles status
     });
@@ -673,7 +673,7 @@ function BatchProgressPanel({
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 18, color: "var(--crm-green)" }}>✓</span>
+            <span style={{ fontSize: 18, color: "var(--crm-green)" }}>OK</span>
             <span style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-green)" }}>Enrichissement terminé</span>
           </div>
           <button onClick={onDismiss} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--crm-text3)", lineHeight: 1 }}>×</button>

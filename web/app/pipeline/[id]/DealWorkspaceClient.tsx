@@ -42,7 +42,7 @@ const STAGE_LABELS: Record<string, string> = {
   offre:         "Offre déposée",
   due_diligence: "Due Diligence",
   financement:   "Financement",
-  cloture:       "Clôturé ✓",
+  cloture:       "Clôturé",
   abandonne:     "Abandonné",
 };
 const STAGE_COLORS: Record<string, string> = {
@@ -55,9 +55,9 @@ const STAGE_COLORS: Record<string, string> = {
   abandonne:     "#EF4444",
 };
 const TEMP_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  froid: { label: "❄️ Froid",  bg: "#EFF6FF", text: "#1D4ED8" },
-  tiede: { label: "🌤 Tiède",  bg: "#FFFBEB", text: "#92400E" },
-  chaud: { label: "🔥 Chaud",  bg: "#FEF2F2", text: "#B91C1C" },
+  froid: { label: "Froid",  bg: "#EFF6FF", text: "#1D4ED8" },
+  tiede: { label: "Tiède",  bg: "#FFFBEB", text: "#92400E" },
+  chaud: { label: "Chaud",  bg: "#FEF2F2", text: "#B91C1C" },
 };
 
 function formatCAD(n: number | null): string {
@@ -98,7 +98,7 @@ function StageProgressBar({ currentStage, onStageChange }: { currentStage: strin
               textOverflow: "ellipsis",
             }}
           >
-            {isDone && !isActive ? "✓ " : ""}{STAGE_LABELS[stage]}
+            {STAGE_LABELS[stage]}
           </button>
         );
       })}
@@ -138,7 +138,7 @@ function ChecklistPanel({ stage, checklists, onToggle }: {
     <div style={{ background: "var(--crm-bg-alt, #F9FAFB)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", color: "#6B7280" }}>
-          ✓ Checklist — {STAGE_LABELS[stage]}
+          Checklist — {STAGE_LABELS[stage]}
         </span>
         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: pct === 100 ? "#059669" : "#6B7280" }}>
           {done}/{total}
@@ -186,7 +186,7 @@ function ChecklistPanel({ stage, checklists, onToggle }: {
 
       {pct === 100 && (
         <div style={{ marginTop: 10, fontSize: 12, color: "#059669", fontWeight: 700 }}>
-          ✓ Toutes les étapes complètes !
+          Toutes les étapes complètes !
         </div>
       )}
     </div>
@@ -231,9 +231,9 @@ function EditableField({ label, value, type = "text", onSave }: {
         <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
         <select value={draft} onChange={e => setDraft(e.target.value)} autoFocus
           style={{ padding: "6px 10px", border: "1px solid #C9A84C", borderRadius: 8, fontSize: 13, outline: "none" }}>
-          <option value="froid">❄️ Froid</option>
-          <option value="tiede">🌤 Tiède</option>
-          <option value="chaud">🔥 Chaud</option>
+          <option value="froid">Froid</option>
+          <option value="tiede">Tiède</option>
+          <option value="chaud">Chaud</option>
         </select>
         <button onClick={commit} style={{ marginLeft: 8, fontSize: 12, padding: "6px 12px", background: "var(--crm-gold, #C9A84C)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>OK</button>
         <button onClick={() => { setDraft(String(value ?? "")); setEditing(false); }} style={{ marginLeft: 6, fontSize: 12, padding: "6px 10px", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 6, cursor: "pointer" }}>✕</button>
@@ -278,7 +278,7 @@ function EditableField({ label, value, type = "text", onSave }: {
       <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 13, color: value ? "#111827" : "#D1D5DB" }}>
         {value ? String(value) : "—  (cliquer pour modifier)"}
-        <span style={{ fontSize: 11, color: "#C9A84C", marginLeft: 6 }}>✎</span>
+        <span style={{ fontSize: 11, color: "#C9A84C", marginLeft: 6 }}></span>
       </div>
     </div>
   );
@@ -449,7 +449,7 @@ export default function DealWorkspaceClient({
 
           {/* Notes deal */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>📋 Notes deal</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Notes deal</div>
             <EditableField
               label="Notes générales"
               value={deal.notes_deal}
@@ -460,7 +460,7 @@ export default function DealWorkspaceClient({
 
           {/* Notes vendeur */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>🤝 Notes vendeur</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Notes vendeur</div>
             <EditableField
               label="Motivation, délai, contexte"
               value={deal.notes_vendeur}
@@ -471,7 +471,7 @@ export default function DealWorkspaceClient({
 
           {/* AI Analysis */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>🤖 Analyse AI</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Analyse AI</div>
             <EditableField
               label="Analyse, risques, opportunités"
               value={deal.ai_analysis}
@@ -482,7 +482,7 @@ export default function DealWorkspaceClient({
 
           {/* Checklist */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>✓ Checklist</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Checklist</div>
             <ChecklistPanel
               stage={deal.stage}
               checklists={deal.checklists}
@@ -500,14 +500,14 @@ export default function DealWorkspaceClient({
 
           {/* Documents */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>📎 Documents ({documents.length})</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Documents ({documents.length})</div>
             {documents.length === 0 ? (
               <div style={{ fontSize: 13, color: "#9CA3AF" }}>Aucun document attaché.</div>
             ) : (
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
                 {documents.map(doc => (
                   <li key={doc.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#374151" }}>
-                    <span style={{ fontSize: 16 }}>📄</span>
+                    <span style={{ fontSize: 16 }}>·</span>
                     <span style={{ flex: 1 }}>{doc.name}</span>
                     {doc.size && <span style={{ fontSize: 11, color: "#9CA3AF" }}>{(doc.size / 1024).toFixed(0)} KB</span>}
                     <span style={{ fontSize: 11, color: "#9CA3AF" }}>{formatDate(doc.created_at)}</span>
@@ -523,7 +523,7 @@ export default function DealWorkspaceClient({
 
           {/* Deal info card */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 14 }}>📊 Détails du deal</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 14 }}>Détails du deal</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <EditableField label="Titre" value={deal.title} onSave={v => patch({ title: v }, { title: v })} />
               <EditableField label="Adresse" value={deal.address} onSave={v => patch({ address: v }, { address: v })} />
@@ -563,7 +563,7 @@ export default function DealWorkspaceClient({
 
           {/* Contact card */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 14 }}>👤 Contact vendeur</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 14 }}>Contact vendeur</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <EditableField label="Nom" value={deal.contact_name} onSave={v => patch({ contact_name: v }, { contact_name: v })} />
               <EditableField label="Téléphone" value={deal.contact_phone} onSave={v => patch({ contact_phone: v }, { contact_phone: v })} />
@@ -575,7 +575,7 @@ export default function DealWorkspaceClient({
                 padding: "9px", background: "var(--crm-gold, #C9A84C)",
                 color: "#fff", borderRadius: 10, fontSize: 13, fontWeight: 700, textDecoration: "none",
               }}>
-                📞 Appeler
+                Appeler
               </a>
             )}
           </div>

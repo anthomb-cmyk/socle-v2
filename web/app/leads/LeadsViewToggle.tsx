@@ -23,7 +23,7 @@ export default function LeadsViewToggle({ canEdit }: { canEdit: boolean }) {
             cursor: "pointer",
           }}
         >
-          ☰ Table
+          Table
         </button>
         <button
           onClick={() => setView("kanban")}

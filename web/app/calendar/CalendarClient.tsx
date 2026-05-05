@@ -207,7 +207,7 @@ function ListView({
       {allGone && (
         <div className="crm-card">
           <div className="crm-empty-state">
-            <span className="crm-empty-state-icon">🎉</span>
+            
             <p className="crm-empty-state-title">Aucun suivi à venir</p>
             <p className="crm-empty-state-sub">Tous les suivis ont été traités.</p>
           </div>
@@ -416,7 +416,7 @@ function MonthView({
       {!hasAnyThisMonth && (
         <div className="crm-card">
           <div className="crm-empty-state">
-            <span className="crm-empty-state-icon">📅</span>
+            
             <p className="crm-empty-state-title">Aucun suivi à venir</p>
             <p className="crm-empty-state-sub">Aucun suivi prévu pour {MONTH_NAMES_FR[month].toLowerCase()} {year}.</p>
           </div>
@@ -525,7 +525,7 @@ function EventCard({ f, borderColor, bg, actions, showDate }: {
           disabled={busy}
           style={{ background: "var(--crm-green)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.5 : 1, whiteSpace: "nowrap" }}
         >
-          {busy ? "…" : "✓ Fait"}
+          {busy ? "…" : "Fait"}
         </button>
         <button
           onClick={() => actions.cancel(f.id)}

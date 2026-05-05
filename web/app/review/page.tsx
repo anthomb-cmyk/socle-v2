@@ -88,7 +88,7 @@ export default async function ReviewPage() {
           {reviews.length === 0 ? (
             <div className="crm-card">
               <div className="crm-empty-state">
-                <span className="crm-empty-state-icon">✓</span>
+                
                 <p className="crm-empty-state-title">Boîte vide</p>
                 <p className="crm-empty-state-sub">Aucun vendeur à traiter en ce moment. Beau travail !</p>
               </div>
@@ -164,7 +164,7 @@ export default async function ReviewPage() {
           {proposed.length === 0 ? (
             <div className="crm-card">
               <div className="crm-empty-state">
-                <span className="crm-empty-state-icon">⚡</span>
+                
                 <p className="crm-empty-state-title">Aucune action proposée</p>
                 <p className="crm-empty-state-sub">Les suggestions d&rsquo;automatisation apparaîtront ici.</p>
               </div>

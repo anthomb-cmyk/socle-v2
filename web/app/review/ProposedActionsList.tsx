@@ -61,7 +61,7 @@ export default function ProposedActionsList({ initial }: { initial: Item[] }) {
             <div className="flex flex-col gap-1">
               <button onClick={() => act(it.id, "approve")} disabled={busy === it.id}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded-lg px-3 py-1.5 disabled:opacity-50">
-                {busy === it.id ? "…" : "✓ Approve"}
+                {busy === it.id ? "…" : "Approve"}
               </button>
               <button onClick={() => act(it.id, "reject")} disabled={busy === it.id}
                 className="border border-zinc-300 hover:bg-zinc-100 text-xs rounded-lg px-3 py-1.5 disabled:opacity-50">

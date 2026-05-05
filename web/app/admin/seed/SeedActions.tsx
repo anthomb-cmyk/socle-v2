@@ -82,7 +82,7 @@ export default function SeedActions() {
       ))}
       {output && (
         <div className={`rounded-2xl p-4 border ${output.ok ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-          <h4 className="font-semibold text-sm mb-2">{output.ok ? "✓" : "✗"} {output.label}</h4>
+          <h4 className="font-semibold text-sm mb-2">{output.ok ? "OK" : "Err"} {output.label}</h4>
           <pre className="text-xs overflow-x-auto bg-white rounded p-2">{JSON.stringify(output.data, null, 2)}</pre>
         </div>
       )}

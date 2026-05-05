@@ -78,7 +78,7 @@ export default function EnrichmentDashboard() {
     const j = await r.json();
     setBusy(null);
     if (!j.ok) { setError(j.error); return; }
-    setMsg(`✓ ${kind} → ${jobId.slice(0, 8)}…`);
+    setMsg(`${kind} → ${jobId.slice(0, 8)}…`);
     refresh();
   }
 
@@ -90,8 +90,8 @@ export default function EnrichmentDashboard() {
     if (!j.ok) { setError(j.error); return; }
     const n = j.data?.timed_out ?? 0;
     setMsg(n > 0
-      ? `✓ Watchdog: marked ${n} stuck OpenClaw job${n === 1 ? "" : "s"} failed (no_callback_timeout)`
-      : `✓ Watchdog: no stuck OpenClaw jobs older than ${minutes} min`);
+      ? `Watchdog: marked ${n} stuck OpenClaw job${n === 1 ? "" : "s"} failed (no_callback_timeout)`
+      : `Watchdog: no stuck OpenClaw jobs older than ${minutes} min`);
     refresh();
   }
 
@@ -193,7 +193,7 @@ export default function EnrichmentDashboard() {
                   <div className="flex flex-col gap-1">
                     <button onClick={() => reviewResult(r.id, "approve")} disabled={busy === r.id}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded px-2 py-1 disabled:opacity-50">
-                      {busy === r.id ? "…" : "✓ Approve"}
+                      {busy === r.id ? "…" : "Approve"}
                     </button>
                     <button onClick={() => reviewResult(r.id, "reject")} disabled={busy === r.id}
                       className="border border-zinc-300 hover:bg-zinc-100 text-xs rounded px-2 py-1 disabled:opacity-50">

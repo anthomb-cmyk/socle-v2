@@ -126,7 +126,7 @@ export default function StageChecklist({ leadId, status }: { leadId: string; sta
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--crm-text3, #6B7280)" }}>
-          ✓ Checklist
+          Checklist
         </span>
         <span style={{ fontSize: 11, color: "var(--crm-text3, #6B7280)" }}>{config.title}</span>
         <span style={{
@@ -188,7 +188,7 @@ export default function StageChecklist({ leadId, status }: { leadId: string; sta
       {/* Completion hint */}
       {pct === 100 && (
         <div style={{ marginTop: 10, fontSize: 12, color: "#059669", fontWeight: 600 }}>
-          ✓ Toutes les étapes complètes — prêt à avancer !
+          Toutes les étapes complètes — prêt à avancer !
         </div>
       )}
       {pct < 100 && !allBlockingDone && (
