@@ -85,7 +85,7 @@ export default async function PhoneReviewPage({
   const readyCount = readyRes.count ?? 0;
 
   return (
-    <CallerAppShell width="narrow">
+    <CallerAppShell width="wide">
       {justApproved && (
         <NextStepBanner
           kind="review_done"
