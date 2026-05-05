@@ -32,6 +32,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: `Parse failed: ${(err as Error).message}` }, { status: 400 });
   }
 
+  // Inject city into rows that have no city detected (e.g. Sherbrooke-Commercial
+  // files have no "Ville" column — the city must come from the upload form).
+  if (city) {
+    for (const row of parse.rows) {
+      if (!row.property.city) row.property.city = city;
+    }
+  }
+
   // Use service-role client to write the import_jobs row regardless of RLS.
   const admin = createSupabaseAdminClient();
 

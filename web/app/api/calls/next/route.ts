@@ -10,6 +10,11 @@
 //   • leads where next_action_at > now()  (not ready yet — caller scheduled them for later)
 //   • leads with an active call_lock held by a different caller
 //   • the current lead (afterLeadId)
+//   • any lead sharing the same contact_id as the current lead (same owner, different property)
+//
+// Deduplication:
+//   • Within the batch, only the first (best-ranked) lead per contact_id is returned.
+//     This ensures a contact who owns N properties is called only once per round.
 
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
@@ -40,15 +45,25 @@ export async function GET(request: Request) {
     .filter((l) => l.locked_by !== user.id)
     .map((l) => l.lead_id as string);
 
-  // ── 2. Fetch candidates (small batch, filter locks in JS) ──────────────
-  // Fetching a small batch and filtering in JS avoids TypeScript generic-depth
-  // issues with deeply chained Supabase query builders.
-  // In practice the lock set is tiny (< 10 callers), so this is fine.
+  // ── 2. Resolve the current lead's contact_id (to skip same-owner leads) ──
+  let afterContactId: string | null = null;
+  if (after) {
+    const { data: cur } = await sb
+      .from("leads_view")
+      .select("contact_id")
+      .eq("lead_id", after)
+      .maybeSingle();
+    afterContactId = (cur as { contact_id: string | null } | null)?.contact_id ?? null;
+  }
+
+  // ── 3. Fetch a larger batch (include contact_id for deduplication) ───────
+  // We fetch enough rows to survive locks + contact duplicates in JS,
+  // avoiding TypeScript issues with deeply chained Supabase builders.
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q: any = sb
     .from("leads_view")
-    .select("lead_id")
+    .select("lead_id, contact_id")
     .in("status", CALLABLE_STATUSES)
     .not("best_phone", "is", null)
     .or(`next_action_at.is.null,next_action_at.lte.${now}`)
@@ -59,14 +74,28 @@ export async function GET(request: Request) {
   if (role === "caller") q = q.eq("assigned_to", user.id);
   if (after) q = q.neq("lead_id", after);
 
-  // Fetch a small batch so we can filter locked leads in JS
-  const batchSize = Math.max(10, lockedByOthers.length + 3);
+  // Fetch a bigger batch to absorb locked + contact-duplicate removals
+  const batchSize = Math.max(50, lockedByOthers.length * 2 + 10);
   const { data: candidates, error } = await q.limit(batchSize);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const lockedSet = new Set(lockedByOthers);
-  const rows = (candidates ?? []) as { lead_id: string }[];
-  const next = rows.find((r) => !lockedSet.has(r.lead_id))?.lead_id ?? null;
+  const lockedSet   = new Set(lockedByOthers);
+  const seenContact = new Set<string>();
 
-  return NextResponse.json({ ok: true, data: { nextLeadId: next } });
+  // Pre-seed with the current lead's contact so we skip their other properties
+  if (afterContactId) seenContact.add(afterContactId);
+
+  type Row = { lead_id: string; contact_id: string | null };
+  const rows = (candidates ?? []) as Row[];
+
+  let nextLeadId: string | null = null;
+  for (const r of rows) {
+    if (lockedSet.has(r.lead_id)) continue;            // locked by another caller
+    if (r.contact_id && seenContact.has(r.contact_id)) continue; // same owner already queued
+    // ✓ valid candidate
+    nextLeadId = r.lead_id;
+    break;
+  }
+
+  return NextResponse.json({ ok: true, data: { nextLeadId } });
 }

@@ -3,13 +3,16 @@ import type { RoleFormat } from "./types.ts";
 /**
  * Detect Quebec rôle format from header columns.
  *
- * Format B (Granby): compact-indexed. Has columns like "Propriétaire1_Téléphone",
- * "Propriétaire2_Adresse" — all info per owner concatenated with underscore-index.
+ * Format B (Granby/StHyacinthe/Waterloo/Victoriaville/Magog): compact-indexed.
+ *   Columns prefixed with owner index: "Propriétaire1_Nom", "Propriétaire1_Téléphone", etc.
  *
- * Format A (Longueuil/Sherbrooke): one row per (property, owner). Owner info
- * spread across columns like "Nom propriétaire", "Adresse propriétaire".
+ * Format A (Longueuil-style): one row per (property, owner). Owner info
+ *   spread across columns like "Nom propriétaire", "Adresse propriétaire".
  *
- * Format C (Quebec City variant): TBD.
+ * Format C (Sherbrooke-style): one row per property, owners in suffix-indexed columns.
+ *   Owner 1 has bare columns "Propriétaire", "Téléphone", "Adresse Postale".
+ *   Owners 2-N: "Propriétaire 2", "Téléphone 2", "Adresse Postale 2", etc.
+ *   Distinguished from format B by absence of underscore-prefixed owner columns.
  *
  * Format D (Prospection / phone list): not a rôle; just owner+phone+address pairs.
  */
@@ -28,6 +31,11 @@ export function detectFormat(headers: string[]): RoleFormat {
 
   // Format A: separate "nom proprietaire" + "telephone" columns, one row per owner
   if (has(/^nom\s+proprietaire/) || has(/proprietaire\s+nom/)) return "role_a";
+
+  // Format C (Sherbrooke): bare "Propriétaire" + "Téléphone" columns,
+  // with suffix-indexed extras "Propriétaire 2", "Téléphone 2", etc.
+  // Must have a matricule column to distinguish from format D.
+  if (has(/^proprietaire$/) && has(/^telephone$/) && has(/matricule/)) return "role_c";
 
   // Format D: prospection list — has "telephone" + "nom" + "adresse" but no matricule
   if (has(/^telephone$/) && has(/^nom$/) && !has(/matricule/)) return "role_d";
