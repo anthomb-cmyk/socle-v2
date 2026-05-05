@@ -2,6 +2,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
+import CallerSelect from "@/components/caller/CallerSelect";
+import CallerInput from "@/components/caller/CallerInput";
+import CallerDateTimeInput from "@/components/caller/CallerDateTimeInput";
+import CallerField from "@/components/caller/CallerField";
+import OutcomeButtonGroup, { type OutcomeOption } from "@/components/caller/OutcomeButtonGroup";
 
 // ── Twilio call state ────────────────────────────────────────────────────────
 type TwilioCallState = "idle" | "initiating" | "ringing" | "answered" | "completed" | "failed";
@@ -51,16 +56,17 @@ export default function CallWorkspace({
   const activeCallLogId = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Outcome labels come from the dictionary so they flip with locale
-  const QUICK_OUTCOMES = [
-    { value: "no_answer",      color: "bg-zinc-200 hover:bg-zinc-300 text-zinc-800" },
-    { value: "voicemail_left", color: "bg-zinc-200 hover:bg-zinc-300 text-zinc-800" },
-    { value: "wrong_number",   color: "bg-amber-100 hover:bg-amber-200 text-amber-900" },
-    { value: "bad_number",     color: "bg-amber-100 hover:bg-amber-200 text-amber-900" },
-    { value: "not_interested", color: "bg-red-100 hover:bg-red-200 text-red-800" },
-    { value: "do_not_contact", color: "bg-red-200 hover:bg-red-300 text-red-900" },
-    { value: "maybe_later",    color: "bg-blue-100 hover:bg-blue-200 text-blue-800" },
-  ] as const;
+  // ── Outcome catalogs ──────────────────────────────────────────────────────
+  // Variants are visual only; the value strings remain unchanged for routing.
+  const QUICK_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
+    { value: "no_answer",      variant: "neutral"  },
+    { value: "voicemail_left", variant: "neutral"  },
+    { value: "wrong_number",   variant: "negative" },
+    { value: "bad_number",     variant: "negative" },
+    { value: "not_interested", variant: "danger"   },
+    { value: "do_not_contact", variant: "danger"   },
+    { value: "maybe_later",    variant: "info"     },
+  ];
 
   const HOT_OUTCOMES = [
     "wants_more_info",
@@ -70,15 +76,12 @@ export default function CallWorkspace({
     "follow_up_booked",
   ] as const;
 
-  type QuickOutcome = typeof QUICK_OUTCOMES[number]["value"];
-  type HotOutcome   = typeof HOT_OUTCOMES[number];
-  type Outcome      = QuickOutcome | HotOutcome | "call_back_later";
+  type Outcome = string;
 
   const ESCALATING = new Set<string>([
     "wants_more_info", "open_to_selling", "wants_offer", "hot_seller", "follow_up_booked",
   ]);
 
-  // Twilio call state → translated label
   const CALL_STATE_LABELS: Record<TwilioCallState, string> = {
     idle:       "",
     initiating: t.workspace.connecting,
@@ -244,135 +247,222 @@ export default function CallWorkspace({
     await goNext();
   }
 
+  const quickOptions: OutcomeOption[] = QUICK_OUTCOMES.map((o) => ({
+    value: o.value,
+    label: t.outcome[o.value] ?? o.value,
+    variant: o.variant,
+  }));
+
+  const hotOptions: OutcomeOption[] = HOT_OUTCOMES.map((value) => ({
+    value,
+    label: t.outcome[value] ?? value,
+    variant: "escalating",
+  }));
+
+  const selectedPhone = phones.find((p) => p.id === phoneId) ?? null;
+
   // ── Submission form (escalating outcomes) ────────────────────────────────
   if (submitForm) {
     const outcomeLabel = t.outcome[submitForm] ?? submitForm;
     return (
-      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 space-y-4">
+      <div
+        className="crm-card"
+        style={{
+          padding: 20,
+          borderColor: "var(--crm-gold-border)",
+          background: "var(--crm-gold-light)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
         <div>
-          <h2 className="text-lg font-semibold text-emerald-900">{t.workspace.submitTitle}</h2>
-          <p className="text-sm text-emerald-800">
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--crm-text)", margin: 0 }}>
+            {t.workspace.submitTitle}
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--crm-text2)", margin: "4px 0 0" }}>
             {t.workspace.submitSubtitle(outcomeLabel)}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t.workspace.interestLevel}>
-            <select value={interest} onChange={e => setInterest(e.target.value as typeof interest)}
-              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <CallerField label={t.workspace.interestLevel}>
+            <CallerSelect value={interest} onChange={(e) => setInterest(e.target.value as typeof interest)}>
               <option value="cold">cold</option>
               <option value="warm">warm</option>
               <option value="hot">hot</option>
               <option value="wants_offer">wants offer</option>
-            </select>
-          </Field>
-          <Field label={t.workspace.timeline}>
-            <select value={timeline} onChange={e => setTimeline(e.target.value as typeof timeline)}
-              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm">
+            </CallerSelect>
+          </CallerField>
+          <CallerField label={t.workspace.timeline}>
+            <CallerSelect value={timeline} onChange={(e) => setTimeline(e.target.value as typeof timeline)}>
               <option value="immediate">immediate</option>
               <option value="3_months">3 months</option>
               <option value="6_months">6 months</option>
               <option value="no_rush">no rush</option>
               <option value="unknown">unknown</option>
-            </select>
-          </Field>
+            </CallerSelect>
+          </CallerField>
         </div>
 
-        <Field label={t.workspace.motivation}>
-          <input value={motivation} onChange={e => setMotivation(e.target.value)}
-            className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            placeholder={t.workspace.motivationPlaceholder} />
-        </Field>
+        <CallerField label={t.workspace.motivation}>
+          <CallerInput
+            value={motivation}
+            onChange={(e) => setMotivation(e.target.value)}
+            placeholder={t.workspace.motivationPlaceholder}
+          />
+        </CallerField>
 
-        <Field label={t.workspace.askingPrice}>
-          <input type="number" value={askingPrice} onChange={e => setAskingPrice(e.target.value)}
-            className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="e.g. 1600000" />
-        </Field>
+        <CallerField label={t.workspace.askingPrice}>
+          <CallerInput
+            type="number"
+            value={askingPrice}
+            onChange={(e) => setAskingPrice(e.target.value)}
+            placeholder="e.g. 1600000"
+          />
+        </CallerField>
 
-        <Field label={t.workspace.summary}>
-          <textarea value={callerSummary} onChange={e => setCallerSummary(e.target.value)} rows={4}
-            className="crm-notes-textarea w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            placeholder={t.workspace.summaryPlaceholder} />
-        </Field>
+        <CallerField label={t.workspace.summary}>
+          <textarea
+            value={callerSummary}
+            onChange={(e) => setCallerSummary(e.target.value)}
+            rows={4}
+            className="crm-notes-textarea crm-input"
+            placeholder={t.workspace.summaryPlaceholder}
+          />
+        </CallerField>
 
-        <div className="flex gap-2">
-          <button onClick={submitToAnthony} disabled={busy}
-            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-medium">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={submitToAnthony}
+            disabled={busy}
+            className="crm-btn crm-btn-gold"
+            style={{ minHeight: 44 }}
+          >
             {busy ? t.workspace.submitting : t.workspace.submitBtn}
           </button>
-          <button onClick={() => router.push("/calls/queue")}
-            className="bg-white border border-zinc-300 rounded-lg px-4 py-2 text-sm">
+          <button
+            onClick={() => router.push("/calls/queue")}
+            className="crm-btn"
+            style={{ minHeight: 44 }}
+          >
             {t.workspace.skipSubmission}
           </button>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && (
+          <p style={{ fontSize: 13, color: "var(--crm-red)", margin: 0 }}>{error}</p>
+        )}
       </div>
     );
   }
 
   // ── Main workspace ────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button onClick={goNext} disabled={busy}
-          className="text-xs text-zinc-500 hover:text-zinc-900 underline">
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={goNext}
+          disabled={busy}
+          style={{
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            fontSize: 12,
+            color: "var(--crm-text3)",
+            textDecoration: "underline",
+          }}
+        >
           {t.workspace.skipNextLead}
         </button>
       </div>
 
       {phones.length > 0 ? (
-        <Field label={t.workspace.phoneDialed}>
-          <select value={phoneId ?? ""} onChange={e => setPhoneId(e.target.value || null)}
-            className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm font-mono">
-            {phones.map(p => (
+        <CallerField label={t.workspace.phoneDialed}>
+          <CallerSelect
+            value={phoneId ?? ""}
+            onChange={(e) => setPhoneId(e.target.value || null)}
+            style={{ fontFeatureSettings: '"tnum" 1' }}
+          >
+            {phones.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.display ?? p.e164}{p.status !== "unverified" ? ` (${p.status})` : ""} · {p.source} · conf {p.confidence}
+                {p.display ?? p.e164}
+                {p.status !== "unverified" ? ` (${p.status})` : ""} · {p.source} · conf {p.confidence}
               </option>
             ))}
-          </select>
-        </Field>
+          </CallerSelect>
+        </CallerField>
       ) : (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+        <div
+          className="crm-card"
+          style={{
+            padding: "12px 14px",
+            background: "var(--crm-amber-light)",
+            borderColor: "color-mix(in srgb, var(--crm-amber) 25%, transparent)",
+            color: "var(--crm-amber)",
+            fontSize: 13,
+          }}
+        >
           {t.workspace.noPhones}
         </div>
       )}
 
-      {/* ── Twilio call launcher ─────────────────────────────────────── */}
-      {phones.length > 0 && (
-        <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* Tel: tap-to-call — direct dial fallback, prominently shown on mobile */}
-          {phoneId && (() => {
-            const sel = phones.find(p => p.id === phoneId);
-            return sel ? (
-              <a href={`tel:${sel.e164}`} className="crm-tel-link"
-                style={{ fontSize: 20, fontWeight: 700, color: "var(--crm-blue)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 8 }}>
-                📞 {sel.display ?? sel.e164}
-              </a>
-            ) : null;
-          })()}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      {/* ── Phone CTA card: tap-to-call + Twilio launcher ─────────────────── */}
+      {phones.length > 0 && selectedPhone && (
+        <div className="crm-phone-cta">
+          <a
+            href={`tel:${selectedPhone.e164}`}
+            className="crm-phone-cta__number"
+            aria-label={selectedPhone.display ?? selectedPhone.e164}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span style={{ fontFeatureSettings: '"tnum" 1' }}>
+              {selectedPhone.display ?? selectedPhone.e164}
+            </span>
+          </a>
+
+          <div className="crm-phone-cta__row">
             {(callState === "idle" || callState === "failed" || callState === "completed") ? (
-              <button
-                onClick={startCall}
-                disabled={!phoneId}
-                className="crm-call-btn-mobile flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm font-semibold"
-              >
+              <button onClick={startCall} disabled={!phoneId} className="crm-call-btn">
                 {t.workspace.call}
               </button>
             ) : (
-              <button disabled className="crm-call-btn-mobile flex items-center gap-2 bg-zinc-200 text-zinc-600 rounded-lg px-4 py-2 text-sm font-semibold cursor-not-allowed">
-                {callState === "initiating" && <span className="animate-pulse">⏳</span>}
-                {callState === "ringing"    && <span>📱</span>}
-                {callState === "answered"   && <span className="text-red-500">🔴</span>}
+              <button disabled className="crm-call-btn crm-call-btn--busy">
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 9999,
+                    background:
+                      callState === "answered" ? "var(--crm-red)" : "var(--crm-amber)",
+                    display: "inline-block",
+                    animation: "crm-pulse 1.2s ease-in-out infinite",
+                  }}
+                />
                 {CALL_STATE_LABELS[callState]}
               </button>
             )}
-            <span className="text-xs text-zinc-500 flex-1">
-              {callState === "idle" && (userForwardTo
-                ? <>{t.workspace.willRingOn} <span className="font-mono">{userForwardTo}</span></>
-                : <span className="text-amber-600">{t.workspace.forwardNotConfigured}</span>
-              )}
+            <span className="crm-phone-cta__hint" style={{ flex: 1, minWidth: 160 }}>
+              {callState === "idle" && (userForwardTo ? (
+                <>
+                  {t.workspace.willRingOn}{" "}
+                  <span style={{ fontFeatureSettings: '"tnum" 1', color: "var(--crm-text2)", fontWeight: 600 }}>
+                    {userForwardTo}
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: "var(--crm-amber)" }}>
+                  {t.workspace.forwardNotConfigured}
+                </span>
+              ))}
               {callState === "ringing"   && t.workspace.pickup}
               {callState === "answered"  && t.workspace.connected}
               {callState === "completed" && t.workspace.selectOutcome}
@@ -381,53 +471,69 @@ export default function CallWorkspace({
         </div>
       )}
       {callError && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{callError}</p>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--crm-red)",
+            background: "var(--crm-red-light)",
+            border: "1px solid color-mix(in srgb, var(--crm-red) 25%, transparent)",
+            borderRadius: 10,
+            padding: "8px 12px",
+            margin: 0,
+          }}
+        >
+          {callError}
+        </p>
       )}
 
-      <Field label={t.workspace.notesLabel}>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-          className="crm-notes-textarea w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-          placeholder={t.workspace.notesPlaceholder} />
-      </Field>
+      <CallerField label={t.workspace.notesLabel}>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          className="crm-notes-textarea crm-input"
+          placeholder={t.workspace.notesPlaceholder}
+        />
+      </CallerField>
 
       {/* Quick outcomes */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+        <div className="crm-field-label" style={{ marginBottom: 8 }}>
           {t.workspace.quickOutcome}
         </div>
-        <div className="crm-outcome-grid flex flex-wrap gap-2">
-          {QUICK_OUTCOMES.map(o => (
-            <button key={o.value} disabled={busy} onClick={() => logOutcome(o.value)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${o.color} disabled:opacity-50`}>
-              {t.outcome[o.value] ?? o.value}
-            </button>
-          ))}
-        </div>
+        <OutcomeButtonGroup options={quickOptions} onSelect={(v) => logOutcome(v)} disabled={busy} />
       </div>
 
       {/* Scheduled callback */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+        <div className="crm-field-label" style={{ marginBottom: 8 }}>
           {t.workspace.scheduleCallback}
         </div>
         {showCallbackPicker ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              type="datetime-local"
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <CallerDateTimeInput
               value={callbackTime}
-              onChange={e => setCallbackTime(e.target.value)}
-              className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+              onChange={(e) => setCallbackTime(e.target.value)}
+              style={{ width: "auto", flex: "1 1 220px" }}
             />
             <button
               onClick={handleCallBackLater}
               disabled={busy || !callbackTime}
-              className="rounded-lg px-3 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
+              className="crm-outcome-btn crm-outcome-btn--info"
+              style={{ flex: "0 0 auto" }}
             >
               {busy ? t.workspace.savingCallback : t.workspace.confirmCallback}
             </button>
             <button
               onClick={() => setShowCallbackPicker(false)}
-              className="text-xs text-zinc-400 hover:text-zinc-700 underline"
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                fontSize: 12,
+                color: "var(--crm-text3)",
+                textDecoration: "underline",
+              }}
             >
               {t.workspace.cancelCallback}
             </button>
@@ -436,7 +542,8 @@ export default function CallWorkspace({
           <button
             disabled={busy}
             onClick={handleCallBackLater}
-            className="rounded-lg px-3 py-2 text-sm font-medium bg-indigo-100 hover:bg-indigo-200 text-indigo-900 disabled:opacity-50"
+            className="crm-outcome-btn crm-outcome-btn--info"
+            style={{ width: "auto" }}
           >
             {t.workspace.callBackLater}
           </button>
@@ -445,29 +552,23 @@ export default function CallWorkspace({
 
       {/* Hot / escalating outcomes → send to Anthony */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+        <div className="crm-field-label" style={{ marginBottom: 8 }}>
           {t.workspace.sendToAnthony}
         </div>
-        <div className="crm-outcome-grid flex flex-wrap gap-2">
-          {HOT_OUTCOMES.map(value => (
-            <button key={value} disabled={busy} onClick={() => logOutcome(value)}
-              className="rounded-lg px-3 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
-              {t.outcome[value] ?? value}
-            </button>
-          ))}
-        </div>
+        <OutcomeButtonGroup options={hotOptions} onSelect={(v) => logOutcome(v)} disabled={busy} />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-    </div>
-  );
-}
+      {error && (
+        <p style={{ fontSize: 13, color: "var(--crm-red)", margin: 0 }}>{error}</p>
+      )}
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">{label}</label>
-      {children}
+      {/* Local keyframes for the call-state pulse */}
+      <style jsx>{`
+        @keyframes crm-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+      `}</style>
     </div>
   );
 }

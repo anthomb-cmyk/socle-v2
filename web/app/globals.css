@@ -1122,3 +1122,277 @@ html, body {
     display: none !important;
   }
 }
+
+/* ─── Caller form primitives ──────────────────────────────────────────────
+   Used by the shared caller component family
+   (CallerSelect / CallerInput / CallerDateTimeInput / CallerField).
+   Replaces raw browser <select>/<input> styling with the warm cream/gold
+   palette used elsewhere in the app.
+──────────────────────────────────────────────────────────────────────────── */
+.crm-field { display: flex; flex-direction: column; gap: 6px; }
+.crm-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--crm-text3);
+}
+.crm-field-hint {
+  font-size: 11px;
+  color: var(--crm-text3);
+}
+
+.crm-input,
+.crm-select,
+.crm-datetime {
+  width: 100%;
+  background: var(--crm-card);
+  border: 1px solid var(--crm-card-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--crm-text);
+  line-height: 1.3;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.crm-input:hover,
+.crm-select:hover,
+.crm-datetime:hover {
+  border-color: var(--crm-gold-border);
+}
+.crm-input:focus,
+.crm-select:focus,
+.crm-datetime:focus {
+  outline: none;
+  border-color: var(--crm-gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--crm-gold) 22%, transparent);
+}
+.crm-input:disabled,
+.crm-select:disabled,
+.crm-datetime:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--crm-bg-alt);
+}
+
+/* Native chevron suppression + custom chevron via background SVG */
+.crm-select {
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%236B6B6B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.crm-select::-ms-expand { display: none; }
+
+/* ─── Outcome button group ────────────────────────────────────────────────
+   Replaces ad-hoc Tailwind color classes on call-outcome buttons with a
+   semantic variant set: neutral / info / negative / danger / positive /
+   escalating. Variants are tied to crm-* tokens so they restyle in one place.
+──────────────────────────────────────────────────────────────────────────── */
+.crm-outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.crm-outcome-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.05s, box-shadow 0.12s;
+  text-align: center;
+  font-family: inherit;
+  min-height: 44px;
+  line-height: 1.2;
+}
+.crm-outcome-btn:hover { transform: translateY(-1px); }
+.crm-outcome-btn:active { transform: translateY(0); }
+.crm-outcome-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.crm-outcome-btn--neutral {
+  background: var(--crm-card);
+  border-color: var(--crm-card-border);
+  color: var(--crm-text2);
+}
+.crm-outcome-btn--neutral:hover { background: var(--crm-bg-alt); border-color: var(--crm-text3); }
+
+.crm-outcome-btn--info {
+  background: var(--crm-blue-light);
+  border-color: color-mix(in srgb, var(--crm-blue) 20%, transparent);
+  color: var(--crm-blue);
+}
+.crm-outcome-btn--info:hover { background: color-mix(in srgb, var(--crm-blue) 14%, transparent); }
+
+.crm-outcome-btn--negative {
+  background: var(--crm-amber-light);
+  border-color: color-mix(in srgb, var(--crm-amber) 25%, transparent);
+  color: var(--crm-amber);
+}
+.crm-outcome-btn--negative:hover { background: color-mix(in srgb, var(--crm-amber) 18%, transparent); }
+
+.crm-outcome-btn--danger {
+  background: var(--crm-red-light);
+  border-color: color-mix(in srgb, var(--crm-red) 25%, transparent);
+  color: var(--crm-red);
+}
+.crm-outcome-btn--danger:hover { background: color-mix(in srgb, var(--crm-red) 16%, transparent); }
+
+.crm-outcome-btn--positive {
+  background: var(--crm-green-light);
+  border-color: color-mix(in srgb, var(--crm-green) 25%, transparent);
+  color: var(--crm-green);
+}
+.crm-outcome-btn--positive:hover { background: color-mix(in srgb, var(--crm-green) 16%, transparent); }
+
+.crm-outcome-btn--escalating {
+  background: var(--crm-gold);
+  border-color: var(--crm-gold);
+  color: #1A1A1A;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--crm-gold) 60%, transparent);
+}
+.crm-outcome-btn--escalating:hover {
+  background: color-mix(in srgb, var(--crm-gold) 92%, white);
+  border-color: color-mix(in srgb, var(--crm-gold) 92%, white);
+}
+
+/* ─── Phone CTA card (caller workspace) ──────────────────────────────────
+   Wraps the tap-to-call link + Twilio launch button in a single card.
+──────────────────────────────────────────────────────────────────────────── */
+.crm-phone-cta {
+  background: var(--crm-card);
+  border: 1px solid var(--crm-card-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.crm-phone-cta__number {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--crm-text);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.1;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px;
+}
+.crm-phone-cta__number:hover { color: var(--crm-blue); }
+.crm-phone-cta__hint {
+  font-size: 12px;
+  color: var(--crm-text3);
+}
+.crm-phone-cta__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.crm-call-btn {
+  appearance: none;
+  border: 1px solid var(--crm-green);
+  background: var(--crm-green);
+  color: #FFFFFF;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: filter 0.12s, background 0.12s, border-color 0.12s;
+  min-height: 44px;
+  font-family: inherit;
+}
+.crm-call-btn:hover { filter: brightness(1.05); }
+.crm-call-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+.crm-call-btn--busy {
+  background: var(--crm-bg-alt);
+  border-color: var(--crm-card-border);
+  color: var(--crm-text2);
+}
+
+/* ─── Caller workspace header (replaces raw Tailwind in CallLeadHeader) ─── */
+.crm-caller-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--crm-text2);
+  text-decoration: none;
+}
+.crm-caller-back:hover { color: var(--crm-text); }
+.crm-caller-header { margin-top: 10px; margin-bottom: 18px; }
+.crm-caller-header__name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--crm-text);
+  line-height: 1.2;
+  margin: 0;
+}
+.crm-caller-header__address {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--crm-text2);
+}
+.crm-caller-header__meta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--crm-text3);
+}
+
+/* Phone link in queue cards — interactive but inherits row click */
+.crm-queue-phone-link {
+  color: var(--crm-blue);
+  font-weight: 600;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.crm-queue-phone-link:hover { text-decoration: underline; }
+
+/* Mobile tweaks */
+@media (max-width: 767px) {
+  .crm-outcome-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .crm-phone-cta {
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .crm-phone-cta__number {
+    font-size: 24px;
+  }
+  .crm-call-btn {
+    width: 100%;
+    font-size: 15px;
+    padding: 12px 16px;
+  }
+  .crm-input,
+  .crm-select,
+  .crm-datetime {
+    font-size: 16px; /* prevent iOS auto-zoom */
+    padding: 11px 12px;
+  }
+  .crm-select { padding-right: 36px; }
+  .crm-caller-header__name { font-size: 19px; }
+}
+

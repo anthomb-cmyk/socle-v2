@@ -17,25 +17,31 @@ type Lead = {
 export default function CallLeadHeader({ lead }: { lead: Lead }) {
   const { t } = useLocale();
   const statusLabel = t.status[lead.status] ?? lead.status;
+  const pillKey =
+    lead.status === "no_answer" ? "sans-reponse"
+    : lead.status === "in_outreach" ? "contacte"
+    : lead.status === "phone_verified" ? "a-appeler"
+    : "nouveau";
 
   return (
     <>
-      <Link href="/calls/queue" className="text-sm text-zinc-500 hover:underline">
+      <Link href="/calls/queue" className="crm-caller-back">
         ← {t.workspace.backToQueue}
       </Link>
-      <header className="mt-3 mb-6">
-        <h1 className="text-2xl font-semibold">
+      <header className="crm-caller-header">
+        <h1 className="crm-caller-header__name">
           {lead.full_name ?? lead.company_name ?? "—"}
         </h1>
-        <p className="text-zinc-600">
+        <p className="crm-caller-header__address">
           {lead.address}
           {lead.city ? `, ${lead.city}` : ""}
         </p>
-        <p className="text-sm text-zinc-500 mt-1">
-          {lead.num_units != null && <>{lead.num_units} {lead.num_units === 1 ? "log." : "log."} · </>}
-          {lead.contact_kind} · <span className="font-medium">{statusLabel}</span>
-          {lead.campaign_name && <> · {lead.campaign_name}</>}
-        </p>
+        <div className="crm-caller-header__meta">
+          {lead.num_units != null && <span className="crm-chip crm-chip-units">{lead.num_units} log.</span>}
+          {lead.contact_kind && <span>{lead.contact_kind}</span>}
+          <span className={`crm-pill crm-pill--${pillKey}`}>{statusLabel}</span>
+          {lead.campaign_name && <span>· {lead.campaign_name}</span>}
+        </div>
       </header>
     </>
   );

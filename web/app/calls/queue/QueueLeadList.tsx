@@ -261,10 +261,15 @@ export default function QueueLeadList({
                     </div>
 
                     <div style={{ textAlign: "right", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                      {formatted ? (
-                        <div className="crm-queue-phone crm-phone-link" style={{ fontSize: 14 }}>
+                      {formatted && l.best_phone ? (
+                        <a
+                          href={`tel:${l.best_phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="crm-queue-phone crm-queue-phone-link"
+                          style={{ fontSize: 14 }}
+                        >
                           {formatted}
-                        </div>
+                        </a>
                       ) : (
                         <div className="crm-no-phone">sans tél.</div>
                       )}
