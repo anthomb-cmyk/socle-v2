@@ -1,19 +1,22 @@
 "use client";
-// Phase 3 orchestrator. Keeps the public prop signature (leads /
+// Phase 9 orchestrator. Keeps the public prop signature (leads /
 // callCounts / hotSellers) so the server page does not change. Filtering
 // is purely client-side over the already-fetched leads — the queue server
 // query, sort order, assigned_to filter, CALLABLE_STATUSES, best_phone
 // filter, future-callback exclusion and call_locks exclusion are all
 // untouched in page.tsx.
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
-import CallerQueueFilters, { type QueueFilter } from "@/components/caller/CallerQueueFilters";
-import CallerQueueScopeBar, { type AdminScope } from "@/components/caller/CallerQueueScopeBar";
-import CallerLeadRow from "@/components/caller/CallerLeadRow";
-import CallerLeadCard from "@/components/caller/CallerLeadCard";
+import type { AdminScope } from "@/components/caller/CallerQueueScopeBar";
 import type { Dict } from "@/lib/i18n";
+import type { QueueFilter } from "./components/QueueListCard";
+import QueueHeader from "./components/QueueHeader";
+import QueueStatTiles from "./components/QueueStatTiles";
+import QueueListCard from "./components/QueueListCard";
+import QueuePreviewCard from "./components/QueuePreviewCard";
+import KeyboardHints from "./components/KeyboardHints";
 
 export type QueueLead = {
   lead_id: string;
@@ -48,6 +51,14 @@ export type QueueEmptyDiagnostics = {
   isAdmin: boolean;
 };
 
+export type AugmentedLead = {
+  lead: QueueLead;
+  callCount: number;
+  formattedPhone: string | null;
+  overdueLabel: string | null;
+  lastContactedAgo: string | null;
+};
+
 function formatPhone(phone: string | null): string | null {
   if (!phone) return null;
   const m = phone.replace(/\D/g, "");
@@ -72,11 +83,11 @@ export default function QueueLeadList({
   emptyDiagnostics,
   isAdmin = false,
   scope = "mine",
+  hotSellers,
 }: {
   leads: QueueLead[];
   callCounts: Record<string, number>;
-  // hotSellers prop is still accepted (page.tsx passes it) but is not
-  // consumed in the queue UI — kept on the type only for signature stability.
+  // hotSellers prop is still accepted (page.tsx passes it) — drives the "À réviser" stat tile.
   hotSellers: number;
   /** Populated by page.tsx when leads.length === 0; null otherwise. */
   emptyDiagnostics?: QueueEmptyDiagnostics | null;
@@ -86,11 +97,14 @@ export default function QueueLeadList({
   scope?: AdminScope;
 }) {
   const { t } = useLocale();
+  const router = useRouter();
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   // Pre-compute per-lead derived strings once per render
-  const augmented = useMemo(
+  const augmented = useMemo<AugmentedLead[]>(
     () =>
       leads.map((lead) => {
         const overdueDiff =
@@ -114,9 +128,11 @@ export default function QueueLeadList({
     [leads, callCounts, t],
   );
 
-  const filtered = useMemo(() => {
-    return augmented.filter(({ lead }) => {
+  const filtered = useMemo<AugmentedLead[]>(() => {
+    return augmented.filter((item: AugmentedLead) => {
+      const { lead } = item;
       if (filter === "hot" && (lead.priority ?? 0) < 80) return false;
+      if (filter === "verified" && lead.status !== "phone_verified") return false;
       const q = query.trim().toLowerCase();
       if (q) {
         const haystack = [
@@ -135,160 +151,98 @@ export default function QueueLeadList({
     });
   }, [augmented, filter, query]);
 
-  const overdueCount = augmented.filter((a) => a.overdueLabel != null).length;
+  // Stat counts derived from the full (unfiltered) lead list
+  const now = Date.now();
+  const statCallable = leads.length;
+  const statOverdue = leads.filter(
+    (l) => l.next_action_at && new Date(l.next_action_at).getTime() <= now,
+  ).length;
+  const statVerified = leads.filter((l) => l.status === "phone_verified").length;
 
-  return (
-    <>
-      {/* Header */}
-      <header className="so-queue-header">
-        <div className="so-queue-header__titles">
-          <h1 className="crm-page-title">{t.queue.title}</h1>
-          <p className="crm-page-sub">
-            {t.queue.leadCount(leads.length)}
-            {overdueCount > 0 && (
-              <>
-                {" "}
-                ·{" "}
-                <span style={{ color: "var(--crm-blue)", fontWeight: 600 }}>
-                  {t.queue.overdueCount(overdueCount)}
-                </span>
-              </>
-            )}
-          </p>
-        </div>
-        <Link href="/leads" className="crm-btn">
-          {t.queue.allLeads}
-        </Link>
-      </header>
+  // Auto-select first item when the filtered list changes and nothing is selected
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    const stillPresent = filtered.some((a: AugmentedLead) => a.lead.lead_id === selectedId);
+    if (!stillPresent) setSelectedId(filtered[0].lead.lead_id);
+  }, [filtered, selectedId]);
 
-      {/* Admin-only scope toggle (All / Mine / Unassigned).
-          Caller-tier never sees this — server forces scope="mine" regardless
-          of any ?scope=… URL param. */}
-      {isAdmin && <CallerQueueScopeBar scope={scope} />}
-
-      {/* Filters: only when there's something to filter */}
-      {leads.length > 0 && (
-        <CallerQueueFilters
-          filter={filter}
-          query={query}
-          onFilterChange={setFilter}
-          onQueryChange={setQuery}
-        />
-      )}
-
-      {/* Empty / no-results / list */}
-      {leads.length === 0 ? (
-        <QueueEmptyState diagnostics={emptyDiagnostics ?? null} t={t} />
-      ) : filtered.length === 0 ? (
-        <div className="so-queue-empty">
-          <div className="so-queue-empty__sub">{t.queue.empty}</div>
-        </div>
-      ) : (
-        <>
-          {/* Desktop: tabular rows. Mobile: app-like cards. CSS picks one. */}
-          <ul className="so-queue-list__rows">
-            {filtered.map((item) => (
-              <CallerLeadRow
-                key={item.lead.lead_id}
-                lead={item.lead}
-                callCount={item.callCount}
-                formattedPhone={item.formattedPhone}
-                overdueLabel={item.overdueLabel}
-                lastContactedAgo={item.lastContactedAgo}
-              />
-            ))}
-          </ul>
-          <ul className="so-queue-list__cards">
-            {filtered.map((item) => (
-              <CallerLeadCard
-                key={item.lead.lead_id}
-                lead={item.lead}
-                callCount={item.callCount}
-                formattedPhone={item.formattedPhone}
-                overdueLabel={item.overdueLabel}
-                lastContactedAgo={item.lastContactedAgo}
-              />
-            ))}
-          </ul>
-        </>
-      )}
-
-      {leads.length > 0 && <div className="so-queue-footer">{t.queue.footer}</div>}
-    </>
+  const selectedItem = useMemo<AugmentedLead | null>(
+    () => filtered.find((a: AugmentedLead) => a.lead.lead_id === selectedId) ?? null,
+    [filtered, selectedId],
   );
-}
 
-// ── Empty-state breakdown ───────────────────────────────────────────────────
-// Renders the new Phase-3 visual when the queue is empty, explaining *why*
-// (unassigned in system / future callbacks / missing phone / locked) and
-// surfacing role-aware shortcuts. Read-only — no logic side effects.
-function QueueEmptyState({
-  diagnostics,
-  t,
-}: {
-  diagnostics: QueueEmptyDiagnostics | null;
-  t: Dict;
-}) {
-  const rows: React.ReactNode[] = [];
+  // Keyboard navigation (bound on the outer wrapper; skip when input focused)
+  const handleKeyDown = useCallback(
+    (e: { key: string; target: EventTarget | null; preventDefault(): void }) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
 
-  if (diagnostics) {
-    rows.push(
-      <li key="assigned">{t.queue.emptyDiagAssignedNone}</li>,
-    );
-    if (diagnostics.unassignedGlobal > 0) {
-      rows.push(
-        <li key="unassigned">{t.queue.emptyDiagUnassigned(diagnostics.unassignedGlobal)}</li>,
-      );
-    }
-    if (diagnostics.myFutureCallbacks > 0) {
-      rows.push(
-        <li key="future">{t.queue.emptyDiagFuture(diagnostics.myFutureCallbacks)}</li>,
-      );
-    }
-    if (diagnostics.myMissingPhone > 0) {
-      rows.push(
-        <li key="phone">{t.queue.emptyDiagPhone(diagnostics.myMissingPhone)}</li>,
-      );
-    }
-    if (diagnostics.myLockedByOthers > 0) {
-      rows.push(
-        <li key="locked">{t.queue.emptyDiagLocked(diagnostics.myLockedByOthers)}</li>,
-      );
-    }
-  }
+      const idx = filtered.findIndex((a: AugmentedLead) => a.lead.lead_id === selectedId);
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (idx < filtered.length - 1) setSelectedId(filtered[idx + 1].lead.lead_id);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (idx > 0) setSelectedId(filtered[idx - 1].lead.lead_id);
+      } else if (e.key === "Enter" && selectedId) {
+        e.preventDefault();
+        router.push(`/calls/${selectedId}` as never);
+      } else if (e.key === "/" || e.key === "s") {
+        const input = wrapRef.current?.querySelector<HTMLInputElement>(".queue-list-bar__input");
+        if (input) { e.preventDefault(); input.focus(); }
+      } else if (e.key === "c" && selectedId) {
+        e.preventDefault();
+        router.push(`/calls/${selectedId}` as never);
+      }
+    },
+    [filtered, selectedId, router],
+  );
+
+  // Eyebrow: "<n> leads à appeler · <campaign>"
+  const campaignName = leads[0]?.campaign_name ?? null;
+  const eyebrow = `${leads.length} lead${leads.length !== 1 ? "s" : ""} à appeler${campaignName ? ` · ${campaignName}` : ""}`;
 
   return (
-    <div className="so-queue-empty so-queue-empty--detailed">
-      <div className="so-queue-empty__icon" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </svg>
+    <div
+      className="queue-wrap"
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      ref={wrapRef}
+    >
+      <QueueHeader eyebrow={eyebrow} t={t} />
+
+      <QueueStatTiles
+        callable={statCallable}
+        overdue={statOverdue}
+        verified={statVerified}
+        review={hotSellers}
+        t={t}
+      />
+
+      <div className="queue-body">
+        <QueueListCard
+          items={filtered}
+          query={query}
+          filter={filter}
+          onQueryChange={setQuery}
+          onFilterChange={setFilter}
+          selectedId={selectedId}
+          onSelect={(id) => setSelectedId(id)}
+          onOpen={(id) => router.push(`/calls/${id}` as never)}
+          isAdmin={isAdmin}
+          scope={scope}
+          t={t}
+          emptyDiagnostics={emptyDiagnostics}
+        />
+
+        <QueuePreviewCard item={selectedItem} t={t} />
       </div>
-      <div className="so-queue-empty__title">{t.queue.emptyTitle}</div>
-      {rows.length > 0 && (
-        <ul className="so-queue-empty__breakdown">{rows}</ul>
-      )}
-      <div className="so-queue-empty__actions">
-        <Link href="/leads" className="crm-btn">
-          {t.queue.allLeads}
-        </Link>
-        {diagnostics?.myFutureCallbacks ? (
-          <Link href="/follow-ups" className="crm-btn">
-            {t.nav.followUps}
-          </Link>
-        ) : null}
-        {diagnostics?.isAdmin && diagnostics.myMissingPhone > 0 ? (
-          <Link href="/phone-review" className="crm-btn">
-            {t.nav.phoneReview}
-          </Link>
-        ) : null}
-      </div>
+
+      <KeyboardHints t={t} />
     </div>
   );
 }
