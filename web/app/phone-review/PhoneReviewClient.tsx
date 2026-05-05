@@ -376,15 +376,17 @@ export default function PhoneReviewClient({
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   // ↑/↓ navigate · Enter = approve · Space = reject
-  // Only fires when no button/input has DOM focus (prevents double-fire on ✓/✕ buttons)
+  // Only bails inside text-input contexts (INPUT/TEXTAREA/SELECT/contenteditable).
+  // Buttons and links DO NOT block — arrows always navigate, Enter/Space act on
+  // the focused row. We preventDefault + blur the focused button so its own
+  // onClick handler doesn't also fire (the cause of the previous double-fire).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Bail out if any interactive element has focus (prevents ✓/✕ button double-fire)
-      const active = document.activeElement;
-      if (active && active !== document.body) {
-        const tag = (active as HTMLElement).tagName;
-        if (["INPUT", "TEXTAREA", "BUTTON", "SELECT", "A"].includes(tag)) return;
-      }
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName ?? "";
+
+      // Only bail when the user is actively typing into a text field
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) return;
 
       const list = filteredRef.current;
       const cur  = selectedIdRef.current;
@@ -392,19 +394,28 @@ export default function PhoneReviewClient({
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
+        // If a button has focus (bucket pill, sidebar nav, etc.), drop it so
+        // arrow keys keep working on the next press too.
+        if (tag === "BUTTON" || tag === "A") active?.blur();
         const next = list[Math.min(idx + 1, list.length - 1)];
         if (next && next.id !== cur) setSelectedId(next.id);
         else if (idx === -1 && list[0]) setSelectedId(list[0].id);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
+        if (tag === "BUTTON" || tag === "A") active?.blur();
         const prev = list[Math.max(idx - 1, 0)];
         if (prev && prev.id !== cur) setSelectedId(prev.id);
         else if (idx === -1 && list[list.length - 1]) setSelectedId(list[list.length - 1].id);
       } else if (e.key === "Enter" && cur) {
         e.preventDefault();
+        e.stopPropagation();
+        // Blur first so the focused button's keydown→click default doesn't ALSO fire
+        if (tag === "BUTTON" || tag === "A") active?.blur();
         void handleQuickActionRef.current(cur, "approve");
       } else if (e.key === " " && cur) {
         e.preventDefault();
+        e.stopPropagation();
+        if (tag === "BUTTON" || tag === "A") active?.blur();
         void handleQuickActionRef.current(cur, "reject");
       }
     }
