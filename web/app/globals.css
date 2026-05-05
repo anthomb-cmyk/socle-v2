@@ -3990,3 +3990,415 @@ html, body {
   color: var(--so-fg-2);
   margin-left: 6px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PHASE 10 — PLATFORM-WIDE SOCLE VISUAL LANGUAGE BRIDGE
+   ─────────────────────────────────────────────────────────────────────────
+   Strategy: remap all --crm-* tokens onto their --so-* equivalents so that
+   every existing page/component that references --crm-* vars automatically
+   inherits the Socle cream-charcoal-gold palette. Then upgrade the key
+   structural classes (.crm-card, .crm-btn, .crm-page-title, .crm-pill,
+   .crm-panel-title, .crm-empty-state …) to adopt Phase 9 typography and
+   surface treatment. No TSX files need to change.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Token bridge: --crm-* → --so-* ──────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --crm-bg:          var(--so-bg);
+  --crm-bg-alt:      var(--so-bg-soft);
+  --crm-surface:     var(--so-card-tint);
+  --crm-card:        var(--so-card);
+  --crm-card-border: var(--so-border);
+  --crm-border:      var(--so-border);
+
+  /* Gold */
+  --crm-gold:        var(--so-gold-500);
+  --crm-gold-light:  var(--so-gold-50);
+  --crm-gold-border: var(--so-gold-300);
+
+  /* Typography */
+  --crm-text:        var(--so-fg-1);
+  --crm-text2:       var(--so-fg-3);
+  --crm-text3:       var(--so-fg-5);
+
+  /* Semantic */
+  --crm-green:       var(--so-success);
+  --crm-green-light: var(--so-success-bg);
+  --crm-red:         var(--so-danger);
+  --crm-red-light:   var(--so-danger-bg);
+  --crm-amber:       var(--so-warn);
+  --crm-amber-light: var(--so-warn-bg);
+  --crm-blue:        var(--so-info);
+  --crm-blue-light:  var(--so-info-bg);
+}
+
+/* ── Body + global typography ─────────────────────────────────────────────── */
+body {
+  font-family: var(--so-font-body) !important;
+  background-color: var(--so-bg) !important;
+  color: var(--so-fg-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Page wrappers ────────────────────────────────────────────────────────── */
+.crm-page,
+.crm-page-narrow {
+  background: var(--so-bg);
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+.crm-page-title {
+  font-family: var(--so-font-display);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--so-fg-1);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.crm-page-sub {
+  font-family: var(--so-font-body);
+  font-size: 13px;
+  color: var(--so-fg-4);
+  margin-top: 4px;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.crm-card {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: var(--so-r-md);
+  box-shadow: var(--so-shadow-xs);
+}
+
+.crm-card-gold {
+  background: var(--so-card-tint);
+  border: 1.5px solid var(--so-gold-300);
+  border-radius: var(--so-r-md);
+}
+
+/* ── Review inbox items ───────────────────────────────────────────────────── */
+.crm-review-item {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: var(--so-r-md);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.crm-btn {
+  font-family: var(--so-font-body);
+  font-size: 13px;
+  font-weight: 600;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--so-r-md);
+  border: 1px solid var(--so-border);
+  background: var(--so-card);
+  color: var(--so-fg-2);
+  box-shadow: var(--so-shadow-xs);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.crm-btn:hover {
+  background: var(--so-bg-soft);
+  border-color: var(--so-gold-300);
+  box-shadow: none;
+}
+
+.crm-btn-gold {
+  background: var(--so-gold-500);
+  border-color: var(--so-gold-500);
+  color: #ffffff;
+  box-shadow: var(--so-shadow-cta);
+}
+.crm-btn-gold:hover {
+  background: var(--so-gold-600);
+  border-color: var(--so-gold-600);
+  filter: none;
+  box-shadow: var(--so-shadow-cta);
+}
+
+.crm-btn-dark {
+  background: var(--so-fg-1);
+  border-color: var(--so-fg-1);
+  color: #ffffff;
+}
+.crm-btn-dark:hover { background: var(--so-fg-2); }
+
+.crm-btn-red {
+  background: var(--so-danger);
+  border-color: var(--so-danger);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(162, 59, 59, 0.25);
+}
+.crm-btn-red:hover { filter: brightness(1.08); }
+
+/* ── Link button ──────────────────────────────────────────────────────────── */
+.crm-link-btn {
+  font-family: var(--so-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--so-gold-600);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.crm-link-btn:hover { text-decoration: underline; }
+
+/* ── Section labels + panel titles → eyebrow ─────────────────────────────── */
+.crm-section-label,
+.crm-panel-title {
+  font-family: var(--so-font-body);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--so-gold-600);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Panel header ─────────────────────────────────────────────────────────── */
+.crm-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 10px 0;
+}
+
+.crm-panel-count {
+  font-family: var(--so-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--so-bg-soft);
+  border: 1px solid var(--so-border);
+  color: var(--so-fg-3);
+  border-radius: var(--so-pill);
+  padding: 1px 8px;
+  line-height: 1.6;
+}
+
+.crm-panel-count--red {
+  background: var(--so-danger-bg);
+  border-color: var(--so-danger-border);
+  color: var(--so-danger);
+}
+
+.crm-panel-link {
+  font-family: var(--so-font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--so-gold-600);
+  text-decoration: none;
+  letter-spacing: 0.03em;
+}
+.crm-panel-link:hover { text-decoration: underline; }
+
+/* ── Status pills → unified badge look ───────────────────────────────────── */
+.crm-pill {
+  font-family: var(--so-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--so-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+/* Calling workflow — remap to so-* semantic colors */
+.crm-pill--nouveau        { background: var(--so-bg-soft);    color: var(--so-fg-3);   border-color: var(--so-border); }
+.crm-pill--a-appeler      { background: var(--so-warn-bg);    color: var(--so-warn);   border-color: var(--so-warn-border); }
+.crm-pill--contacte       { background: var(--so-info-bg);    color: var(--so-info);   border-color: var(--so-info-border); }
+.crm-pill--rdv-fixe       { background: #EDE9FE;              color: #5B21B6;          border-color: #C4B5FD; }
+.crm-pill--qualifie       { background: var(--so-success-bg); color: var(--so-success);border-color: var(--so-success-border); }
+.crm-pill--ferme          { background: var(--so-bg-soft);    color: var(--so-fg-5);   border-color: var(--so-border); }
+.crm-pill--dnc            { background: var(--so-danger-bg);  color: var(--so-danger); border-color: var(--so-danger-border); }
+.crm-pill--sans-reponse   { background: var(--so-bg-soft);    color: var(--so-fg-5);   border-color: var(--so-border); }
+.crm-pill--enrichissement { background: var(--so-info-bg);    color: var(--so-info);   border-color: var(--so-info-border); }
+.crm-pill--a-verifier     { background: var(--so-warn-bg);    color: var(--so-warn);   border-color: var(--so-warn-border); }
+.crm-pill--pipeline       { background: var(--so-info-bg);    color: var(--so-info);   border-color: var(--so-info-border); }
+.crm-pill--non-resolu     { background: var(--so-bg-soft);    color: var(--so-fg-5);   border-color: var(--so-border); }
+.crm-pill--converti       { background: var(--so-success-bg); color: var(--so-success);border-color: var(--so-success-border); }
+
+/* ── Dashboard / stat tiles ───────────────────────────────────────────────── */
+.crm-tile {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: var(--so-r-md);
+  box-shadow: var(--so-shadow-xs);
+}
+.crm-tile:hover {
+  border-color: var(--so-gold-300);
+  box-shadow: 0 2px 10px rgba(60, 45, 25, 0.09);
+}
+.crm-tile-label {
+  font-family: var(--so-font-body);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--so-gold-600);
+}
+.crm-tile-value {
+  font-family: var(--so-font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.crm-tile-sub {
+  font-family: var(--so-font-body);
+  font-size: 11px;
+  color: var(--so-fg-4);
+  font-weight: 500;
+}
+
+/* Tile semantic variants */
+.crm-tile-red   { border-color: var(--so-danger-border); background: var(--so-danger-bg); }
+.crm-tile-red .crm-tile-value   { color: var(--so-danger); }
+.crm-tile-green { border-color: var(--so-success-border); background: var(--so-success-bg); }
+.crm-tile-green .crm-tile-value { color: var(--so-success); }
+.crm-tile-blue  { border-color: var(--so-info-border); background: var(--so-info-bg); }
+.crm-tile-blue .crm-tile-value  { color: var(--so-info); }
+.crm-tile-amber { border-color: var(--so-warn-border); background: var(--so-warn-bg); }
+.crm-tile-amber .crm-tile-value { color: var(--so-warn); }
+.crm-tile-hot   { border-color: var(--so-gold-300); background: var(--so-gold-50); }
+.crm-tile-hot .crm-tile-value   { color: var(--so-gold-700); }
+
+/* ── Stat pills (leads page) ──────────────────────────────────────────────── */
+.crm-stat-pill {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: var(--so-r-md);
+  box-shadow: var(--so-shadow-xs);
+}
+.crm-stat-pill-value {
+  font-family: var(--so-font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.crm-stat-pill-label {
+  font-family: var(--so-font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--so-fg-3);
+}
+.crm-stat-pill--blue  { border-color: var(--so-info-border);    background: var(--so-info-bg); }
+.crm-stat-pill--blue  .crm-stat-pill-value { color: var(--so-info); }
+.crm-stat-pill--amber { border-color: var(--so-warn-border);    background: var(--so-warn-bg); }
+.crm-stat-pill--amber .crm-stat-pill-value { color: var(--so-warn); }
+.crm-stat-pill--red   { border-color: var(--so-danger-border);  background: var(--so-danger-bg); }
+.crm-stat-pill--red   .crm-stat-pill-value { color: var(--so-danger); }
+
+/* ── Empty states ─────────────────────────────────────────────────────────── */
+.crm-empty-state {
+  padding: 36px 20px;
+  text-align: center;
+}
+.crm-empty-icon,
+.crm-empty-state-icon {
+  color: var(--so-fg-5);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 10px;
+  font-size: 22px;
+}
+.crm-empty-state-title {
+  font-family: var(--so-font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--so-fg-3);
+  margin: 0 0 4px;
+}
+.crm-empty-state-sub {
+  font-family: var(--so-font-body);
+  font-size: 12px;
+  color: var(--so-fg-5);
+  margin: 0;
+}
+
+/* ── Inputs ───────────────────────────────────────────────────────────────── */
+.crm-input {
+  font-family: var(--so-font-body);
+  font-size: 13px;
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: var(--so-r-md);
+  color: var(--so-fg-1);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.crm-input:focus {
+  outline: none;
+  border-color: var(--so-gold-400);
+  box-shadow: 0 0 0 3px rgba(194, 160, 77, 0.15);
+}
+
+/* ── Property chips ───────────────────────────────────────────────────────── */
+.crm-chip {
+  font-family: var(--so-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.crm-chip-units { background: var(--so-warn-bg);    color: var(--so-warn);    border-color: var(--so-warn-border); }
+.crm-chip-year  { background: var(--so-success-bg); color: var(--so-success); border-color: var(--so-success-border); }
+.crm-chip-eval  { background: var(--so-gold-50);    color: var(--so-gold-700);border-color: var(--so-gold-300); }
+.crm-chip-type  { background: var(--so-info-bg);    color: var(--so-info);    border-color: var(--so-info-border); }
+
+/* ── Form rows ────────────────────────────────────────────────────────────── */
+.crm-f-lbl {
+  font-family: var(--so-font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--so-fg-3);
+}
+
+/* ── Open-lead link ───────────────────────────────────────────────────────── */
+.crm-open-lead-link {
+  font-family: var(--so-font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--so-info);
+  background: var(--so-info-bg);
+  border: 1px solid var(--so-info-border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  text-decoration: none;
+}
+.crm-open-lead-link:hover { background: var(--so-info-border); }
+
+/* ── Phone link ───────────────────────────────────────────────────────────── */
+.crm-phone-link {
+  color: var(--so-success);
+  font-family: var(--so-font-mono);
+  font-weight: 600;
+}
+
+/* ── Action button (caller workspace) ────────────────────────────────────── */
+.crm-action-btn {
+  font-family: var(--so-font-body);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--so-r-md);
+  border: 1px solid var(--so-border);
+  background: var(--so-card);
+  color: var(--so-fg-2);
+  transition: background 0.15s, border-color 0.15s;
+}
+.crm-action-btn:hover {
+  background: var(--so-bg-soft);
+  border-color: var(--so-gold-300);
+}
