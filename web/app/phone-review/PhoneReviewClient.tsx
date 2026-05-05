@@ -89,9 +89,52 @@ export default function PhoneReviewClient({
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
 
-  // Fetch AI summaries for all candidates on mount
+  // Build immediate rule-based summaries from existing fields — no API call needed to show something useful.
+  // These show instantly. AI summaries (fetched below) replace them when ready.
+  const fallbackSummaries = useMemo<Record<string, string>>(() => {
+    const result: Record<string, string> = {};
+    for (const c of initialCandidates) {
+      const parts: string[] = [];
+      // Source domain — most useful signal
+      if (c.source_url) {
+        try {
+          const host = new URL(c.source_url).hostname.replace(/^www\./, "");
+          parts.push(host);
+        } catch { /* ignore */ }
+      }
+      // What it matched on
+      const matchLabels: Record<string, string> = {
+        mailing_address:      "adresse postale correspond",
+        postal_prefix:        "code postal seulement ⚠️",
+        city:                 "ville seulement ⚠️",
+        contact_name:         "nom correspond",
+        company_name:         "entreprise correspond",
+        property_address:     "adresse propriété correspond",
+        director_name:        "directeur correspond",
+        related_company:      "entreprise liée",
+        same_address_company: "même adresse entreprise",
+        public_directory:     "annuaire public",
+        company_website:      "site web entreprise",
+        openclaw:             "OpenClaw",
+      };
+      const matched = c.matched_on ? (matchLabels[c.matched_on] ?? c.matched_on) : null;
+      if (matched) parts.push(matched);
+      // Verdict
+      if (c.openclaw_verdict === "unlikely_match") parts.push("peu probable ✗");
+      else if (c.openclaw_verdict === "uncertain")      parts.push("incertain");
+      else if (c.openclaw_verdict === "likely_match")   parts.push("probable ✓");
+      // Very low confidence flag
+      if (c.initial_confidence < 30) parts.push(`${c.initial_confidence}% très faible`);
+      result[c.id] = parts.join(" — ") || `${c.initial_confidence}%`;
+    }
+    return result;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [summaries, setSummaries] = useState<Record<string, string>>(fallbackSummaries);
+
+  // Fetch AI summaries on mount — replaces rule-based summaries when ready
   useEffect(() => {
     if (initialCandidates.length === 0) return;
     const payload = initialCandidates.map((c) => ({
@@ -114,8 +157,12 @@ export default function PhoneReviewClient({
       body: JSON.stringify({ candidates: payload }),
     })
       .then((r) => r.json())
-      .then((data: { summaries: Record<string, string> }) => setSummaries(data.summaries ?? {}))
-      .catch(() => {});
+      .then((data: { summaries: Record<string, string> }) => {
+        const ai = data.summaries ?? {};
+        if (Object.keys(ai).length > 0) setSummaries(ai);
+        // else keep fallbacks
+      })
+      .catch(() => {}); // keep fallbacks on error
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -255,11 +302,15 @@ export default function PhoneReviewClient({
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   // ↑/↓ navigate · Enter = approve · Space = reject
+  // Only fires when no button/input has DOM focus (prevents double-fire on ✓/✕ buttons)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Don't intercept while typing in an input/textarea
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      // Bail out if any interactive element has focus (prevents ✓/✕ button double-fire)
+      const active = document.activeElement;
+      if (active && active !== document.body) {
+        const tag = (active as HTMLElement).tagName;
+        if (["INPUT", "TEXTAREA", "BUTTON", "SELECT", "A"].includes(tag)) return;
+      }
 
       const list = filteredRef.current;
       const cur  = selectedIdRef.current;
@@ -267,18 +318,20 @@ export default function PhoneReviewClient({
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const next = list[idx + 1] ?? list[0];
-        if (next) setSelectedId(next.id);
+        const next = list[Math.min(idx + 1, list.length - 1)];
+        if (next && next.id !== cur) setSelectedId(next.id);
+        else if (idx === -1 && list[0]) setSelectedId(list[0].id);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        const prev = list[idx - 1] ?? list[list.length - 1];
-        if (prev) setSelectedId(prev.id);
+        const prev = list[Math.max(idx - 1, 0)];
+        if (prev && prev.id !== cur) setSelectedId(prev.id);
+        else if (idx === -1 && list[list.length - 1]) setSelectedId(list[list.length - 1].id);
       } else if (e.key === "Enter" && cur) {
         e.preventDefault();
-        handleQuickActionRef.current(cur, "approve");
+        void handleQuickActionRef.current(cur, "approve");
       } else if (e.key === " " && cur) {
         e.preventDefault();
-        handleQuickActionRef.current(cur, "reject");
+        void handleQuickActionRef.current(cur, "reject");
       }
     }
     window.addEventListener("keydown", onKey);

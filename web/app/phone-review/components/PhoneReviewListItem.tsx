@@ -88,13 +88,15 @@ export default function PhoneReviewListItem({
         </div>
       </button>
 
-      {/* Inline quick-action buttons — always visible, no panel needed */}
+      {/* Inline quick-action buttons — always visible, no panel needed.
+          onMouseDown+preventDefault keeps keyboard focus on the page body
+          so Enter/Space shortcuts work immediately after clicking. */}
       <div className="pr-list-item__actions" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           className="pr-list-item__approve"
-          title="Approuver"
-          onClick={() => onQuickAction(candidate.id, "approve")}
+          title="Approuver (Enter)"
+          onMouseDown={(e) => { e.preventDefault(); onQuickAction(candidate.id, "approve"); }}
           aria-label="Approuver"
         >
           ✓
@@ -102,8 +104,8 @@ export default function PhoneReviewListItem({
         <button
           type="button"
           className="pr-list-item__reject"
-          title="Rejeter"
-          onClick={() => onQuickAction(candidate.id, "reject")}
+          title="Rejeter (Space)"
+          onMouseDown={(e) => { e.preventDefault(); onQuickAction(candidate.id, "reject"); }}
           aria-label="Rejeter"
         >
           ✕

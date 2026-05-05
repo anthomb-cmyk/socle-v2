@@ -2761,15 +2761,10 @@ html, body {
   color: var(--so-fg-3);
   font-style: italic;
   margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-.pr-list-item__summary--loading {
-  color: var(--so-fg-5);
-  font-style: normal;
-  letter-spacing: 0.1em;
+  line-height: 1.4;
+  /* Allow wrapping so long summaries aren't cut off */
+  white-space: normal;
+  word-break: break-word;
 }
 .pr-list-item__pills {
   display: flex;
