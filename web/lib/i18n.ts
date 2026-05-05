@@ -78,6 +78,12 @@ const dict = {
       emptyDiagFuture:      (n: number) => `${n} rappel${n !== 1 ? "s" : ""} planifié${n !== 1 ? "s" : ""} plus tard.`,
       emptyDiagPhone:       (n: number) => `${n} numéro${n !== 1 ? "s" : ""} en attente de vérification.`,
       emptyDiagLocked:      (n: number) => `${n} lead${n !== 1 ? "s" : ""} verrouillé${n !== 1 ? "s" : ""} par un autre appelant.`,
+
+      // Admin-only scope toggle (caller-tier never sees this UI; server enforces "mine")
+      scopeAdminBadge:  "Admin",
+      scopeAll:         "Tous les leads",
+      scopeMine:        "Assignés à moi",
+      scopeUnassigned:  "Non assignés",
     },
 
     // ── Lead status labels (used in queue cards and workspace) ────────────────
@@ -281,6 +287,12 @@ const dict = {
       emptyDiagFuture:      (n: number) => `${n} callback${n !== 1 ? "s" : ""} scheduled for later.`,
       emptyDiagPhone:       (n: number) => `${n} phone number${n !== 1 ? "s" : ""} awaiting verification.`,
       emptyDiagLocked:      (n: number) => `${n} lead${n !== 1 ? "s" : ""} locked by another caller.`,
+
+      // Admin-only scope toggle
+      scopeAdminBadge:  "Admin",
+      scopeAll:         "All leads",
+      scopeMine:        "Assigned to me",
+      scopeUnassigned:  "Unassigned",
     },
 
     // ── Lead status labels ────────────────────────────────────────────────────

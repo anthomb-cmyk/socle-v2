@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale } from "@/components/locale-provider";
 import CallerQueueFilters, { type QueueFilter } from "@/components/caller/CallerQueueFilters";
+import CallerQueueScopeBar, { type AdminScope } from "@/components/caller/CallerQueueScopeBar";
 import CallerLeadRow from "@/components/caller/CallerLeadRow";
 import CallerLeadCard from "@/components/caller/CallerLeadCard";
 import type { Dict } from "@/lib/i18n";
@@ -69,6 +70,8 @@ export default function QueueLeadList({
   leads,
   callCounts,
   emptyDiagnostics,
+  isAdmin = false,
+  scope = "mine",
 }: {
   leads: QueueLead[];
   callCounts: Record<string, number>;
@@ -77,6 +80,10 @@ export default function QueueLeadList({
   hotSellers: number;
   /** Populated by page.tsx when leads.length === 0; null otherwise. */
   emptyDiagnostics?: QueueEmptyDiagnostics | null;
+  /** True when the logged-in user is admin. Drives the scope toggle UI. */
+  isAdmin?: boolean;
+  /** Resolved scope from page.tsx (caller-tier always "mine" — server-enforced). */
+  scope?: AdminScope;
 }) {
   const { t } = useLocale();
   const [filter, setFilter] = useState<QueueFilter>("all");
@@ -153,6 +160,11 @@ export default function QueueLeadList({
           {t.queue.allLeads}
         </Link>
       </header>
+
+      {/* Admin-only scope toggle (All / Mine / Unassigned).
+          Caller-tier never sees this — server forces scope="mine" regardless
+          of any ?scope=… URL param. */}
+      {isAdmin && <CallerQueueScopeBar scope={scope} />}
 
       {/* Filters: only when there's something to filter */}
       {leads.length > 0 && (

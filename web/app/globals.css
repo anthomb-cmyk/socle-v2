@@ -1920,6 +1920,46 @@ html, body {
   justify-content: center;
 }
 
+/* ─── Phase 3.6: admin-only scope bar ─────────────────────────────────── */
+.so-queue-scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.so-queue-scope-bar__badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--so-fg-1);
+  color: var(--so-card);
+  flex: 0 0 auto;
+}
+.so-queue-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--so-border);
+  background: var(--so-card);
+  color: var(--so-fg-3);
+  text-decoration: none;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  min-height: 32px;
+}
+.so-queue-scope-chip:hover { border-color: var(--so-gold-300); }
+.so-queue-scope-chip--active {
+  background: var(--so-gold-light);
+  border-color: var(--so-gold-300);
+  color: var(--so-gold-700);
+}
+.so-queue-scope-chip--active:hover { border-color: var(--so-gold-500); }
+
 /* Queue header (compact title + count + "All leads" link) */
 .so-queue-header {
   display: flex;
