@@ -109,6 +109,13 @@ export default function PhoneReviewEvidencePanel({
 
   const ev = t.review.evidence;
 
+  // Score interpretation — what does this number actually mean?
+  const scoreLabel =
+    candidate.initial_confidence >= 80 ? { text: "Haute confiance — correspond bien au propriétaire", color: "var(--so-success)" }
+    : candidate.initial_confidence >= 60 ? { text: "Confiance moyenne — à vérifier manuellement", color: "var(--so-warn)" }
+    : candidate.initial_confidence >= 40 ? { text: "Confiance faible — le lien avec ce propriétaire est incertain", color: "var(--so-danger)" }
+    : { text: "Très faible confiance — probablement pas le bon numéro", color: "var(--so-danger)" };
+
   return (
     <div className="pr-evidence">
       {/* Header */}
@@ -120,33 +127,91 @@ export default function PhoneReviewEvidencePanel({
         </div>
         {contact?.mailing_address && (
           <div className="pr-evidence__mailing">
-            {ev.mailingPrefix} {contact.mailing_address}
+            Adresse postale : {contact.mailing_address}
             {contact.mailing_city ? `, ${contact.mailing_city}` : ""}
             {contact.mailing_postal ? ` ${contact.mailing_postal}` : ""}
           </div>
         )}
-        <div className="pr-evidence__pills">
-          <StagePill stage={candidate.stage} />
-          <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.initial_confidence)}`}>
-            {candidate.initial_confidence}%
-          </span>
-          <MatchedOnPill matchedOn={candidate.matched_on} />
-          {candidate.openclaw_verdict && <VerdictBadge verdict={candidate.openclaw_verdict} />}
-        </div>
       </div>
 
-      {/* Phone */}
+      {/* Phone — big and readable */}
       <div className="pr-evidence__phone">
         <span className="pr-evidence__phone-num" style={{ fontFeatureSettings: '"tnum" 1' }}>
           {formatPhone(candidate.phone_e164 ?? candidate.phone_raw)}
         </span>
-        {candidate.phone_e164 && (
-          <span className="pr-evidence__phone-e164">{candidate.phone_e164}</span>
-        )}
         {candidate.source_label && (
           <span className="pr-evidence__phone-source">{candidate.source_label}</span>
         )}
       </div>
+
+      {/* Score card — the most important section */}
+      <div className="pr-evidence__score-card">
+        <div className="pr-evidence__score-row">
+          <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.initial_confidence)}`} style={{ fontSize: 16, padding: "4px 10px" }}>
+            {candidate.initial_confidence}%
+          </span>
+          <StagePill stage={candidate.stage} />
+          {candidate.openclaw_verdict && <VerdictBadge verdict={candidate.openclaw_verdict} />}
+        </div>
+        <div className="pr-evidence__score-label" style={{ color: scoreLabel.color }}>
+          {scoreLabel.text}
+        </div>
+        {candidate.review_reason && (
+          <div className="pr-evidence__score-reason">{candidate.review_reason}</div>
+        )}
+      </div>
+
+      {/* What the pipeline searched for */}
+      {candidate.search_query && (
+        <div className="pr-evidence__section">
+          <div className="pr-evidence__section-title">Requête de recherche</div>
+          <div className="pr-evidence__query-text">{candidate.search_query}</div>
+        </div>
+      )}
+
+      {/* What was found at the source */}
+      {(candidate.candidate_name || candidate.candidate_address || snippet) && (
+        <div className="pr-evidence__section">
+          <div className="pr-evidence__section-title">Ce que la source indique</div>
+          {candidate.candidate_name && (
+            <div className="pr-evidence__section-row"><strong>Nom trouvé :</strong> {candidate.candidate_name}</div>
+          )}
+          {candidate.candidate_address && (
+            <div className="pr-evidence__section-row"><strong>Adresse trouvée :</strong> {candidate.candidate_address}</div>
+          )}
+          {snippet && (
+            <div className="pr-evidence__snippet">
+              {visibleSnippet}
+              {isLong && !snippetExpanded && <span style={{ color: "var(--so-fg-5)" }}>…</span>}
+              {isLong && (
+                <button
+                  type="button"
+                  onClick={() => onToggleSnippet(candidate.id)}
+                  className="crm-link-btn"
+                  style={{ display: "block", marginTop: 6 }}
+                >
+                  {snippetExpanded ? ev.showLess : ev.showMore}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Source link */}
+      {candidate.source_url && (
+        <div className="pr-evidence__section">
+          <div className="pr-evidence__section-title">Source</div>
+          <a
+            href={candidate.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="crm-link-btn pr-evidence__url"
+          >
+            {candidate.source_url}
+          </a>
+        </div>
+      )}
 
       {/* Evidence chips */}
       <EvidenceChips
@@ -155,84 +220,29 @@ export default function PhoneReviewEvidencePanel({
         companyName={contact?.company_name}
       />
 
-      {/* Match context */}
-      {(candidate.candidate_name || candidate.candidate_address) && (
-        <div className="pr-evidence__context">
-          {candidate.candidate_name && (
-            <div><strong>{ev.nameFound} </strong>{candidate.candidate_name}</div>
-          )}
-          {candidate.candidate_address && (
-            <div><strong>{ev.sourceAddress} </strong>{candidate.candidate_address}</div>
-          )}
-          {candidate.search_query && (
-            <div className="pr-evidence__query">{ev.query} {candidate.search_query}</div>
-          )}
-        </div>
-      )}
-
-      {/* Snippet */}
-      {snippet && (
-        <div className="pr-evidence__snippet">
-          {visibleSnippet}
-          {isLong && !snippetExpanded && <span style={{ color: "var(--so-fg-5)" }}>…</span>}
-          {isLong && (
-            <button
-              type="button"
-              onClick={() => onToggleSnippet(candidate.id)}
-              className="crm-link-btn"
-              style={{ display: "block", marginTop: 6 }}
-            >
-              {snippetExpanded ? ev.showLess : ev.showMore}
-            </button>
-          )}
-        </div>
-      )}
-
-      {candidate.source_url && (
-        <a
-          href={candidate.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="crm-link-btn pr-evidence__url"
-        >
-          {candidate.source_url}
-        </a>
-      )}
-
-      {/* Review reason — shown prominently so you know why it needs review */}
-      {candidate.review_reason && (
-        <div className="pr-evidence__reason">{candidate.review_reason}</div>
-      )}
-
-      {/* OpenClaw analysis — always expanded so reasoning is immediately visible */}
-      {(candidate.openclaw_reasoning || candidate.openclaw_evidence) && (
-        <details className="pr-evidence__openclaw" open>
-          <summary className="pr-evidence__openclaw-summary">
-            {t.review.openClawAnalysis}
+      {/* OpenClaw analysis — always expanded */}
+      {(candidate.openclaw_reasoning || candidate.openclaw_evidence) ? (
+        <div className="pr-evidence__section">
+          <div className="pr-evidence__section-title">
+            Analyse OpenClaw
             {candidate.openclaw_confidence != null && (
               <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.openclaw_confidence)}`} style={{ marginLeft: 8 }}>
                 {candidate.openclaw_confidence}%
               </span>
             )}
-            {candidate.openclaw_verdict && (
-              <VerdictBadge verdict={candidate.openclaw_verdict} />
-            )}
-          </summary>
+          </div>
           <div className="pr-evidence__openclaw-body">
             {candidate.openclaw_evidence && (
               <div className="pr-evidence__openclaw-evidence">{candidate.openclaw_evidence}</div>
             )}
             {candidate.openclaw_reasoning && (
-              <div className="pr-evidence__openclaw-reasoning" style={{ whiteSpace: "pre-wrap" }}>{candidate.openclaw_reasoning}</div>
+              <div className="pr-evidence__openclaw-reasoning">{candidate.openclaw_reasoning}</div>
             )}
           </div>
-        </details>
-      )}
-
-      {/* Fallback: no OpenClaw data at all */}
-      {!candidate.openclaw_reasoning && !candidate.openclaw_evidence && (
-        <div className="pr-evidence__reason" style={{ color: "var(--so-fg-4)" }}>
-          Aucune analyse OpenClaw disponible pour ce candidat.
+        </div>
+      ) : (
+        <div className="pr-evidence__section pr-evidence__section--muted">
+          Aucune analyse OpenClaw disponible — décision basée sur la correspondance d&apos;adresse uniquement.
         </div>
       )}
 
