@@ -111,7 +111,7 @@ export default function PhoneReviewClient({
 
     // Smoking-gun signal detection from snippet/evidence text.
     // Returns a specific reason string if a clear signal is found, else null.
-    function detectSignal(c: PhoneCandidate, conf: number): { verdict: "✓" | "✗" | "?"; reason: string } | null {
+    function detectSignal(c: PhoneCandidate): { verdict: "✓" | "✗" | "?"; reason: string } | null {
       const phone = (c.phone_e164 ?? c.phone_raw ?? "").replace(/\D/g, "");
       const phone7 = phone.slice(-7);
       const blob = `${c.snippet ?? ""} ${c.openclaw_evidence ?? ""} ${c.openclaw_reasoning ?? ""} ${c.candidate_address ?? ""}`.toLowerCase();
@@ -154,7 +154,7 @@ export default function PhoneReviewClient({
       }
 
       // First — try to detect a smoking-gun signal in the data itself
-      const signal = detectSignal(c, conf);
+      const signal = detectSignal(c);
       if (signal) {
         result[c.id] = `${signal.verdict} ${signal.reason}`;
         continue;
