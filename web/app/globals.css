@@ -1653,3 +1653,250 @@ html, body {
   .so-page-header__title { font-size: 19px; }
 }
 
+/* ─── Phase 3: queue stats ────────────────────────────────────────────── */
+.so-queue-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+@media (max-width: 767px) {
+  .so-queue-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+}
+
+/* Stat tile semantic variants */
+.so-stat-tile--danger { border-color: color-mix(in srgb, var(--so-danger) 30%, transparent); }
+.so-stat-tile--danger .so-stat-tile__value { color: var(--so-danger); }
+.so-stat-tile--info   { border-color: color-mix(in srgb, var(--crm-blue) 30%, transparent); }
+.so-stat-tile--info   .so-stat-tile__value { color: var(--crm-blue); }
+
+/* ─── Phase 3: queue filters ──────────────────────────────────────────── */
+.so-queue-filters {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.so-queue-filters__search {
+  flex: 1 1 240px;
+  max-width: 360px;
+  min-width: 160px;
+}
+.so-queue-filters__chips {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.so-queue-filter-chip {
+  appearance: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--so-border);
+  background: var(--so-card);
+  color: var(--so-fg-3);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  min-height: 32px;
+  font-family: inherit;
+}
+.so-queue-filter-chip:hover { border-color: var(--so-gold-300); }
+.so-queue-filter-chip--active {
+  background: var(--so-fg-1);
+  border-color: var(--so-fg-1);
+  color: var(--so-card);
+}
+.so-queue-filter-chip--active:hover { border-color: var(--so-fg-1); }
+
+/* ─── Phase 3: queue list (desktop rows + mobile cards) ───────────────── */
+.so-queue-list__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.so-queue-list__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (max-width: 767px) {
+  .so-queue-list__rows  { display: none; }
+  .so-queue-list__cards { display: flex; }
+}
+
+/* Desktop row */
+.so-queue-row {
+  display: grid;
+  grid-template-columns: 1fr 140px 110px 16px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px 12px 16px;
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.so-queue-row:hover {
+  border-color: var(--so-gold-300);
+  box-shadow: var(--so-shadow-card);
+}
+/* Override .so-priority-rail base border-left so the rail color wins */
+.so-queue-row.so-priority-rail--hot    { border-left: 3px solid var(--so-danger); }
+.so-queue-row.so-priority-rail--warm   { border-left: 3px solid var(--so-gold-500); }
+.so-queue-row.so-priority-rail--cold   { border-left: 3px solid var(--crm-blue); }
+.so-queue-row.so-priority-rail--normal { border-left: 3px solid var(--so-border); }
+
+.so-queue-row__main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.so-queue-row__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.so-queue-row__address {
+  font-size: 12px;
+  color: var(--so-fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.so-queue-row__meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--so-fg-5);
+  margin-top: 2px;
+}
+.so-queue-row__phone {
+  text-align: right;
+  font-size: 14px;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
+}
+.so-queue-row__status { display: flex; justify-content: flex-end; }
+.so-queue-row__chevron {
+  color: var(--so-gold-500);
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Mobile card */
+.so-queue-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.so-queue-card.so-priority-rail--hot    { border-left: 3px solid var(--so-danger); }
+.so-queue-card.so-priority-rail--warm   { border-left: 3px solid var(--so-gold-500); }
+.so-queue-card.so-priority-rail--cold   { border-left: 3px solid var(--crm-blue); }
+.so-queue-card.so-priority-rail--normal { border-left: 3px solid var(--so-border); }
+
+.so-queue-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.so-queue-card__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.so-queue-card__address {
+  font-size: 13px;
+  color: var(--so-fg-3);
+}
+.so-queue-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.so-queue-card__phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--crm-blue);
+  font-feature-settings: "tnum" 1;
+  text-decoration: none;
+  min-height: 32px;
+  -webkit-tap-highlight-color: transparent;
+}
+.so-queue-card__phone-empty {
+  font-size: 12px;
+  color: var(--so-danger);
+  font-weight: 600;
+}
+.so-queue-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--so-fg-5);
+}
+
+/* Empty / no-results states (queue) */
+.so-queue-empty {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 14px;
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--so-fg-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.so-queue-empty__title { font-weight: 700; color: var(--so-fg-1); }
+.so-queue-empty__sub   { font-size: 13px; color: var(--so-fg-5); }
+
+/* Queue header (compact title + count + "All leads" link) */
+.so-queue-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.so-queue-header__titles { min-width: 0; flex: 1 1 auto; }
+.so-queue-footer {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--so-fg-5);
+}
+

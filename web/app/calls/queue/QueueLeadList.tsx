@@ -1,9 +1,18 @@
 "use client";
-// Client component that renders the translated queue lead list + header.
-// The server page (page.tsx) fetches data and passes it here.
+// Phase 3 orchestrator. Keeps the public prop signature (leads /
+// callCounts / hotSellers) so the server page does not change. Filtering
+// is purely client-side over the already-fetched leads — the queue server
+// query, sort order, assigned_to filter, CALLABLE_STATUSES, best_phone
+// filter, future-callback exclusion and call_locks exclusion are all
+// untouched in page.tsx.
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale } from "@/components/locale-provider";
+import CallerQueueFilters, { type QueueFilter } from "@/components/caller/CallerQueueFilters";
+import CallerLeadRow from "@/components/caller/CallerLeadRow";
+import CallerLeadCard from "@/components/caller/CallerLeadCard";
+import type { Dict } from "@/lib/i18n";
 
 export type QueueLead = {
   lead_id: string;
@@ -20,7 +29,7 @@ export type QueueLead = {
   priority: number | null;
 };
 
-function formatPhone(phone: string | null) {
+function formatPhone(phone: string | null): string | null {
   if (!phone) return null;
   const m = phone.replace(/\D/g, "");
   if (m.length === 11 && m[0] === "1")
@@ -30,69 +39,83 @@ function formatPhone(phone: string | null) {
   return phone;
 }
 
-function rowBorderStyle(p: number | null, isOverdue: boolean): React.CSSProperties {
-  if (isOverdue) return { borderLeft: "4px solid var(--crm-blue)" };
-  if (p == null) return { borderLeft: "4px solid var(--crm-card-border)" };
-  if (p >= 80) return { borderLeft: "4px solid var(--crm-red)" };
-  if (p >= 50) return { borderLeft: "4px solid var(--crm-gold)" };
-  return { borderLeft: "4px solid var(--crm-card-border)" };
+function formatTimeAgo(diffMs: number, t: Dict): string {
+  const mins = Math.max(0, Math.floor(diffMs / 60000));
+  if (mins < 60) return `${mins}${t.queue.timeAgoMin}`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}${t.queue.timeAgoHour}`;
+  return `${Math.floor(hrs / 24)}${t.queue.timeAgoDay}`;
 }
 
 export default function QueueLeadList({
   leads,
   callCounts,
-  hotSellers,
 }: {
   leads: QueueLead[];
   callCounts: Record<string, number>;
+  // hotSellers prop is still accepted (page.tsx passes it) but is not
+  // consumed in the queue UI — kept on the type only for signature stability.
   hotSellers: number;
 }) {
   const { t } = useLocale();
+  const [filter, setFilter] = useState<QueueFilter>("all");
+  const [query, setQuery] = useState("");
 
-  // Translated helpers that depend on locale
-  function timeAgo(iso: string | null): string {
-    if (!iso) return t.queue.never;
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}${t.queue.timeAgoMin}`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}${t.queue.timeAgoHour}`;
-    const days = Math.floor(hrs / 24);
-    return `${days}${t.queue.timeAgoDay}`;
-  }
+  const now = Date.now();
 
-  function overdueLabel(nextActionAt: string | null): string | null {
-    if (!nextActionAt) return null;
-    const diff = Date.now() - new Date(nextActionAt).getTime();
-    if (diff <= 0) return null;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return t.queue.overdueLabel(`${mins}${t.queue.timeAgoMin}`);
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return t.queue.overdueLabel(`${hrs}${t.queue.timeAgoHour}`);
-    return t.queue.overdueLabel(`${Math.floor(hrs / 24)}${t.queue.timeAgoDay}`);
-  }
+  // Pre-compute per-lead derived strings once per render
+  const augmented = useMemo(
+    () =>
+      leads.map((lead) => {
+        const overdueDiff =
+          lead.next_action_at != null
+            ? Date.now() - new Date(lead.next_action_at).getTime()
+            : null;
+        const isOverdue = overdueDiff != null && overdueDiff > 0;
+        return {
+          lead,
+          callCount: callCounts[lead.lead_id] ?? 0,
+          formattedPhone: formatPhone(lead.best_phone),
+          overdueLabel:
+            isOverdue && overdueDiff != null
+              ? t.queue.overdueLabel(formatTimeAgo(overdueDiff, t))
+              : null,
+          lastContactedAgo: lead.last_contacted_at
+            ? `il y a ${formatTimeAgo(Date.now() - new Date(lead.last_contacted_at).getTime(), t)}`
+            : null,
+        };
+      }),
+    [leads, callCounts, t],
+  );
 
-  function statusLabel(s: string): string {
-    return t.status[s] ?? s;
-  }
+  const filtered = useMemo(() => {
+    return augmented.filter(({ lead }) => {
+      if (filter === "hot" && (lead.priority ?? 0) < 80) return false;
+      const q = query.trim().toLowerCase();
+      if (q) {
+        const haystack = [
+          lead.full_name,
+          lead.company_name,
+          lead.address,
+          lead.city,
+          lead.campaign_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [augmented, filter, query]);
 
-  const overdueCount = leads.filter(
-    (l) => l.next_action_at && new Date(l.next_action_at) <= new Date(),
-  ).length;
+  const overdueCount = augmented.filter((a) => a.overdueLabel != null).length;
 
   return (
     <>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 20,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
+      {/* Header */}
+      <header className="so-queue-header">
+        <div className="so-queue-header__titles">
           <h1 className="crm-page-title">{t.queue.title}</h1>
           <p className="crm-page-sub">
             {t.queue.leadCount(leads.length)}
@@ -112,189 +135,62 @@ export default function QueueLeadList({
         </Link>
       </header>
 
+      {/* Filters: only when there's something to filter */}
+      {leads.length > 0 && (
+        <CallerQueueFilters
+          filter={filter}
+          query={query}
+          onFilterChange={setFilter}
+          onQueryChange={setQuery}
+        />
+      )}
+
+      {/* Empty / no-results / list */}
       {leads.length === 0 ? (
-        <div
-          className="crm-card"
-          style={{ padding: "32px 24px", textAlign: "center", color: "var(--crm-text3)" }}
-        >
-          {t.queue.empty}
-          <div style={{ marginTop: 12 }}>
-            <Link
-              href="/leads"
-              style={{ fontSize: 13, color: "var(--crm-blue)", textDecoration: "none" }}
-            >
-              {t.queue.browseLeads}
-            </Link>
-          </div>
+        <div className="so-queue-empty">
+          <div className="so-queue-empty__title">{t.queue.empty}</div>
+          <Link
+            href="/leads"
+            style={{ fontSize: 13, color: "var(--crm-blue)", textDecoration: "none" }}
+          >
+            {t.queue.browseLeads}
+          </Link>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="so-queue-empty">
+          <div className="so-queue-empty__sub">{t.queue.empty}</div>
         </div>
       ) : (
-        <ul
-          style={{
-            listStyle: "none",
-            padding: 0,
-            margin: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          {leads.map((l) => {
-            const callCount = callCounts[l.lead_id] ?? 0;
-            const formatted = formatPhone(l.best_phone);
-            const overdue = overdueLabel(l.next_action_at);
-
-            return (
-              <li key={l.lead_id}>
-                <Link
-                  href={`/calls/${l.lead_id}` as never}
-                  style={{
-                    display: "block",
-                    background: "var(--crm-card)",
-                    border: "1px solid var(--crm-card-border)",
-                    borderRadius: 12,
-                    padding: "12px 16px",
-                    textDecoration: "none",
-                    transition: "border-color 0.15s, box-shadow 0.15s",
-                    ...rowBorderStyle(l.priority, !!overdue),
-                  }}
-                  className="crm-queue-card hover:border-[var(--crm-gold-border)] hover:shadow-sm"
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: 16,
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {/* Line 1: name + status + overdue badge */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          flexWrap: "wrap",
-                          marginBottom: 2,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 14,
-                            color: "var(--crm-text)",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {l.full_name ?? l.company_name ?? "—"}
-                        </span>
-                        <span
-                          className={`crm-pill crm-pill--${
-                            l.status === "no_answer"
-                              ? "sans-reponse"
-                              : l.status === "in_outreach"
-                              ? "contacte"
-                              : l.status === "phone_verified"
-                              ? "a-appeler"
-                              : "nouveau"
-                          }`}
-                        >
-                          {statusLabel(l.status)}
-                        </span>
-                        {overdue && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 600,
-                              color: "var(--crm-blue)",
-                              background:
-                                "color-mix(in srgb, var(--crm-blue) 12%, transparent)",
-                              borderRadius: 4,
-                              padding: "2px 6px",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {overdue}
-                          </span>
-                        )}
-                      </div>
-                      {/* Line 2: address */}
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "var(--crm-text2)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          marginBottom: 2,
-                        }}
-                      >
-                        {l.address}
-                        {l.city ? `, ${l.city}` : ""}
-                      </div>
-                      {/* Line 3: units · campaign · calls · last contact */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          fontSize: 11,
-                          color: "var(--crm-text3)",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {l.num_units != null && (
-                          <span className="crm-chip crm-chip-units">{l.num_units} log.</span>
-                        )}
-                        {l.campaign_name && <span>{l.campaign_name}</span>}
-                        {callCount > 0 && (
-                          <span>
-                            · {callCount} appel{callCount !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {l.last_contacted_at && (
-                          <span>· il y a {timeAgo(l.last_contacted_at)}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: "right", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                      {formatted && l.best_phone ? (
-                        <a
-                          href={`tel:${l.best_phone}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="crm-queue-phone crm-queue-phone-link"
-                          style={{ fontSize: 14 }}
-                        >
-                          {formatted}
-                        </a>
-                      ) : (
-                        <div className="crm-no-phone">sans tél.</div>
-                      )}
-                      <span style={{ fontSize: 12, color: "var(--crm-gold)", fontWeight: 700 }}>→</span>
-                    </div>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {/* Desktop: tabular rows. Mobile: app-like cards. CSS picks one. */}
+          <ul className="so-queue-list__rows">
+            {filtered.map((item) => (
+              <CallerLeadRow
+                key={item.lead.lead_id}
+                lead={item.lead}
+                callCount={item.callCount}
+                formattedPhone={item.formattedPhone}
+                overdueLabel={item.overdueLabel}
+                lastContactedAgo={item.lastContactedAgo}
+              />
+            ))}
+          </ul>
+          <ul className="so-queue-list__cards">
+            {filtered.map((item) => (
+              <CallerLeadCard
+                key={item.lead.lead_id}
+                lead={item.lead}
+                callCount={item.callCount}
+                formattedPhone={item.formattedPhone}
+                overdueLabel={item.overdueLabel}
+                lastContactedAgo={item.lastContactedAgo}
+              />
+            ))}
+          </ul>
+        </>
       )}
 
-      {leads.length > 0 && (
-        <div
-          style={{
-            marginTop: 20,
-            textAlign: "center",
-            fontSize: 11,
-            color: "var(--crm-text3)",
-          }}
-        >
-          {t.queue.footer}
-        </div>
-      )}
+      {leads.length > 0 && <div className="so-queue-footer">{t.queue.footer}</div>}
     </>
   );
 }
