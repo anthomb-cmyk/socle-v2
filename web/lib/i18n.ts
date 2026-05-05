@@ -298,6 +298,23 @@ const dict = {
       noSelectionSub:     "Touche une ligne pour voir les détails et agir.",
       dismissAria:        "Retour",
 
+      // Phase 6 — evidence panel score + section labels
+      scoreHigh:           "Confiance élevée — numéro probablement correct",
+      scoreMid:            "Confiance moyenne — vérification recommandée",
+      scoreLow:            "Confiance faible — à recouper",
+      scoreVeryLow:        "Confiance très faible — probablement incorrect",
+      logUnits:            (n: number) => ` · ${n} logement${n !== 1 ? "s" : ""}`,
+      mailingAddressPrefix:"Adresse postale :",
+      addressFoundPrefix:  "Adresse trouvée :",
+      sectionSearchQuery:  "Requête de recherche",
+      sectionSourceFinds:  "Ce que la source indique",
+      sectionSource:       "Source",
+      sectionOpenClaw:     "Analyse OpenClaw",
+      noOpenClawNote:      "Pas d'analyse OpenClaw disponible pour ce candidat.",
+      verdictLikely:       "Correspond",
+      verdictUncertain:    "Incertain",
+      verdictUnlikely:     "Ne correspond pas",
+
       // B-2 — evidence panel chip labels
       evidence: {
         mailingAddress:        "Adresse mail.",
@@ -690,6 +707,23 @@ const dict = {
       noSelectionTitle:   "Select a candidate",
       noSelectionSub:     "Tap a row to see the details and act.",
       dismissAria:        "Back",
+
+      // Phase 6 — evidence panel score + section labels
+      scoreHigh:           "High confidence — number is likely correct",
+      scoreMid:            "Medium confidence — verification recommended",
+      scoreLow:            "Low confidence — cross-check advised",
+      scoreVeryLow:        "Very low confidence — likely incorrect",
+      logUnits:            (n: number) => ` · ${n} unit${n !== 1 ? "s" : ""}`,
+      mailingAddressPrefix:"Mailing address:",
+      addressFoundPrefix:  "Address found:",
+      sectionSearchQuery:  "Search query",
+      sectionSourceFinds:  "What the source shows",
+      sectionSource:       "Source",
+      sectionOpenClaw:     "OpenClaw analysis",
+      noOpenClawNote:      "No OpenClaw analysis available for this candidate.",
+      verdictLikely:       "Matches",
+      verdictUncertain:    "Uncertain",
+      verdictUnlikely:     "Does not match",
 
       // B-2 — evidence panel chip labels
       evidence: {
