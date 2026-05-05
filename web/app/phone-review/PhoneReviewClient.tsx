@@ -109,6 +109,39 @@ export default function PhoneReviewClient({
       openclaw:             "OpenClaw",
     };
 
+    // Smoking-gun signal detection from snippet/evidence text.
+    // Returns a specific reason string if a clear signal is found, else null.
+    function detectSignal(c: PhoneCandidate, conf: number): { verdict: "✓" | "✗" | "?"; reason: string } | null {
+      const phone = (c.phone_e164 ?? c.phone_raw ?? "").replace(/\D/g, "");
+      const phone7 = phone.slice(-7);
+      const blob = `${c.snippet ?? ""} ${c.openclaw_evidence ?? ""} ${c.openclaw_reasoning ?? ""} ${c.candidate_address ?? ""}`.toLowerCase();
+
+      // 1. Fax detection — "Fax: <our_number>" or "Télécopieur: <our_number>"
+      if (phone7) {
+        // Look for fax label within ~30 chars before the number
+        const faxNear = new RegExp(`(fax|t[eé]l[eé]copieur)[\\s:.-]{0,3}\\(?\\d{0,3}\\)?[\\s.-]?\\d{0,3}[\\s.-]?\\d{0,4}.{0,30}${phone7.slice(0,3)}.?${phone7.slice(3,6)}.?${phone7.slice(6)}`, "is");
+        if (faxNear.test(blob)) return { verdict: "✗", reason: "Marqué « Fax » dans la source — refuser" };
+      }
+
+      // 2. Senior residence / institution detection
+      if (/\b(r[ée]sidence pour a[îi]n[ée]s|chsld|rpa|manoir|centre d['e]?h[ée]bergement)\b/.test(blob)) {
+        return { verdict: "✗", reason: "Résidence/CHSLD, pas le proprio — refuser" };
+      }
+
+      // 3. Different last name (only meaningful when both names present)
+      const propOwner = (c.leads?.contacts?.full_name ?? "").toLowerCase().trim();
+      const sourceName = (c.candidate_name ?? "").toLowerCase().trim();
+      if (propOwner && sourceName) {
+        const ownerLast = propOwner.split(/\s+/).pop() ?? "";
+        const sourceLast = sourceName.split(/\s+/).pop() ?? "";
+        if (ownerLast.length >= 3 && sourceLast.length >= 3 && ownerLast !== sourceLast && !sourceName.includes(ownerLast) && !propOwner.includes(sourceLast)) {
+          return { verdict: "✗", reason: `Nom source « ${c.candidate_name} » ≠ proprio — refuser` };
+        }
+      }
+
+      return null;
+    }
+
     const result: Record<string, string> = {};
     for (const c of initialCandidates) {
       const conf = c.initial_confidence;
@@ -120,33 +153,49 @@ export default function PhoneReviewClient({
         catch { /* ignore */ }
       }
 
-      // Verdict logic:
-      // ✓ likely_match AND ≥70, or any candidate ≥80
-      // ✗ unlikely_match OR confidence < 25
-      // ? everything else
+      // First — try to detect a smoking-gun signal in the data itself
+      const signal = detectSignal(c, conf);
+      if (signal) {
+        result[c.id] = `${signal.verdict} ${signal.reason}`;
+        continue;
+      }
+
+      // Fall back to confidence + verdict rules
       let verdict: "✓" | "✗" | "?";
       if ((v === "likely_match" && conf >= 70) || conf >= 80) verdict = "✓";
       else if (v === "unlikely_match" || conf < 25) verdict = "✗";
       else verdict = "?";
 
-      // Reason — opinionated, ≤ 12 words, ends with action verb
+      // Reason — opinionated, ≤ 14 words, points the signal
       let reason: string;
       if (verdict === "✓") {
-        if (matched) reason = `${matched} (${conf}%) — approuver`;
+        if (matched && host) reason = `${matched} sur ${host} — approuver`;
+        else if (matched)    reason = `${matched} (${conf}%) — approuver`;
         else if (v === "likely_match") reason = `OpenClaw confirme (${conf}%) — approuver`;
         else reason = `Confiance élevée (${conf}%) — approuver`;
       } else if (verdict === "✗") {
         if (v === "unlikely_match") {
-          reason = host ? `OpenClaw rejette via ${host} — refuser` : `OpenClaw rejette — refuser`;
+          reason = host ? `OpenClaw rejette via ${host} — refuser` : `OpenClaw rejette ce numéro — refuser`;
+        } else if (conf < 10) {
+          reason = `Aucune preuve directe (${conf}%) — refuser`;
         } else {
           reason = `Confiance trop faible (${conf}%) — refuser`;
         }
       } else {
-        // uncertain
-        if (matched && host) reason = `${matched} via ${host} (${conf}%) — vérifier`;
-        else if (matched)    reason = `${matched} (${conf}%) — vérifier`;
-        else if (host)       reason = `Source ${host} (${conf}%) — vérifier`;
-        else                 reason = `Données ambiguës (${conf}%) — vérifier`;
+        // uncertain — point what's missing
+        if (c.matched_on === "postal_prefix") {
+          reason = `Code postal seulement, nom absent — vérifier`;
+        } else if (c.matched_on === "city") {
+          reason = `Ville seulement, lien faible — vérifier`;
+        } else if (matched && host) {
+          reason = `${matched} via ${host} — vérifier`;
+        } else if (matched) {
+          reason = `${matched} (${conf}%) — vérifier`;
+        } else if (host) {
+          reason = `Source ${host} (${conf}%) — vérifier`;
+        } else {
+          reason = `Aucun match clair (${conf}%) — vérifier`;
+        }
       }
 
       result[c.id] = `${verdict} ${reason}`;
@@ -172,6 +221,8 @@ export default function PhoneReviewClient({
       reviewReason: c.review_reason,
       openclawEvidence: c.openclaw_evidence,
       openclawVerdict: c.openclaw_verdict,
+      openclawReasoning: c.openclaw_reasoning,
+      matchedOn: c.matched_on,
       confidence: c.initial_confidence,
     }));
     fetch("/api/phone-review/summaries", {

@@ -13,32 +13,48 @@ import OpenAI from "openai";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const SYSTEM = `Tu es un assistant pour un CRM immobilier québécois (acquisitions multi-logements).
-Pour chaque candidat téléphone, donne UN VERDICT opinioné au réviseur. Pas de description neutre — dis-lui quoi faire.
+const SYSTEM = `Tu es un assistant pour un CRM immobilier québécois (acquisitions multi-logements). Le réviseur doit décider en 5 secondes par ligne.
 
-Format de sortie EXACT: "<verdict> <raison>"
-- verdict = "✓" si à approuver, "✗" si à refuser, "?" si à vérifier manuellement
-- raison = UNE phrase française de max 12 mots, qui dit POURQUOI approuver/refuser/vérifier
+TA TÂCHE: pour chaque candidat, identifie LE SIGNAL SPÉCIFIQUE qui explique pourquoi OpenClaw n'a pas auto-attaché ce numéro, puis donne UN VERDICT opinioné. Le réviseur veut savoir EXACTEMENT ce qui cloche, pas une description neutre.
 
-Règles de verdict:
-- ✓ Approuver si: openclaw_verdict=likely_match ET confiance ≥ 70, OU nom proprio + adresse postale concordent fortement, OU annuaire public confirme le proprio.
-- ✗ Refuser si: openclaw_verdict=unlikely_match, OU confiance < 25, OU signaux d'erreur clairs (fax, locataire probable, résidence pour aînés, nom complètement différent).
-- ? Vérifier sinon: adresse seule sans nom, code postal/ville seulement, source ambiguë, données incohérentes.
+Format EXACT: "<verdict> <raison>"
+- verdict = "✓" (approuver), "✗" (refuser), ou "?" (vérifier manuellement)
+- raison = UNE phrase française ≤ 14 mots, qui pointe LE SIGNAL spécifique (pas un résumé vague)
 
-Exemples bons:
-- "✓ Nom et adresse postale concordent — approuver"
-- "✓ Annuaire public confirme le proprio — approuver"
-- "✗ Fax de résidence pour aînés, pas le proprio — refuser"
-- "✗ OpenClaw rejette, nom différent — refuser"
-- "✗ Confiance trop faible (15%) — refuser"
-- "? Adresse correspond mais nom non confirmé — vérifier"
-- "? Code postal seulement, lien faible — vérifier"
+CHERCHE CES SIGNAUX EN PRIORITÉ (lis le snippet/preuve mot par mot):
+1. Le snippet contient "Fax:", "Télécopieur", ou ce numéro est listé comme fax → FAX détecté → ✗
+2. Le snippet/candidate_address mentionne "résidence", "CHSLD", "RPA", "manoir", "centre" → établissement → ✗
+3. candidate_name a un nom de famille COMPLÈTEMENT différent du proprio → nom étranger → ✗
+4. matched_on=postal_prefix → seulement le code postal correspond, pas l'adresse → ?
+5. matched_on=city → seulement la ville correspond → ?
+6. matched_on=mailing_address ET nom proprio visible dans snippet → forte concordance → ✓
+7. URL est un annuaire public (canada411, 411.ca, pagesjaunes, b2bhint, registre.ccq) → annuaire → ✓ si nom concorde, ? sinon
+8. URL semble commerciale/non-liée et nom proprio absent → tiers → ✗ ou ?
+9. Plusieurs numéros différents pour la même propriété → ambiguïté → ?
 
-Mauvais (à éviter):
-- "residencessoleil.ca — adresse postale correspond" (juste descriptif, pas de verdict)
-- "Confiance modérée" (vague, n'aide pas le réviseur)
+INTERDICTIONS STRICTES:
+- ❌ JAMAIS "vérification nécessaire/requise" sans préciser le signal AVANT
+- ❌ JAMAIS "concordants" / "non concordants" sans préciser QUOI (nom? adresse? code postal?)
+- ❌ JAMAIS "numéro suspect" / "confiance faible/modérée" sans dire POURQUOI
+- ❌ JAMAIS "à vérifier manuellement" comme raison — la raison doit être le signal, pas l'action
 
-Retourne uniquement du JSON valide: {"<id>": "<verdict> <raison>", ...}`;
+Exemples bons (signal spécifique extrait des données):
+- "✗ Marqué 'Fax:' dans la source hcq-chq.org — refuser"
+- "✗ Résidence pour aînés, ce n'est pas le proprio — refuser"
+- "✗ Nom source 'Trottier' ≠ proprio 'Amselem' — refuser"
+- "✓ Canada411 confirme Tremblay au 142 Denison — approuver"
+- "✓ Adresse postale exacte + nom proprio dans snippet — approuver"
+- "? Code postal H3G1J1 seul, nom absent du snippet — vérifier"
+- "? Site corporate, aucun lien direct au proprio — vérifier"
+- "? Deux numéros différents pour cette propriété — comparer"
+
+Exemples mauvais (à NE PAS reproduire):
+- "Numéros de téléphone différents, vérification nécessaire" (quel signal? lequel rejeter?)
+- "Nom et adresse postale non concordants" (lequel est faux? le nom ou l'adresse?)
+- "Numéro de téléphone suspect" (suspect comment?)
+- "Confiance modérée — vérifier" (le réviseur ne sait toujours pas quoi faire)
+
+Retourne UNIQUEMENT du JSON valide: {"<id>": "<verdict> <raison>", ...}`;
 
 type CandidateInput = {
   id: string;
@@ -52,6 +68,8 @@ type CandidateInput = {
   reviewReason: string | null;
   openclawEvidence: string | null;
   openclawVerdict: string | null;
+  openclawReasoning: string | null;
+  matchedOn: string | null;
   confidence: number;
 };
 
@@ -68,18 +86,24 @@ export async function POST(request: Request) {
 
   const openai = new OpenAI({ apiKey });
 
-  // Build a compact per-candidate description (one line each)
+  // Build a per-candidate dossier the model can mine for SPECIFIC signals.
+  // Snippets/evidence are kept long (300 chars) so labels like "Fax:" survive.
   const lines = candidates.map((c) => {
     const parts: string[] = [`[${c.id}]`];
     parts.push(`Proprio: ${c.ownerName}`);
     parts.push(`Prop: ${c.address}`);
-    parts.push(`Tél: ${c.phone} (${c.confidence}%)`);
-    if (c.candidateName)    parts.push(`Nom source: ${c.candidateName}`);
-    if (c.candidateAddress) parts.push(`Adr source: ${c.candidateAddress}`);
-    if (c.sourceUrl)        parts.push(`URL: ${new URL(c.sourceUrl).hostname}`);
-    if (c.openclawEvidence) parts.push(`Preuve: ${c.openclawEvidence.slice(0, 120)}`);
-    else if (c.snippet)     parts.push(`Extrait: ${c.snippet.slice(0, 100)}`);
-    if (c.openclawVerdict)  parts.push(`Verdict: ${c.openclawVerdict}`);
+    parts.push(`Tél candidat: ${c.phone} (confiance ${c.confidence}%)`);
+    if (c.matchedOn)        parts.push(`Type de match: ${c.matchedOn}`);
+    if (c.candidateName)    parts.push(`Nom dans source: "${c.candidateName}"`);
+    if (c.candidateAddress) parts.push(`Adresse dans source: "${c.candidateAddress}"`);
+    if (c.sourceUrl) {
+      try { parts.push(`URL: ${new URL(c.sourceUrl).hostname}`); } catch { /* ignore */ }
+    }
+    if (c.openclawEvidence) parts.push(`Preuve OpenClaw: "${c.openclawEvidence.slice(0, 300)}"`);
+    if (c.snippet)          parts.push(`Snippet: "${c.snippet.slice(0, 300)}"`);
+    if (c.openclawVerdict)  parts.push(`Verdict OpenClaw: ${c.openclawVerdict}`);
+    if (c.openclawReasoning) parts.push(`Raisonnement OpenClaw: "${c.openclawReasoning.slice(0, 200)}"`);
+    if (c.reviewReason)     parts.push(`Raison de revue: ${c.reviewReason}`);
     return parts.join(" | ");
   });
 
@@ -93,8 +117,8 @@ export async function POST(request: Request) {
         { role: "user",   content: userMsg },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.25,
-      max_tokens: Math.min(candidates.length * 35 + 150, 4096),
+      temperature: 0.2,
+      max_tokens: Math.min(candidates.length * 50 + 200, 8192),
     });
 
     const raw = response.choices[0]?.message?.content ?? "{}";
