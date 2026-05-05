@@ -7,6 +7,7 @@
 // localized "another caller" — a UUID is never exposed.
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useLocale } from "@/components/locale-provider";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import OutcomeButtonGroup, { type OutcomeOption } from "@/components/caller/OutcomeButtonGroup";
@@ -104,18 +105,22 @@ export default function CallWorkspace({
   const activeCallLogId = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Outcome catalogs (visual groups; routing values unchanged) ─────────────
-  const QUICK_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
+  // ── Outcome catalogs (4 logical groups) ─────────────────────────────────
+  const UNREACHABLE_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
     { value: "no_answer",      variant: "neutral"  },
     { value: "voicemail_left", variant: "neutral"  },
     { value: "wrong_number",   variant: "negative" },
     { value: "bad_number",     variant: "negative" },
   ];
 
-  const INTEREST_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
+  const REJECTION_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
     { value: "not_interested", variant: "danger" },
     { value: "do_not_contact", variant: "danger" },
+  ];
+
+  const DEFER_OUTCOMES: ReadonlyArray<{ value: string; variant: OutcomeOption["variant"] }> = [
     { value: "maybe_later",    variant: "info"   },
+    { value: "call_back_later", variant: "info"  },
   ];
 
   const HOT_OUTCOMES = [
@@ -357,13 +362,19 @@ export default function CallWorkspace({
     : (lead.priority ?? 0) < 30 ? "low"
     : "normal";
 
-  const quickOptions: OutcomeOption[] = QUICK_OUTCOMES.map((o) => ({
+  const unreachableOptions: OutcomeOption[] = UNREACHABLE_OUTCOMES.map((o) => ({
     value: o.value,
     label: t.outcome[o.value] ?? o.value,
     variant: o.variant,
   }));
 
-  const interestOptions: OutcomeOption[] = INTEREST_OUTCOMES.map((o) => ({
+  const rejectionOptions: OutcomeOption[] = REJECTION_OUTCOMES.map((o) => ({
+    value: o.value,
+    label: t.outcome[o.value] ?? o.value,
+    variant: o.variant,
+  }));
+
+  const deferOptions: OutcomeOption[] = DEFER_OUTCOMES.map((o) => ({
     value: o.value,
     label: t.outcome[o.value] ?? o.value,
     variant: o.variant,
@@ -374,10 +385,6 @@ export default function CallWorkspace({
     label: t.outcome[value] ?? value,
     variant: "escalating",
   }));
-
-  const callbackOptions: OutcomeOption[] = [
-    { value: "call_back_later", label: t.outcome.call_back_later ?? "call_back_later", variant: "info" },
-  ];
 
   // Submission-form values bundled for HotSellerSubmissionPanel
   const submissionValues: SubmissionValues = {
@@ -408,6 +415,9 @@ export default function CallWorkspace({
       <LockStatusBanner lockedBy={lockedBy} />
 
       <div className="cw-toolbar">
+        <Link href="/calls/queue" className="cw-toolbar__back">
+          ← {t.workspace.backToQueue}
+        </Link>
         <button
           onClick={goNext}
           disabled={busy}
@@ -451,24 +461,24 @@ export default function CallWorkspace({
 
         {/* RIGHT — normal scroll on desktop, full-width on mobile */}
         <div className="cw-grid__right">
-          {/* Outcome groups */}
+          {/* Outcome groups — 4 logical sections */}
           <div className="cw-outcome-group">
-            <div className="cw-outcome-group__label">{t.workspace.quickOutcome}</div>
-            <OutcomeButtonGroup options={quickOptions} onSelect={handleOutcomeClick} disabled={busy} />
+            <div className="cw-outcome-group__label">{t.workspace.unreachableGroup}</div>
+            <OutcomeButtonGroup options={unreachableOptions} onSelect={handleOutcomeClick} disabled={busy} />
           </div>
 
           <div className="cw-outcome-group">
-            <div className="cw-outcome-group__label">{t.workspace.interestOutcome}</div>
-            <OutcomeButtonGroup options={interestOptions} onSelect={handleOutcomeClick} disabled={busy} />
+            <div className="cw-outcome-group__label">{t.workspace.rejectionGroup}</div>
+            <OutcomeButtonGroup options={rejectionOptions} onSelect={handleOutcomeClick} disabled={busy} />
           </div>
 
           <div className="cw-outcome-group">
-            <div className="cw-outcome-group__label">{t.workspace.scheduleCallback}</div>
-            <OutcomeButtonGroup options={callbackOptions} onSelect={handleOutcomeClick} disabled={busy} />
+            <div className="cw-outcome-group__label">{t.workspace.deferGroup}</div>
+            <OutcomeButtonGroup options={deferOptions} onSelect={handleOutcomeClick} disabled={busy} />
           </div>
 
-          <div className="cw-outcome-group">
-            <div className="cw-outcome-group__label">{t.workspace.sendToAnthony}</div>
+          <div className="cw-outcome-group cw-outcome-group--hot">
+            <div className="cw-outcome-group__label">{t.workspace.hotGroup}</div>
             <OutcomeButtonGroup options={hotOptions} onSelect={handleOutcomeClick} disabled={busy} />
           </div>
 

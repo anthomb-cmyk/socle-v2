@@ -205,8 +205,12 @@ const dict = {
       unitsLabel:     "Logements",
       assessedLabel:  "Évaluation",
 
-      // Outcome group sub-headings (Phase 4)
-      interestOutcome: "Niveau d'intérêt",
+      // Outcome group sub-headings
+      interestOutcome:  "Niveau d'intérêt",
+      unreachableGroup: "Pas joignable",
+      rejectionGroup:   "Pas intéressé",
+      deferGroup:       "À rappeler",
+      hotGroup:         "Intéressé ✓",
     },
 
     // ── Call history panel ────────────────────────────────────────────────────
@@ -556,8 +560,12 @@ const dict = {
       unitsLabel:     "Units",
       assessedLabel:  "Assessed",
 
-      // Outcome group sub-headings (Phase 4)
-      interestOutcome: "Interest level",
+      // Outcome group sub-headings
+      interestOutcome:  "Interest level",
+      unreachableGroup: "Couldn't reach",
+      rejectionGroup:   "Not interested",
+      deferGroup:       "Call back",
+      hotGroup:         "Interested ✓",
     },
 
     // ── Call history panel ────────────────────────────────────────────────────

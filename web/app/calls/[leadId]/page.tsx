@@ -3,7 +3,6 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/sup
 import CallerAppShell from "@/components/caller/CallerAppShell";
 import CallWorkspace from "./CallWorkspace";
 import CallHistoryPanel from "./CallHistoryPanel";
-import CallLeadHeader from "./CallLeadHeader";
 
 export default async function CallLeadPage(
   { params }: { params: Promise<{ leadId: string }> }
@@ -42,9 +41,7 @@ export default async function CallLeadPage(
   const userForwardTo: string | null = metaRes.data?.twilio_forward_to?.trim() || null;
 
   return (
-    <CallerAppShell width="narrow">
-      <CallLeadHeader lead={lead as Parameters<typeof CallLeadHeader>[0]["lead"]} />
-
+    <CallerAppShell width="wide">
       <CallWorkspace
         leadId={leadId}
         phones={phones}

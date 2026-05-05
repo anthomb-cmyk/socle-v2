@@ -63,7 +63,7 @@ export default function PhoneReviewListItem({
       <button
         id={`pr-row-${candidate.id}`}
         type="button"
-        onClick={() => onSelect(candidate.id)}
+        onClick={(e) => { onSelect(candidate.id); (e.currentTarget as HTMLButtonElement).blur(); }}
         className="pr-list-item__row"
         aria-pressed={isFocused}
       >

@@ -1993,8 +1993,23 @@ html, body {
 }
 .cw-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
 }
+.cw-toolbar__back {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--so-fg-3);
+  text-decoration: none;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+}
+.cw-toolbar__back:hover { color: var(--so-fg-1); }
 .cw-toolbar__skip {
   background: transparent;
   border: 0;
@@ -2022,7 +2037,7 @@ html, body {
 }
 @media (min-width: 1180px) {
   .cw-grid {
-    grid-template-columns: 460px 1fr;
+    grid-template-columns: 1fr 420px;
     gap: 20px;
   }
   .cw-grid__left {
@@ -2049,7 +2064,7 @@ html, body {
   flex-wrap: wrap;
 }
 .cw-owner-card__name {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--so-fg-1);
   margin: 0;
@@ -2068,7 +2083,7 @@ html, body {
   flex-wrap: wrap;
 }
 @media (max-width: 1179px) {
-  .cw-owner-card__name { font-size: 17px; }
+  .cw-owner-card__name { font-size: 20px; }
 }
 
 .cw-priority-dot {
@@ -2085,7 +2100,7 @@ html, body {
 /* ── PropertyCard ────────────────────────────────────────────────────── */
 .cw-property-card { display: flex; flex-direction: column; gap: 12px; }
 .cw-property-card__address {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--so-fg-1);
   line-height: 1.35;
@@ -2603,6 +2618,16 @@ html, body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--so-fg-5);
+}
+/* Highlighted "interested" group */
+.cw-outcome-group--hot {
+  background: color-mix(in srgb, var(--so-success) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--so-success) 20%, transparent);
+  border-radius: 12px;
+  padding: 12px 12px 10px;
+}
+.cw-outcome-group--hot .cw-outcome-group__label {
+  color: var(--so-success);
 }
 
 /* Screen-reader only helper used in PhoneSelector */

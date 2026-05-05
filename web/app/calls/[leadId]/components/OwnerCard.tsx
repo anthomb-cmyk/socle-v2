@@ -31,11 +31,9 @@ export default function OwnerCard({ name, statusKey, priority, campaign, attempt
         <h2 className="cw-owner-card__name">{name}</h2>
         <span className={`crm-pill crm-pill--${pillKey} cw-owner-card__pill`}>{statusLabel}</span>
       </div>
-      {(campaign || attempts > 0) && (
+      {attempts > 0 && (
         <div className="cw-owner-card__meta">
-          {campaign && <span>{campaign}</span>}
-          {campaign && attempts > 0 && <span aria-hidden="true">·</span>}
-          {attempts > 0 && <span>{t.workspace.attempts(attempts)}</span>}
+          <span>{t.workspace.attempts(attempts)}</span>
         </div>
       )}
     </div>
