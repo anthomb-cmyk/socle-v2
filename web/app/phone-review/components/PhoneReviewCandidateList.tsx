@@ -11,6 +11,7 @@ type Props = {
   onToggleSelectAll: () => void;
   onToggleSelect: (id: string) => void;
   onSelectFocus: (id: string) => void;
+  onQuickAction: (id: string, action: "approve" | "reject") => void;
 };
 
 /**
@@ -26,6 +27,7 @@ export default function PhoneReviewCandidateList({
   onToggleSelectAll,
   onToggleSelect,
   onSelectFocus,
+  onQuickAction,
 }: Props) {
   const { t } = useLocale();
 
@@ -60,6 +62,7 @@ export default function PhoneReviewCandidateList({
             isFocused={focusedId === c.id}
             onToggleSelect={onToggleSelect}
             onSelect={onSelectFocus}
+            onQuickAction={onQuickAction}
           />
         ))}
       </ul>

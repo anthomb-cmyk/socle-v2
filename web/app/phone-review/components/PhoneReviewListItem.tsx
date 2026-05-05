@@ -3,10 +3,11 @@ import type { PhoneCandidate } from "../PhoneReviewClient";
 
 type Props = {
   candidate: PhoneCandidate;
-  selected: boolean;       // included in the bulk-selection set
-  isFocused: boolean;       // currently shown in the right rail / slide-over
+  selected: boolean;
+  isFocused: boolean;
   onToggleSelect: (id: string) => void;
   onSelect: (id: string) => void;
+  onQuickAction: (id: string, action: "approve" | "reject") => void;
 };
 
 function formatPhone(raw: string | null): string {
@@ -24,12 +25,13 @@ function confidenceVariant(score: number): "high" | "mid" | "low" {
 }
 
 /**
- * Phase 5 — compact list row. Pure presentation. Click → onSelect(id)
- * to focus the row in the right-rail evidence panel (or open the mobile
- * slide-over). Checkbox toggles bulk-selection.
+ * Compact list row with inline approve/reject buttons.
+ * Quick action buttons are always visible so the user can process
+ * all 178 candidates without opening the detail panel.
+ * Clicking the row body still opens the detail panel for edge cases.
  */
 export default function PhoneReviewListItem({
-  candidate, selected, isFocused, onToggleSelect, onSelect,
+  candidate, selected, isFocused, onToggleSelect, onSelect, onQuickAction,
 }: Props) {
   const contact = candidate.leads?.contacts;
   const property = candidate.leads?.properties;
@@ -37,6 +39,10 @@ export default function PhoneReviewListItem({
   const address = property?.address ?? "—";
   const city = property?.city ?? "";
   const phoneText = formatPhone(candidate.phone_e164 ?? candidate.phone_raw);
+
+  // Show the name found at source so you can compare at a glance
+  const foundName = candidate.candidate_name ?? null;
+  const foundAddr = candidate.candidate_address ?? null;
 
   return (
     <li className={`pr-list-item${isFocused ? " pr-list-item--focused" : ""}`}>
@@ -63,6 +69,13 @@ export default function PhoneReviewListItem({
           <div className="pr-list-item__phone" style={{ fontFeatureSettings: '"tnum" 1' }}>
             {phoneText}
           </div>
+          {/* What the source found — compare at a glance */}
+          {(foundName || foundAddr) && (
+            <div className="pr-list-item__found">
+              {foundName && <span className="pr-list-item__found-name">→ {foundName}</span>}
+              {foundAddr && <span className="pr-list-item__found-addr">{foundAddr}</span>}
+            </div>
+          )}
         </div>
         <div className="pr-list-item__pills">
           <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.initial_confidence)}`}>
@@ -71,6 +84,28 @@ export default function PhoneReviewListItem({
           <StagePill stage={candidate.stage} />
         </div>
       </button>
+
+      {/* Inline quick-action buttons — always visible, no panel needed */}
+      <div className="pr-list-item__actions" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="pr-list-item__approve"
+          title="Approuver"
+          onClick={() => onQuickAction(candidate.id, "approve")}
+          aria-label="Approuver"
+        >
+          ✓
+        </button>
+        <button
+          type="button"
+          className="pr-list-item__reject"
+          title="Rejeter"
+          onClick={() => onQuickAction(candidate.id, "reject")}
+          aria-label="Rejeter"
+        >
+          ✕
+        </button>
+      </div>
     </li>
   );
 }

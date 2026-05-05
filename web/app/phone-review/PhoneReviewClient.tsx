@@ -194,8 +194,6 @@ export default function PhoneReviewClient({
   }
 
   // ── Action wrapper for the evidence panel ───────────────────────────────
-  // Auto-deselect the focused candidate after a non-retry action so the
-  // panel returns to the empty state (the row is gone).
   function handleEvidenceAction(
     id: string,
     action: "approve" | "reject" | "retry" | "keep_unresolved",
@@ -205,6 +203,21 @@ export default function PhoneReviewClient({
     if (action !== "retry") {
       setSelectedId(null);
     }
+  }
+
+  // ── Inline quick-action with auto-advance ────────────────────────────────
+  // Called from the ✓/✕ buttons on each list row. After the action fires,
+  // automatically move focus to the next candidate in the filtered list so
+  // the user can process all 178 without any extra clicks.
+  async function handleQuickAction(id: string, action: "approve" | "reject") {
+    // Find the next candidate BEFORE removing this one
+    const idx = filtered.findIndex((c) => c.id === id);
+    const next = filtered[idx + 1] ?? filtered[idx - 1] ?? null;
+
+    await handleAction(id, action);
+
+    // Advance focus to the next candidate
+    setSelectedId(next?.id ?? null);
   }
 
   const selectedCount = Array.from(selectedIds).filter((id) =>
@@ -246,6 +259,7 @@ export default function PhoneReviewClient({
           onToggleSelectAll={toggleSelectAll}
           onToggleSelect={toggleSelect}
           onSelectFocus={(id) => setSelectedId(id)}
+          onQuickAction={handleQuickAction}
         />
 
         {/* Per-row error list (rare path; surfaces server failures from handleAction) */}

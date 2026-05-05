@@ -2756,12 +2756,77 @@ html, body {
   font-weight: 700;
   color: var(--so-fg-1);
 }
+.pr-list-item__found {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--so-border);
+}
+.pr-list-item__found-name {
+  font-size: 11px;
+  color: var(--so-fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-list-item__found-addr {
+  font-size: 11px;
+  color: var(--so-fg-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pr-list-item__pills {
   display: flex;
   flex-direction: column;
   gap: 4px;
   align-items: flex-end;
   flex: 0 0 auto;
+}
+
+/* Inline quick-action buttons */
+.pr-list-item__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+.pr-list-item__approve,
+.pr-list-item__reject {
+  appearance: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, transform 0.1s;
+  line-height: 1;
+}
+.pr-list-item__approve {
+  background: color-mix(in srgb, var(--so-success) 15%, var(--so-card));
+  color: var(--so-success);
+}
+.pr-list-item__approve:hover {
+  background: var(--so-success);
+  color: #fff;
+  transform: scale(1.08);
+}
+.pr-list-item__reject {
+  background: color-mix(in srgb, var(--so-danger) 12%, var(--so-card));
+  color: var(--so-danger);
+}
+.pr-list-item__reject:hover {
+  background: var(--so-danger);
+  color: #fff;
+  transform: scale(1.08);
 }
 
 .pr-list-empty {
