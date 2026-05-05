@@ -29,6 +29,24 @@ export type QueueLead = {
   priority: number | null;
 };
 
+/**
+ * Server-fetched diagnostic counts that explain *why* the queue is empty.
+ * Populated only when leads.length === 0 (page.tsx). Pure UX info — no
+ * routing, assignment, or business logic depends on these numbers.
+ */
+export type QueueEmptyDiagnostics = {
+  /** Leads in CALLABLE_STATUSES with assigned_to IS NULL (admin can assign). */
+  unassignedGlobal: number;
+  /** My CALLABLE_STATUSES leads with a future-dated next_action_at. */
+  myFutureCallbacks: number;
+  /** My CALLABLE_STATUSES leads where best_phone is null. */
+  myMissingPhone: number;
+  /** My CALLABLE_STATUSES leads excluded because another caller holds a lock. */
+  myLockedByOthers: number;
+  /** Lets the empty state show admin-only actions (e.g. "Voir tous les leads"). */
+  isAdmin: boolean;
+};
+
 function formatPhone(phone: string | null): string | null {
   if (!phone) return null;
   const m = phone.replace(/\D/g, "");
@@ -50,18 +68,19 @@ function formatTimeAgo(diffMs: number, t: Dict): string {
 export default function QueueLeadList({
   leads,
   callCounts,
+  emptyDiagnostics,
 }: {
   leads: QueueLead[];
   callCounts: Record<string, number>;
   // hotSellers prop is still accepted (page.tsx passes it) but is not
   // consumed in the queue UI — kept on the type only for signature stability.
   hotSellers: number;
+  /** Populated by page.tsx when leads.length === 0; null otherwise. */
+  emptyDiagnostics?: QueueEmptyDiagnostics | null;
 }) {
   const { t } = useLocale();
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [query, setQuery] = useState("");
-
-  const now = Date.now();
 
   // Pre-compute per-lead derived strings once per render
   const augmented = useMemo(
@@ -147,15 +166,7 @@ export default function QueueLeadList({
 
       {/* Empty / no-results / list */}
       {leads.length === 0 ? (
-        <div className="so-queue-empty">
-          <div className="so-queue-empty__title">{t.queue.empty}</div>
-          <Link
-            href="/leads"
-            style={{ fontSize: 13, color: "var(--crm-blue)", textDecoration: "none" }}
-          >
-            {t.queue.browseLeads}
-          </Link>
-        </div>
+        <QueueEmptyState diagnostics={emptyDiagnostics ?? null} t={t} />
       ) : filtered.length === 0 ? (
         <div className="so-queue-empty">
           <div className="so-queue-empty__sub">{t.queue.empty}</div>
@@ -192,5 +203,80 @@ export default function QueueLeadList({
 
       {leads.length > 0 && <div className="so-queue-footer">{t.queue.footer}</div>}
     </>
+  );
+}
+
+// ── Empty-state breakdown ───────────────────────────────────────────────────
+// Renders the new Phase-3 visual when the queue is empty, explaining *why*
+// (unassigned in system / future callbacks / missing phone / locked) and
+// surfacing role-aware shortcuts. Read-only — no logic side effects.
+function QueueEmptyState({
+  diagnostics,
+  t,
+}: {
+  diagnostics: QueueEmptyDiagnostics | null;
+  t: Dict;
+}) {
+  const rows: React.ReactNode[] = [];
+
+  if (diagnostics) {
+    rows.push(
+      <li key="assigned">{t.queue.emptyDiagAssignedNone}</li>,
+    );
+    if (diagnostics.unassignedGlobal > 0) {
+      rows.push(
+        <li key="unassigned">{t.queue.emptyDiagUnassigned(diagnostics.unassignedGlobal)}</li>,
+      );
+    }
+    if (diagnostics.myFutureCallbacks > 0) {
+      rows.push(
+        <li key="future">{t.queue.emptyDiagFuture(diagnostics.myFutureCallbacks)}</li>,
+      );
+    }
+    if (diagnostics.myMissingPhone > 0) {
+      rows.push(
+        <li key="phone">{t.queue.emptyDiagPhone(diagnostics.myMissingPhone)}</li>,
+      );
+    }
+    if (diagnostics.myLockedByOthers > 0) {
+      rows.push(
+        <li key="locked">{t.queue.emptyDiagLocked(diagnostics.myLockedByOthers)}</li>,
+      );
+    }
+  }
+
+  return (
+    <div className="so-queue-empty so-queue-empty--detailed">
+      <div className="so-queue-empty__icon" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="so-queue-empty__title">{t.queue.emptyTitle}</div>
+      {rows.length > 0 && (
+        <ul className="so-queue-empty__breakdown">{rows}</ul>
+      )}
+      <div className="so-queue-empty__actions">
+        <Link href="/leads" className="crm-btn">
+          {t.queue.allLeads}
+        </Link>
+        {diagnostics?.myFutureCallbacks ? (
+          <Link href="/follow-ups" className="crm-btn">
+            {t.nav.followUps}
+          </Link>
+        ) : null}
+        {diagnostics?.isAdmin && diagnostics.myMissingPhone > 0 ? (
+          <Link href="/phone-review" className="crm-btn">
+            {t.nav.phoneReview}
+          </Link>
+        ) : null}
+      </div>
+    </div>
   );
 }

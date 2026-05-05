@@ -70,6 +70,14 @@ const dict = {
       filterHot:        "Priorité haute",
       filterCallable:   "À appeler",
       searchPlaceholder:"Rechercher (nom, adresse, ville)…",
+
+      // Empty-state breakdown (server-fetched diagnostics, not a logic change)
+      emptyTitle:           "Rien à appeler pour le moment",
+      emptyDiagAssignedNone:"Aucun lead n'est assigné à toi pour le moment.",
+      emptyDiagUnassigned:  (n: number) => `${n} lead${n !== 1 ? "s" : ""} non assigné${n !== 1 ? "s" : ""} dans le système.`,
+      emptyDiagFuture:      (n: number) => `${n} rappel${n !== 1 ? "s" : ""} planifié${n !== 1 ? "s" : ""} plus tard.`,
+      emptyDiagPhone:       (n: number) => `${n} numéro${n !== 1 ? "s" : ""} en attente de vérification.`,
+      emptyDiagLocked:      (n: number) => `${n} lead${n !== 1 ? "s" : ""} verrouillé${n !== 1 ? "s" : ""} par un autre appelant.`,
     },
 
     // ── Lead status labels (used in queue cards and workspace) ────────────────
@@ -265,6 +273,14 @@ const dict = {
       filterHot:        "Hot priority",
       filterCallable:   "Callable",
       searchPlaceholder:"Search (name, address, city)…",
+
+      // Empty-state breakdown
+      emptyTitle:           "Nothing to call right now",
+      emptyDiagAssignedNone:"No leads are assigned to you at the moment.",
+      emptyDiagUnassigned:  (n: number) => `${n} lead${n !== 1 ? "s" : ""} unassigned in the system.`,
+      emptyDiagFuture:      (n: number) => `${n} callback${n !== 1 ? "s" : ""} scheduled for later.`,
+      emptyDiagPhone:       (n: number) => `${n} phone number${n !== 1 ? "s" : ""} awaiting verification.`,
+      emptyDiagLocked:      (n: number) => `${n} lead${n !== 1 ? "s" : ""} locked by another caller.`,
     },
 
     // ── Lead status labels ────────────────────────────────────────────────────

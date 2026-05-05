@@ -4,7 +4,10 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/sup
 import CallerAppShell from "@/components/caller/CallerAppShell";
 import CallerQueueStats from "@/components/caller/CallerQueueStats";
 import NextStepBanner from "@/components/next-step-banner";
-import QueueLeadList, { type QueueLead } from "./QueueLeadList";
+import QueueLeadList, {
+  type QueueLead,
+  type QueueEmptyDiagnostics,
+} from "./QueueLeadList";
 
 const CALLABLE_STATUSES = [
   "new", "ready_to_call", "in_outreach", "no_answer", "phone_verified",
@@ -14,6 +17,9 @@ export default async function CallQueuePage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const role = (user.app_metadata?.role ?? "caller") as string;
+  const isAdmin = role === "admin";
 
   const sb = createSupabaseAdminClient();
   const now = new Date().toISOString();
@@ -46,10 +52,10 @@ export default async function CallQueuePage() {
     (locksRes.data ?? []).map((r: { lead_id: string }) => r.lead_id),
   );
 
-  const leads = ((queueRes.data ?? []) as QueueLead[]).filter(
-    (l) => !lockedByOthers.has(l.lead_id),
-  );
+  const allMyLeads = ((queueRes.data ?? []) as QueueLead[]);
+  const leads = allMyLeads.filter((l) => !lockedByOthers.has(l.lead_id));
   const hotSellers = hotSellersRes.count ?? 0;
+  const myLockedByOthersCount = allMyLeads.length - leads.length;
 
   // Per-lead call counts (fetched separately to avoid a heavy view join)
   const leadIds = leads.map((l) => l.lead_id);
@@ -64,10 +70,48 @@ export default async function CallQueuePage() {
     });
   }
 
+  // ── Empty-state diagnostics ─────────────────────────────────────────────
+  // When the queue is empty, fetch a small breakdown so the user understands
+  // *why* the queue is empty. These are read-only COUNT queries — they do
+  // NOT modify the queue's primary filter logic (assigned_to, CALLABLE_STATUSES,
+  // best_phone, next_action_at, call_locks all stay enforced above).
+  let emptyDiagnostics: QueueEmptyDiagnostics | null = null;
+  if (leads.length === 0) {
+    const [unassignedRes, futureRes, missingPhoneRes] = await Promise.all([
+      // Globally unassigned callable leads (admin can assign these)
+      sb.from("leads")
+        .select("id", { count: "exact", head: true })
+        .in("status", CALLABLE_STATUSES as unknown as string[])
+        .is("assigned_to", null),
+      // My callable leads with a future-dated callback (excluded until due)
+      sb.from("leads_view")
+        .select("lead_id", { count: "exact", head: true })
+        .eq("assigned_to", user.id)
+        .in("status", CALLABLE_STATUSES as unknown as string[])
+        .gt("next_action_at", now),
+      // My callable leads missing best_phone (need phone-review approval)
+      sb.from("leads_view")
+        .select("lead_id", { count: "exact", head: true })
+        .eq("assigned_to", user.id)
+        .in("status", CALLABLE_STATUSES as unknown as string[])
+        .is("best_phone", null),
+    ]);
+
+    emptyDiagnostics = {
+      unassignedGlobal:    unassignedRes.count ?? 0,
+      myFutureCallbacks:   futureRes.count ?? 0,
+      myMissingPhone:      missingPhoneRes.count ?? 0,
+      myLockedByOthers:    myLockedByOthersCount,
+      isAdmin,
+    };
+  }
+
   return (
     <CallerAppShell
       width="wide"
-      stats={leads.length > 0 ? <CallerQueueStats leads={leads} /> : null}
+      // Render stats even when the queue is empty so the redesigned shell
+      // is visible. Tiles will show 0/0/0/— in that case.
+      stats={<CallerQueueStats leads={leads} />}
     >
       {leads.length === 0 && (
         <NextStepBanner
@@ -79,6 +123,7 @@ export default async function CallQueuePage() {
         leads={leads}
         callCounts={callCounts}
         hotSellers={hotSellers}
+        emptyDiagnostics={emptyDiagnostics}
       />
     </CallerAppShell>
   );

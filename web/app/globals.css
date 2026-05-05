@@ -1881,8 +1881,44 @@ html, body {
   align-items: center;
   gap: 8px;
 }
-.so-queue-empty__title { font-weight: 700; color: var(--so-fg-1); }
+.so-queue-empty__title { font-weight: 700; color: var(--so-fg-1); font-size: 16px; }
 .so-queue-empty__sub   { font-size: 13px; color: var(--so-fg-5); }
+
+/* Detailed variant: icon + title + breakdown list + action buttons */
+.so-queue-empty--detailed { padding: 36px 24px; gap: 12px; }
+.so-queue-empty__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--so-gold-light);
+  color: var(--so-gold-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.so-queue-empty__breakdown {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--so-fg-3);
+  text-align: center;
+}
+.so-queue-empty__breakdown > li::before {
+  content: "·";
+  color: var(--so-fg-5);
+  margin-right: 6px;
+}
+.so-queue-empty__actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
 
 /* Queue header (compact title + count + "All leads" link) */
 .so-queue-header {
