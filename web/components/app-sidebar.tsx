@@ -209,25 +209,34 @@ export default function AppSidebar({
 
       {/* ── Primary nav ── */}
       <nav className="crm-sidebar-nav">
-        {visiblePrimary.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href as never}
-            className={`crm-sidebar-link${isActive(item.href) ? " crm-sidebar-link--active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-            style={{ display: "flex", alignItems: "center", gap: 8 }}
-          >
-            <NavIcon name={item.icon} />
-            <span style={{ flex: 1 }}>
-          {item.href === "/calls/queue"
-            ? t.nav.queue
-            : item.href === "/phone-review"
-            ? t.nav.phoneReview
-            : item.label}
-        </span>
-            {getBadgeForItem(item)}
-          </Link>
-        ))}
+        {visiblePrimary.map((item) => {
+          // Phase 7b: insert a "Module appels" section header above /calls/queue
+          // for caller-tier users only. Admin sidebar is unchanged.
+          const showCallerSectionHeader = !isAdmin && item.href === "/calls/queue";
+          return (
+            <div key={item.href} style={{ display: "contents" }}>
+              {showCallerSectionHeader && (
+                <div className="crm-sidebar-section-label">{t.nav.callerSection}</div>
+              )}
+              <Link
+                href={item.href as never}
+                className={`crm-sidebar-link${isActive(item.href) ? " crm-sidebar-link--active" : ""}`}
+                onClick={() => setMobileOpen(false)}
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <NavIcon name={item.icon} />
+                <span style={{ flex: 1 }}>
+                  {item.href === "/calls/queue"
+                    ? t.nav.queue
+                    : item.href === "/phone-review"
+                    ? t.nav.phoneReview
+                    : item.label}
+                </span>
+                {getBadgeForItem(item)}
+              </Link>
+            </div>
+          );
+        })}
 
         {isAdmin && (
           <>
