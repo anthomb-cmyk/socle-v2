@@ -251,6 +251,11 @@ const dict = {
       openClawAnalysis:   "OpenClaw analysis",
       confidence:         "Confiance :",
       bucketAll:          (n: number) => `Tous (${n})`,
+
+      // Phase 5 — split-layout & slide-over copy
+      noSelectionTitle:   "Sélectionne un candidat",
+      noSelectionSub:     "Touche une ligne pour voir les détails et agir.",
+      dismissAria:        "Retour",
     },
 
     // ── Common shared strings (loading / retry / etc.) ────────────────────────
@@ -491,6 +496,11 @@ const dict = {
       openClawAnalysis:   "OpenClaw analysis",
       confidence:         "Confidence:",
       bucketAll:          (n: number) => `All (${n})`,
+
+      // Phase 5 — split-layout & slide-over copy
+      noSelectionTitle:   "Select a candidate",
+      noSelectionSub:     "Tap a row to see the details and act.",
+      dismissAria:        "Back",
     },
 
     // ── Common shared strings ──────────────────────────────────────────────────

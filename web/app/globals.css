@@ -2618,6 +2618,406 @@ html, body {
   border: 0;
 }
 
+/* ─── Phone review (Phase 5) ─────────────────────────────────────────── */
+.pr-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.pr-grid__left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.pr-grid__right {
+  display: none; /* mobile uses the slide-over below; desktop overrides */
+}
+@media (min-width: 1180px) {
+  .pr-grid {
+    grid-template-columns: 1fr 520px;
+    gap: 20px;
+  }
+  .pr-grid__right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: 88px;
+    align-self: start;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+  }
+}
+
+.pr-bucket-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+@media (max-width: 767px) {
+  .pr-bucket-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .pr-bucket-bar > * { flex: 0 0 auto; }
+}
+
+/* Compact list */
+.pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pr-list__masterrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px;
+}
+.pr-list__masterlabel {
+  font-size: 12px;
+  color: var(--so-fg-3);
+}
+.pr-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pr-list-item {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.pr-list-item:hover { border-color: var(--so-gold-300); }
+.pr-list-item--focused {
+  border-color: var(--so-gold-500);
+  background: var(--so-gold-light);
+}
+.pr-list-item__check {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  accent-color: var(--so-gold-500);
+  flex: 0 0 auto;
+}
+.pr-list-item__row {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 12px;
+  font-family: inherit;
+  color: inherit;
+  min-width: 0;
+}
+.pr-list-item__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pr-list-item__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-list-item__address {
+  font-size: 12px;
+  color: var(--so-fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-list-item__phone {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+}
+.pr-list-item__pills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+
+.pr-list-empty {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--so-fg-3);
+  font-size: 13px;
+}
+
+/* Evidence panel */
+.pr-evidence {
+  background: var(--so-card);
+  border: 1px solid var(--so-border);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pr-evidence-empty {
+  background: var(--so-card);
+  border: 1px dashed var(--so-border);
+  border-radius: 14px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--so-fg-3);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pr-evidence-empty__title { font-weight: 700; color: var(--so-fg-1); }
+.pr-evidence-empty__sub   { font-size: 13px; color: var(--so-fg-5); }
+
+.pr-evidence__head { display: flex; flex-direction: column; gap: 4px; }
+.pr-evidence__name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-evidence__address { font-size: 13px; color: var(--so-fg-3); }
+.pr-evidence__mailing { font-size: 11px; color: var(--so-fg-5); }
+.pr-evidence__pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.pr-evidence__phone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--so-bg-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+.pr-evidence__phone-num { font-size: 17px; font-weight: 700; color: var(--so-fg-1); }
+.pr-evidence__phone-e164 { font-size: 11px; color: var(--so-fg-5); font-feature-settings: "tnum" 1; }
+.pr-evidence__phone-source { margin-left: auto; font-size: 11px; color: var(--so-fg-5); }
+
+.pr-evidence__context {
+  font-size: 12px;
+  color: var(--so-fg-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pr-evidence__context strong { color: var(--so-fg-2, var(--so-fg-1)); font-weight: 600; }
+.pr-evidence__query { font-style: italic; color: var(--so-fg-5); }
+
+.pr-evidence__snippet {
+  background: var(--so-bg-soft);
+  border: 1px solid var(--so-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--so-fg-3);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.pr-evidence__url {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.pr-evidence__openclaw { font-size: 12px; color: var(--so-fg-3); }
+.pr-evidence__openclaw-summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--so-fg-1);
+}
+.pr-evidence__openclaw-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pr-evidence__reason {
+  font-size: 12px;
+  background: color-mix(in srgb, var(--so-warn) 14%, var(--so-card));
+  color: var(--so-warn);
+  border: 1px solid color-mix(in srgb, var(--so-warn) 30%, transparent);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.pr-evidence__error {
+  font-size: 13px;
+  color: var(--so-danger);
+  margin: 0;
+}
+.pr-evidence__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto;
+  gap: 8px;
+}
+@media (max-width: 540px) {
+  .pr-evidence__actions { grid-template-columns: 1fr 1fr; }
+}
+
+/* Bulk-action bar */
+.pr-bulk-bar {
+  background: var(--so-fg-1);
+  color: var(--so-card);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+}
+.pr-bulk-bar__count {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  min-width: 120px;
+}
+.pr-bulk-bar__btn {
+  appearance: none;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 48px;
+}
+.pr-bulk-bar__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.pr-bulk-bar__btn:hover { filter: brightness(1.06); }
+.pr-bulk-bar__btn--approve { background: var(--so-success); color: #FFFFFF; }
+.pr-bulk-bar__btn--reject  { background: var(--so-danger);  color: #FFFFFF; }
+.pr-bulk-bar__btn--keep    {
+  background: transparent;
+  color: var(--so-card);
+  border: 1px solid color-mix(in srgb, var(--so-card) 30%, transparent);
+}
+
+@media (max-width: 1179px) {
+  .pr-bulk-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    border-radius: 0;
+    box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.18);
+    flex-wrap: wrap;
+  }
+}
+
+/* Mobile slide-over */
+.pr-mobile-slideover { display: none; }
+@media (max-width: 1179px) {
+  .pr-mobile-slideover {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: var(--so-bg);
+    transform: translateX(100%);
+    transition: transform 0.18s ease-out;
+    display: flex;
+    flex-direction: column;
+    /* Sit ABOVE the existing fixed-bottom mobile nav. The nav is z-index 50;
+       the slide-over and its contents are 70 to be above the bulk bar (60). */
+  }
+  .pr-mobile-slideover--open { transform: translateX(0); }
+}
+.pr-mobile-slideover__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-top, 0px)) 12px;
+  background: var(--so-card);
+  border-bottom: 1px solid var(--so-border);
+  position: sticky;
+  top: 0;
+}
+.pr-mobile-slideover__back {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--so-fg-1);
+  font-family: inherit;
+  min-height: 44px;
+  padding: 0 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.pr-mobile-slideover__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--so-fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.pr-mobile-slideover__body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px;
+  /* Leave room above the bulk bar (60) and bottom nav (50). */
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Mobile-only render gate (used for the duplicate fixed-bottom bulk bar) */
+.pr-only-mobile { display: block; }
+@media (min-width: 1180px) { .pr-only-mobile { display: none; } }
+
+/* The list scrollable container also needs bottom padding when the
+   fixed-bottom bulk bar is showing on mobile, to avoid the last row
+   getting hidden under it. */
+@media (max-width: 1179px) {
+  .pr-grid__left { padding-bottom: 64px; }
+}
+
 /* Queue header (compact title + count + "All leads" link) */
 .so-queue-header {
   display: flex;
