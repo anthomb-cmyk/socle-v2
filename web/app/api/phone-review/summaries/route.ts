@@ -13,19 +13,32 @@ import OpenAI from "openai";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const SYSTEM = `Tu es un assistant pour un CRM immobilier québécois.
-Pour chaque candidat téléphone, génère UNE courte phrase française (max 12 mots) expliquant pourquoi ce numéro nécessite une vérification manuelle.
-Sois direct, concret, utile. Met en évidence ce qui cloche OU ce qui confirme.
+const SYSTEM = `Tu es un assistant pour un CRM immobilier québécois (acquisitions multi-logements).
+Pour chaque candidat téléphone, donne UN VERDICT opinioné au réviseur. Pas de description neutre — dis-lui quoi faire.
+
+Format de sortie EXACT: "<verdict> <raison>"
+- verdict = "✓" si à approuver, "✗" si à refuser, "?" si à vérifier manuellement
+- raison = UNE phrase française de max 12 mots, qui dit POURQUOI approuver/refuser/vérifier
+
+Règles de verdict:
+- ✓ Approuver si: openclaw_verdict=likely_match ET confiance ≥ 70, OU nom proprio + adresse postale concordent fortement, OU annuaire public confirme le proprio.
+- ✗ Refuser si: openclaw_verdict=unlikely_match, OU confiance < 25, OU signaux d'erreur clairs (fax, locataire probable, résidence pour aînés, nom complètement différent).
+- ? Vérifier sinon: adresse seule sans nom, code postal/ville seulement, source ambiguë, données incohérentes.
 
 Exemples bons:
-- "Numéro de fax d'une résidence pour aînés, pas le propriétaire"
-- "Nom et adresse postale correspondent — confiance modérée"
-- "Site d'entreprise commerciale, lien avec le proprio non confirmé"
-- "Trouvé via adresse de correspondance, nom non vérifié"
-- "Doublon probable — même numéro que le candidat précédent"
-- "OpenClaw incertain : adresse correspond mais nom différent"
+- "✓ Nom et adresse postale concordent — approuver"
+- "✓ Annuaire public confirme le proprio — approuver"
+- "✗ Fax de résidence pour aînés, pas le proprio — refuser"
+- "✗ OpenClaw rejette, nom différent — refuser"
+- "✗ Confiance trop faible (15%) — refuser"
+- "? Adresse correspond mais nom non confirmé — vérifier"
+- "? Code postal seulement, lien faible — vérifier"
 
-Retourne uniquement du JSON valide: {"<id>": "<phrase>", ...}`;
+Mauvais (à éviter):
+- "residencessoleil.ca — adresse postale correspond" (juste descriptif, pas de verdict)
+- "Confiance modérée" (vague, n'aide pas le réviseur)
+
+Retourne uniquement du JSON valide: {"<id>": "<verdict> <raison>", ...}`;
 
 type CandidateInput = {
   id: string;

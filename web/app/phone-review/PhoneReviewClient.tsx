@@ -90,43 +90,66 @@ export default function PhoneReviewClient({
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Build immediate rule-based summaries from existing fields — no API call needed to show something useful.
-  // These show instantly. AI summaries (fetched below) replace them when ready.
+  // Build immediate rule-based verdict summaries from existing fields — no API call needed.
+  // Shape matches the AI output: "<✓|✗|?> <raison ≤ 12 mots>".
+  // AI summaries (fetched below) replace these when ready.
   const fallbackSummaries = useMemo<Record<string, string>>(() => {
+    const matchLabels: Record<string, string> = {
+      mailing_address:      "adresse postale concorde",
+      postal_prefix:        "code postal seulement",
+      city:                 "ville seulement",
+      contact_name:         "nom concorde",
+      company_name:         "entreprise concorde",
+      property_address:     "adresse propriété concorde",
+      director_name:        "directeur concorde",
+      related_company:      "entreprise liée",
+      same_address_company: "même adresse entreprise",
+      public_directory:     "annuaire public",
+      company_website:      "site web entreprise",
+      openclaw:             "OpenClaw",
+    };
+
     const result: Record<string, string> = {};
     for (const c of initialCandidates) {
-      const parts: string[] = [];
-      // Source domain — most useful signal
-      if (c.source_url) {
-        try {
-          const host = new URL(c.source_url).hostname.replace(/^www\./, "");
-          parts.push(host);
-        } catch { /* ignore */ }
-      }
-      // What it matched on
-      const matchLabels: Record<string, string> = {
-        mailing_address:      "adresse postale correspond",
-        postal_prefix:        "code postal seulement ⚠️",
-        city:                 "ville seulement ⚠️",
-        contact_name:         "nom correspond",
-        company_name:         "entreprise correspond",
-        property_address:     "adresse propriété correspond",
-        director_name:        "directeur correspond",
-        related_company:      "entreprise liée",
-        same_address_company: "même adresse entreprise",
-        public_directory:     "annuaire public",
-        company_website:      "site web entreprise",
-        openclaw:             "OpenClaw",
-      };
+      const conf = c.initial_confidence;
+      const v = c.openclaw_verdict;
       const matched = c.matched_on ? (matchLabels[c.matched_on] ?? c.matched_on) : null;
-      if (matched) parts.push(matched);
-      // Verdict
-      if (c.openclaw_verdict === "unlikely_match") parts.push("peu probable ✗");
-      else if (c.openclaw_verdict === "uncertain")      parts.push("incertain");
-      else if (c.openclaw_verdict === "likely_match")   parts.push("probable ✓");
-      // Very low confidence flag
-      if (c.initial_confidence < 30) parts.push(`${c.initial_confidence}% très faible`);
-      result[c.id] = parts.join(" — ") || `${c.initial_confidence}%`;
+      let host: string | null = null;
+      if (c.source_url) {
+        try { host = new URL(c.source_url).hostname.replace(/^www\./, ""); }
+        catch { /* ignore */ }
+      }
+
+      // Verdict logic:
+      // ✓ likely_match AND ≥70, or any candidate ≥80
+      // ✗ unlikely_match OR confidence < 25
+      // ? everything else
+      let verdict: "✓" | "✗" | "?";
+      if ((v === "likely_match" && conf >= 70) || conf >= 80) verdict = "✓";
+      else if (v === "unlikely_match" || conf < 25) verdict = "✗";
+      else verdict = "?";
+
+      // Reason — opinionated, ≤ 12 words, ends with action verb
+      let reason: string;
+      if (verdict === "✓") {
+        if (matched) reason = `${matched} (${conf}%) — approuver`;
+        else if (v === "likely_match") reason = `OpenClaw confirme (${conf}%) — approuver`;
+        else reason = `Confiance élevée (${conf}%) — approuver`;
+      } else if (verdict === "✗") {
+        if (v === "unlikely_match") {
+          reason = host ? `OpenClaw rejette via ${host} — refuser` : `OpenClaw rejette — refuser`;
+        } else {
+          reason = `Confiance trop faible (${conf}%) — refuser`;
+        }
+      } else {
+        // uncertain
+        if (matched && host) reason = `${matched} via ${host} (${conf}%) — vérifier`;
+        else if (matched)    reason = `${matched} (${conf}%) — vérifier`;
+        else if (host)       reason = `Source ${host} (${conf}%) — vérifier`;
+        else                 reason = `Données ambiguës (${conf}%) — vérifier`;
+      }
+
+      result[c.id] = `${verdict} ${reason}`;
     }
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
