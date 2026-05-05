@@ -394,7 +394,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
       <div className="crm-card" style={{ overflow: "hidden", padding: 0 }}>
 
         {/* Column headers — 5 col (admin) / 3 col (caller) */}
-        <div style={{
+        <div className="crm-leads-table-header" style={{
           display: "grid",
           gridTemplateColumns: canAssign
             ? "28px minmax(0,1fr) minmax(0,160px) 150px 100px"
@@ -452,7 +452,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
           return (
             <div
               key={l.lead_id}
-              className={`${borderClass} ${isSelected ? "crm-row-selected" : ""}`}
+              className={`crm-leads-row ${borderClass} ${isSelected ? "crm-row-selected" : ""}`}
               style={{
                 display: "grid",
                 gridTemplateColumns: canAssign
@@ -476,7 +476,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               )}
 
               {/* Col 2: Owner + Property */}
-              <div style={{ minWidth: 0 }}>
+              <div className="crm-leads-col-owner" style={{ minWidth: 0 }}>
                 <Link
                   href={detailHref}
                   style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", lineHeight: 1.3 }}
@@ -517,7 +517,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               )}
 
               {/* Col 4: Phone */}
-              <div style={{ textAlign: "right", paddingLeft: 8 }}>
+              <div className="crm-leads-col-phone" style={{ textAlign: "right", paddingLeft: 8 }}>
                 {l.best_phone ? (
                   <a
                     href={`tel:${l.best_phone.replace(/\D/g, "")}`}
@@ -533,7 +533,7 @@ export default function LeadsTable({ canAssign }: { canAssign: boolean }) {
               </div>
 
               {/* Col 5: Status pill */}
-              <div style={{ paddingLeft: 8 }}>
+              <div className="crm-leads-col-status" style={{ paddingLeft: 8 }}>
                 <span className={`crm-pill ${statusCfg.cls}`}>{statusCfg.label}</span>
               </div>
             </div>

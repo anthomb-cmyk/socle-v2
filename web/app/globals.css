@@ -1070,3 +1070,55 @@ html, body {
     padding-top: calc(52px + env(safe-area-inset-top, 20px));
   }
 }
+
+/* ─── Leads table: mobile card layout (no horizontal scroll) ────────────── */
+@media (max-width: 767px) {
+  /* Lock the page container — belt-and-suspenders */
+  .crm-main-content,
+  .crm-page,
+  .crm-page-narrow,
+  .crm-card {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+  }
+
+  /* Hide the desktop column header row entirely */
+  .crm-leads-table-header {
+    display: none !important;
+  }
+
+  /* Each data row becomes a flex column (stacked card) */
+  .crm-leads-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    padding: 12px 14px !important;
+    /* Override inline grid so it doesn't set a wider width */
+    grid-template-columns: unset !important;
+  }
+
+  /* Owner + address block: full width, already looks good */
+  .crm-leads-col-owner {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Phone column: left-align on mobile */
+  .crm-leads-col-phone {
+    text-align: left !important;
+    padding-left: 0 !important;
+  }
+  .crm-leads-col-phone a.crm-phone-link {
+    justify-content: flex-start !important;
+  }
+
+  /* Status pill column: no extra left padding */
+  .crm-leads-col-status {
+    padding-left: 0 !important;
+  }
+
+  /* Hide admin-only columns (checkbox + assigned/campaign) to keep cards clean */
+  .crm-leads-row > div:first-child input[type="checkbox"] {
+    display: none !important;
+  }
+}
