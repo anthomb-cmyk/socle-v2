@@ -8,6 +8,7 @@ type Props = {
   selectedIds: Set<string>;
   focusedId: string | null;
   allFilteredSelected: boolean;
+  summaries: Record<string, string>;
   onToggleSelectAll: () => void;
   onToggleSelect: (id: string) => void;
   onSelectFocus: (id: string) => void;
@@ -24,6 +25,7 @@ export default function PhoneReviewCandidateList({
   selectedIds,
   focusedId,
   allFilteredSelected,
+  summaries,
   onToggleSelectAll,
   onToggleSelect,
   onSelectFocus,
@@ -60,6 +62,7 @@ export default function PhoneReviewCandidateList({
             candidate={c}
             selected={selectedIds.has(c.id)}
             isFocused={focusedId === c.id}
+            summary={summaries[c.id] ?? null}
             onToggleSelect={onToggleSelect}
             onSelect={onSelectFocus}
             onQuickAction={onQuickAction}

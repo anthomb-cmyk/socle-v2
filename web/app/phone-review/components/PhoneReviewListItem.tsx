@@ -1,10 +1,12 @@
 "use client";
+import { useRef, useEffect } from "react";
 import type { PhoneCandidate } from "../PhoneReviewClient";
 
 type Props = {
   candidate: PhoneCandidate;
   selected: boolean;
   isFocused: boolean;
+  summary: string | null;   // AI one-liner shown directly on the row
   onToggleSelect: (id: string) => void;
   onSelect: (id: string) => void;
   onQuickAction: (id: string, action: "approve" | "reject") => void;
@@ -31,8 +33,9 @@ function confidenceVariant(score: number): "high" | "mid" | "low" {
  * Clicking the row body still opens the detail panel for edge cases.
  */
 export default function PhoneReviewListItem({
-  candidate, selected, isFocused, onToggleSelect, onSelect, onQuickAction,
+  candidate, selected, isFocused, summary, onToggleSelect, onSelect, onQuickAction,
 }: Props) {
+  const liRef = useRef<HTMLLIElement>(null);
   const contact = candidate.leads?.contacts;
   const property = candidate.leads?.properties;
   const name = contact?.full_name ?? contact?.company_name ?? "—";
@@ -40,12 +43,15 @@ export default function PhoneReviewListItem({
   const city = property?.city ?? "";
   const phoneText = formatPhone(candidate.phone_e164 ?? candidate.phone_raw);
 
-  // Show the name found at source so you can compare at a glance
-  const foundName = candidate.candidate_name ?? null;
-  const foundAddr = candidate.candidate_address ?? null;
+  // Auto-scroll focused row into view when keyboard navigating
+  useEffect(() => {
+    if (isFocused && liRef.current) {
+      liRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [isFocused]);
 
   return (
-    <li className={`pr-list-item${isFocused ? " pr-list-item--focused" : ""}`}>
+    <li ref={liRef} className={`pr-list-item${isFocused ? " pr-list-item--focused" : ""}`}>
       <input
         type="checkbox"
         checked={selected}
@@ -69,13 +75,10 @@ export default function PhoneReviewListItem({
           <div className="pr-list-item__phone" style={{ fontFeatureSettings: '"tnum" 1' }}>
             {phoneText}
           </div>
-          {/* What the source found — compare at a glance */}
-          {(foundName || foundAddr) && (
-            <div className="pr-list-item__found">
-              {foundName && <span className="pr-list-item__found-name">→ {foundName}</span>}
-              {foundAddr && <span className="pr-list-item__found-addr">{foundAddr}</span>}
-            </div>
-          )}
+          {/* AI one-liner summary — visible right on the row */}
+          <div className="pr-list-item__summary">
+            {summary ?? <span className="pr-list-item__summary--loading">…</span>}
+          </div>
         </div>
         <div className="pr-list-item__pills">
           <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.initial_confidence)}`}>

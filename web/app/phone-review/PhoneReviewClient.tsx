@@ -7,7 +7,7 @@
 // rail (desktop) or the slide-over (mobile). Cosmetic only — does not
 // interact with the action lifecycle.
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import PhoneReviewBucketBar, { type Bucket } from "./components/PhoneReviewBucketBar";
@@ -88,8 +88,43 @@ export default function PhoneReviewClient({
   const [activeBucket, setActiveBucket] = useState<ConfidenceBucket>("all");
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
-  // Phase 5 carve-out: which candidate is shown in the right rail / slide-over.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
+
+  // Fetch AI summaries for all candidates on mount
+  useEffect(() => {
+    if (initialCandidates.length === 0) return;
+    const payload = initialCandidates.map((c) => ({
+      id: c.id,
+      ownerName: c.leads?.contacts?.full_name ?? c.leads?.contacts?.company_name ?? "—",
+      address: [c.leads?.properties?.address, c.leads?.properties?.city].filter(Boolean).join(", "),
+      phone: c.phone_e164 ?? c.phone_raw,
+      candidateName: c.candidate_name,
+      candidateAddress: c.candidate_address,
+      sourceUrl: c.source_url,
+      snippet: c.snippet,
+      reviewReason: c.review_reason,
+      openclawEvidence: c.openclaw_evidence,
+      openclawVerdict: c.openclaw_verdict,
+      confidence: c.initial_confidence,
+    }));
+    fetch("/api/phone-review/summaries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidates: payload }),
+    })
+      .then((r) => r.json())
+      .then((data: { summaries: Record<string, string> }) => setSummaries(data.summaries ?? {}))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Refs so keyboard handler always sees latest state without re-registering
+  const filteredRef = useRef<typeof filtered>([]);
+  const selectedIdRef = useRef<string | null>(null);
+  const handleQuickActionRef = useRef<(id: string, action: "approve" | "reject") => Promise<void>>(
+    async () => {}
+  );
 
   const toggleSnippet = useCallback((id: string) => {
     setExpandedSnippets((prev) => {
@@ -206,19 +241,49 @@ export default function PhoneReviewClient({
   }
 
   // ── Inline quick-action with auto-advance ────────────────────────────────
-  // Called from the ✓/✕ buttons on each list row. After the action fires,
-  // automatically move focus to the next candidate in the filtered list so
-  // the user can process all 178 without any extra clicks.
   async function handleQuickAction(id: string, action: "approve" | "reject") {
-    // Find the next candidate BEFORE removing this one
-    const idx = filtered.findIndex((c) => c.id === id);
-    const next = filtered[idx + 1] ?? filtered[idx - 1] ?? null;
-
+    const idx = filteredRef.current.findIndex((c) => c.id === id);
+    const next = filteredRef.current[idx + 1] ?? filteredRef.current[idx - 1] ?? null;
     await handleAction(id, action);
-
-    // Advance focus to the next candidate
     setSelectedId(next?.id ?? null);
   }
+
+  // Keep refs in sync every render
+  filteredRef.current = filtered;
+  selectedIdRef.current = selectedId;
+  handleQuickActionRef.current = handleQuickAction;
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  // ↑/↓ navigate · Enter = approve · Space = reject
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Don't intercept while typing in an input/textarea
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      const list = filteredRef.current;
+      const cur  = selectedIdRef.current;
+      const idx  = list.findIndex((c) => c.id === cur);
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = list[idx + 1] ?? list[0];
+        if (next) setSelectedId(next.id);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = list[idx - 1] ?? list[list.length - 1];
+        if (prev) setSelectedId(prev.id);
+      } else if (e.key === "Enter" && cur) {
+        e.preventDefault();
+        handleQuickActionRef.current(cur, "approve");
+      } else if (e.key === " " && cur) {
+        e.preventDefault();
+        handleQuickActionRef.current(cur, "reject");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []); // intentionally empty — reads latest values via refs
 
   const selectedCount = Array.from(selectedIds).filter((id) =>
     filtered.some((c) => c.id === id),
@@ -256,6 +321,7 @@ export default function PhoneReviewClient({
           selectedIds={selectedIds}
           focusedId={selectedId}
           allFilteredSelected={allFilteredSelected}
+          summaries={summaries}
           onToggleSelectAll={toggleSelectAll}
           onToggleSelect={toggleSelect}
           onSelectFocus={(id) => setSelectedId(id)}

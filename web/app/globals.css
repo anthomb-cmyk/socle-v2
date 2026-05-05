@@ -2756,27 +2756,20 @@ html, body {
   font-weight: 700;
   color: var(--so-fg-1);
 }
-.pr-list-item__found {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 3px;
-  padding-top: 3px;
-  border-top: 1px dashed var(--so-border);
-}
-.pr-list-item__found-name {
+.pr-list-item__summary {
   font-size: 11px;
   color: var(--so-fg-3);
+  font-style: italic;
+  margin-top: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
-.pr-list-item__found-addr {
-  font-size: 11px;
-  color: var(--so-fg-4);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.pr-list-item__summary--loading {
+  color: var(--so-fg-5);
+  font-style: normal;
+  letter-spacing: 0.1em;
 }
 .pr-list-item__pills {
   display: flex;
