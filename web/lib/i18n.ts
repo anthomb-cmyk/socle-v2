@@ -179,6 +179,7 @@ const dict = {
 
       // Soft banner when a caller deep-links into a lead held by another caller
       lockedByOther:            (name: string) => `Ce lead est verrouillé par ${name}.`,
+      anotherCaller:            "un autre appelant",
 
       // Phase 4 — workspace cards and panels
       attempts:        (n: number) => `${n} appel${n !== 1 ? "s" : ""}`,
@@ -418,6 +419,7 @@ const dict = {
 
       // Soft banner when a caller deep-links into a lead held by another caller
       lockedByOther:            (name: string) => `This lead is locked by ${name}.`,
+      anotherCaller:            "another caller",
 
       // Phase 4 — workspace cards and panels
       attempts:        (n: number) => `${n} attempt${n !== 1 ? "s" : ""}`,

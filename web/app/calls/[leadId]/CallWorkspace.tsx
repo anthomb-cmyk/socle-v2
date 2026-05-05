@@ -1,14 +1,14 @@
 "use client";
 // Phase 4: CallWorkspace remains the single state owner for /calls/[leadId].
-// All state, effects, fetches, polling, lock acquire/release, and outcome
-// routing live here unchanged. Only the JSX has been reorganized into the
-// new presentational components in ./components/. The single new state
-// (durationSec) is explicitly allowed by Phase 4: it persists the
-// j.data?.durationSec value the polling already extracts so child
-// components can render the live duration.
+// Phase 4.5: a second new state (lockedBy) plus a helper resolveLockHolder()
+// surface the holder identity in LockStatusBanner when /api/calls/lock
+// returns 409. The lookup uses the existing supabase browser client; RLS
+// gates it so admin sees a specific name and caller-tier falls back to the
+// localized "another caller" — a UUID is never exposed.
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
+import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import OutcomeButtonGroup, { type OutcomeOption } from "@/components/caller/OutcomeButtonGroup";
 
 import LockStatusBanner from "./components/LockStatusBanner";
@@ -97,6 +97,10 @@ export default function CallWorkspace({
   // can render a live MM:SS counter. Polling cadence and completion logic
   // unchanged.
   const [durationSec, setDurationSec] = useState<number>(0);
+  // Phase 4.5 new state: holder of the active call_locks row when our
+  // acquire returned 409. Drives <LockStatusBanner>. Stays null in the
+  // happy path (we own the lock) and on RLS-denied lookups.
+  const [lockedBy, setLockedBy] = useState<{ name: string; sinceISO: string } | null>(null);
   const activeCallLogId = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -199,10 +203,63 @@ export default function CallWorkspace({
           body: JSON.stringify({ leadId }),
         });
         const j = await r.json();
-        if (j.ok) lockAcquired.current = true;
-        // 409 = another caller has this lead; non-fatal — just won't hold a lock
+        if (j.ok) {
+          lockAcquired.current = true;
+          return;
+        }
+        // 409 = another caller has this lead; non-fatal — just won't hold a lock.
+        // Try to surface who holds it via the existing supabase browser client.
+        // RLS gates the read: admin sees a specific name; caller-tier falls
+        // back to the localized "another caller". A UUID is never exposed.
+        if (r.status === 409) {
+          await resolveLockHolder();
+        }
       } catch {
         // Network error — non-fatal
+      }
+    }
+
+    async function resolveLockHolder() {
+      // Narrow row types — generated database.types.ts doesn't include these
+      // tables, but the underlying schema is stable. Cast at the read site.
+      type LockRow = { locked_by: string; locked_at: string | null };
+      type MetaRow = { display_name: string | null; email: string | null };
+
+      try {
+        const sb = createSupabaseBrowserClient();
+        const lockResp = await sb
+          .from("call_locks")
+          .select("locked_by, locked_at")
+          .eq("lead_id", leadId)
+          .gt("expires_at", new Date().toISOString())
+          .maybeSingle();
+        const lockRow = lockResp.data as LockRow | null;
+
+        if (!lockRow) {
+          // RLS denied (caller-tier looking at someone else's lock) or the
+          // lock evaporated between the 409 and our follow-up. Generic fallback.
+          setLockedBy({ name: t.workspace.anotherCaller, sinceISO: new Date().toISOString() });
+          return;
+        }
+
+        const metaResp = await sb
+          .from("users_meta")
+          .select("display_name, email")
+          .eq("user_id", lockRow.locked_by)
+          .maybeSingle();
+        const meta = metaResp.data as MetaRow | null;
+
+        const name =
+          (meta?.display_name && meta.display_name.trim()) ||
+          (meta?.email && meta.email.trim()) ||
+          t.workspace.anotherCaller;
+
+        setLockedBy({
+          name,
+          sinceISO: lockRow.locked_at ?? new Date().toISOString(),
+        });
+      } catch {
+        setLockedBy({ name: t.workspace.anotherCaller, sinceISO: new Date().toISOString() });
       }
     }
 
@@ -216,6 +273,11 @@ export default function CallWorkspace({
         fetch(`/api/calls/lock?leadId=${leadId}`, { method: "DELETE", keepalive: true }).catch(() => {});
       }
     };
+    // We intentionally exclude `t` from deps — re-running the effect on
+    // locale change would re-acquire the lock (and re-fire sendBeacon on
+    // every toggle), which is not the desired lifecycle. Lock acquire/
+    // release must run exactly once per leadId mount/unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
   // ── Outcome handlers ─────────────────────────────────────────────────────
@@ -341,9 +403,9 @@ export default function CallWorkspace({
 
   return (
     <div className="cw-shell">
-      {/* Lock banner — Phase 4 plumbing only; lockedBy is null until a future
-          phase parses 409 responses for the holder identity. */}
-      <LockStatusBanner lockedBy={null} />
+      {/* Lock banner — Phase 4.5 wires this to the actual holder. Stays null
+          when we own the lock; populated when /api/calls/lock returned 409. */}
+      <LockStatusBanner lockedBy={lockedBy} />
 
       <div className="cw-toolbar">
         <button
