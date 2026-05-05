@@ -199,27 +199,41 @@ export default function PhoneReviewEvidencePanel({
         </a>
       )}
 
-      {/* OpenClaw analysis */}
+      {/* Review reason — shown prominently so you know why it needs review */}
+      {candidate.review_reason && (
+        <div className="pr-evidence__reason">{candidate.review_reason}</div>
+      )}
+
+      {/* OpenClaw analysis — always expanded so reasoning is immediately visible */}
       {(candidate.openclaw_reasoning || candidate.openclaw_evidence) && (
-        <details className="pr-evidence__openclaw">
+        <details className="pr-evidence__openclaw" open>
           <summary className="pr-evidence__openclaw-summary">
             {t.review.openClawAnalysis}
+            {candidate.openclaw_confidence != null && (
+              <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.openclaw_confidence)}`} style={{ marginLeft: 8 }}>
+                {candidate.openclaw_confidence}%
+              </span>
+            )}
+            {candidate.openclaw_verdict && (
+              <VerdictBadge verdict={candidate.openclaw_verdict} />
+            )}
           </summary>
           <div className="pr-evidence__openclaw-body">
-            {candidate.openclaw_confidence != null && (
-              <div>{t.review.confidence} <strong>{candidate.openclaw_confidence}%</strong></div>
+            {candidate.openclaw_evidence && (
+              <div className="pr-evidence__openclaw-evidence">{candidate.openclaw_evidence}</div>
             )}
-            {candidate.openclaw_evidence && <div>{candidate.openclaw_evidence}</div>}
             {candidate.openclaw_reasoning && (
-              <div style={{ whiteSpace: "pre-wrap" }}>{candidate.openclaw_reasoning}</div>
+              <div className="pr-evidence__openclaw-reasoning" style={{ whiteSpace: "pre-wrap" }}>{candidate.openclaw_reasoning}</div>
             )}
           </div>
         </details>
       )}
 
-      {/* Review reason */}
-      {candidate.review_reason && (
-        <div className="pr-evidence__reason">{candidate.review_reason}</div>
+      {/* Fallback: no OpenClaw data at all */}
+      {!candidate.openclaw_reasoning && !candidate.openclaw_evidence && (
+        <div className="pr-evidence__reason" style={{ color: "var(--so-fg-4)" }}>
+          Aucune analyse OpenClaw disponible pour ce candidat.
+        </div>
       )}
 
       {/* Note + actions */}

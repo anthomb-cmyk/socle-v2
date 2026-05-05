@@ -2858,17 +2858,43 @@ html, body {
   display: block;
 }
 
-.pr-evidence__openclaw { font-size: 12px; color: var(--so-fg-3); }
+.pr-evidence__openclaw {
+  font-size: 13px;
+  color: var(--so-fg-2);
+  background: var(--so-bg-2);
+  border: 1px solid var(--so-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
 .pr-evidence__openclaw-summary {
   cursor: pointer;
   font-weight: 600;
+  font-size: 13px;
   color: var(--so-fg-1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  user-select: none;
 }
+.pr-evidence__openclaw-summary::-webkit-details-marker { display: none; }
 .pr-evidence__openclaw-body {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+}
+.pr-evidence__openclaw-evidence {
+  font-size: 13px;
+  color: var(--so-fg-2);
+  font-weight: 500;
+}
+.pr-evidence__openclaw-reasoning {
+  font-size: 12px;
+  color: var(--so-fg-3);
+  line-height: 1.6;
+  border-top: 1px solid var(--so-border);
+  padding-top: 8px;
 }
 
 .pr-evidence__reason {
