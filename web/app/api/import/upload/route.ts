@@ -4,8 +4,10 @@
 
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { parseRoleFile } from "@/lib/role-parser";
+import { parseRoleFile, type RoleFormat } from "@/lib/role-parser";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+
+const VALID_FORMATS = new Set<RoleFormat>(["role_a", "role_b", "role_c", "role_d"]);
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,14 +24,28 @@ export async function POST(request: Request) {
   }
   const campaignName = (form.get("campaignName") as string | null)?.trim() || null;
   const city = (form.get("city") as string | null)?.trim() || null;
+  // v3: optional explicit format override when the importer's auto-detection failed.
+  const formatOverrideRaw = (form.get("formatOverride") as string | null)?.trim() || null;
+  const formatOverride = formatOverrideRaw && VALID_FORMATS.has(formatOverrideRaw as RoleFormat)
+    ? (formatOverrideRaw as RoleFormat) : undefined;
 
   // Parse XLSX
   const buffer = Buffer.from(await file.arrayBuffer());
   let parse;
   try {
-    parse = parseRoleFile(buffer);
+    parse = parseRoleFile(buffer, { formatOverride });
   } catch (err) {
     return NextResponse.json({ ok: false, error: `Parse failed: ${(err as Error).message}` }, { status: 400 });
+  }
+
+  // v3: refuse to proceed when format is unknown and the user hasn't picked one.
+  if (parse.format === "unknown" && !formatOverride) {
+    return NextResponse.json({
+      ok: false,
+      error: "format_unknown",
+      detail: "Could not auto-detect the rôle format. Please re-upload and pick a format manually.",
+      data: { detectedColumns: parse.detected_columns, errors: parse.errors },
+    }, { status: 400 });
   }
 
   // Inject city into rows that have no city detected (e.g. Sherbrooke-Commercial

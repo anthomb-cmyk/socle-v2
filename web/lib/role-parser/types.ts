@@ -36,6 +36,59 @@ export interface ParsedOwner {
   share_pct?: number;
   phones: string[];                        // E.164 list, deduped
   source_columns: { phone?: string; address?: string };
+
+  // ─── v3 import redesign — structured mailing address ──────────────────
+  /** Parsed mailing-address components. Populated by the canonical address parser. */
+  mailing_civic?: string | null;
+  mailing_street?: string | null;
+  mailing_unit?: string | null;
+  mailing_province?: string | null;
+  mailing_postal_fsa?: string | null;
+  /** "complete" | "missing_civic" | "missing_street" | "missing_postal" | "incoherent_city" | "unparseable" */
+  mailing_parse_quality?: ContactParseQuality;
+
+  // ─── v3 import redesign — name parser audit ────────────────────────────
+  middle_names?: string[];
+  /** Set when the name-parser detected (and possibly corrected) an inversion. */
+  name_was_inverted?: boolean;
+  /** Quality flag. "complete" = first+last detected; otherwise reason. */
+  name_parse_quality?: NameParseQuality;
+}
+
+export type ContactParseQuality =
+  | "complete"
+  | "missing_civic"
+  | "missing_street"
+  | "missing_postal"
+  | "incoherent_city"
+  | "unparseable";
+
+export type NameParseQuality =
+  | "complete"           // first + last present, no ambiguity
+  | "inverted_corrected" // we swapped first/last
+  | "middle_moved"       // we moved middle name(s) to nom
+  | "ambiguous"          // could be either order; left as-is
+  | "single_token"       // only one word
+  | "company"            // not applicable (entity owner)
+  | "unparseable";
+
+// ─── v3 import redesign — per-row audit attached to ParsedRow ──────────────
+
+export interface ParsedRowAudit {
+  row_number: number;
+  /** Hard refusals — row will not be persisted. */
+  blocking: string[];
+  /** Warnings — surfaced in preview UI but row still imports. */
+  warnings: string[];
+  /** Per-owner audit fields, keyed by owner index in the row. */
+  owners: Array<{
+    kind: ContactKind;
+    name_parse_quality: NameParseQuality | null;
+    name_was_inverted: boolean;
+    mailing_parse_quality: ContactParseQuality | null;
+    phones_extracted: number;
+    phones_rejected: number;
+  }>;
 }
 
 export interface ParsedRow {
@@ -43,6 +96,8 @@ export interface ParsedRow {
   property: ParsedProperty;
   owners: ParsedOwner[];                   // 1..N
   errors: string[];                        // soft errors (e.g. "no city detected")
+  /** v3 — per-row validation audit produced by import-validator. Optional for backward compat. */
+  audit?: ParsedRowAudit;
 }
 
 export interface ParseResult {

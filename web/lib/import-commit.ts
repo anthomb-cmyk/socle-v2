@@ -49,10 +49,44 @@ export async function commitImport(
 
   for (let i = 0; i < parse.rows.length; i++) {
     const row = parse.rows[i];
+    // v3: hard-block rows that the import validator marked as unfit.
+    if (row.audit && row.audit.blocking.length > 0) {
+      counts.errors.push({ row: row.row_number, message: `BLOCKED: ${row.audit.blocking.join("; ")}` });
+      // Persist the row audit so the user can see why it was rejected.
+      await supabase.from("import_row_audits").insert({
+        import_job_id: opts.importJobId,
+        row_number:    row.row_number,
+        outcome:       "blocked",
+        blocking:      row.audit.blocking,
+        warnings:      row.audit.warnings,
+        owners:        row.audit.owners,
+      });
+      continue;
+    }
     try {
       await commitRow(supabase, row, opts, counts);
+      if (row.audit) {
+        await supabase.from("import_row_audits").insert({
+          import_job_id: opts.importJobId,
+          row_number:    row.row_number,
+          outcome:       row.audit.warnings.length ? "imported_with_warnings" : "imported_clean",
+          blocking:      [],
+          warnings:      row.audit.warnings,
+          owners:        row.audit.owners,
+        });
+      }
     } catch (err) {
       counts.errors.push({ row: row.row_number, message: (err as Error).message });
+      if (row.audit) {
+        await supabase.from("import_row_audits").insert({
+          import_job_id: opts.importJobId,
+          row_number:    row.row_number,
+          outcome:       "error",
+          blocking:      [`commit error: ${(err as Error).message}`],
+          warnings:      row.audit.warnings,
+          owners:        row.audit.owners,
+        });
+      }
     }
 
     // Every N rows, flush current counters so the client polling can see progress.
@@ -210,6 +244,18 @@ async function upsertContact(
     mailing_address: owner.mailing_address ?? null,
     mailing_city: owner.mailing_city ? normalizeCity(owner.mailing_city) : null,
     mailing_postal: owner.mailing_postal ?? null,
+    // v3 structured mailing fields (parsed by import-validator)
+    mailing_civic:        owner.mailing_civic ?? null,
+    mailing_street:       owner.mailing_street ?? null,
+    mailing_unit:         owner.mailing_unit ?? null,
+    mailing_province:     owner.mailing_province ?? null,
+    mailing_postal_fsa:   owner.mailing_postal_fsa ?? null,
+    mailing_parsed_at:    new Date().toISOString(),
+    mailing_parse_quality: owner.mailing_parse_quality ?? null,
+    // v3 name parser audit
+    middle_names:         owner.middle_names ?? [],
+    name_was_inverted:    !!owner.name_was_inverted,
+    name_parse_quality:   owner.name_parse_quality ?? null,
     source: "role_import",
     source_meta: { import_job_id: importJobId },
   };

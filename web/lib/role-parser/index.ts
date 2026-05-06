@@ -9,20 +9,35 @@ import type { ParseResult, ParsedRow, RoleFormat } from "./types.ts";
 import { detectFormat } from "./format-detect.ts";
 import { parseFormatA } from "./format-a.ts";
 import { parseFormatB } from "./format-b.ts";
+import { validateAllRows } from "./import-validator.ts";
 
 export * from "./types.ts";
+
+/** Options accepted by parseRoleFile. */
+export interface ParseRoleFileOptions {
+  /** Override the auto-detected format. Used when the user explicitly
+   *  picks a format after we refused to auto-fall-back on "unknown". */
+  formatOverride?: RoleFormat;
+  /** When true, hard-block rows with unparseable mailing addresses
+   *  (the v3 default — they don't import). */
+  hardBlockUnparseableMailing?: boolean;
+}
 
 function parseSheet(
   sheet: XLSX.WorkSheet,
   cityHint: string | null,
   rowOffset: number,
+  formatOverride?: RoleFormat,
 ): { rows: ParsedRow[]; format: RoleFormat; headers: string[] } {
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
   if (rawRows.length === 0) return { rows: [], format: "unknown" as RoleFormat, headers: [] };
 
   const headers = Object.keys(rawRows[0]);
-  const format = detectFormat(headers);
+  const detected = detectFormat(headers);
+  const format: RoleFormat = formatOverride ?? detected;
 
+  // v3: never silently fall back to parseFormatB when detection is "unknown".
+  // The caller must pass formatOverride explicitly. parseRoleFile enforces this.
   let rows: ParsedRow[];
   switch (format) {
     case "role_a":
@@ -31,9 +46,11 @@ function parseSheet(
     case "role_b":
     case "role_c":
     case "role_d":
+      rows = parseFormatB(rawRows);
+      break;
     case "unknown":
     default:
-      rows = parseFormatB(rawRows);
+      rows = [];
       break;
   }
 
@@ -53,7 +70,7 @@ function parseSheet(
   return { rows, format, headers };
 }
 
-export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer): ParseResult {
+export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer, options: ParseRoleFileOptions = {}): ParseResult {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
 
   if (workbook.SheetNames.length === 0) {
@@ -85,7 +102,7 @@ export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer): ParseR
     const isCityName = !/^(sheet|feuil|feuille)\s*\d*$/i.test(sheetName.trim());
     const cityHint = isCityName ? sheetName.trim() : null;
 
-    const { rows, format, headers } = parseSheet(sheet, cityHint, rowOffset);
+    const { rows, format, headers } = parseSheet(sheet, cityHint, rowOffset, options.formatOverride);
 
     if (detectedFormat === "unknown" && format !== "unknown") detectedFormat = format;
     if (firstHeaders.length === 0) firstHeaders = headers;
@@ -93,6 +110,18 @@ export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer): ParseR
     allRows.push(...rows);
     totalRawRows += rawRows.length;
     rowOffset += rawRows.length;
+  }
+
+  // v3: hard refusal for unrecognized formats. The upload route surfaces
+  // this so the UI can prompt for an explicit override.
+  if (detectedFormat === "unknown" && !options.formatOverride) {
+    return {
+      format: "unknown",
+      rows: [],
+      errors: [{ row: 0, message: "Unrecognized rôle format. Please choose a format manually (role_a, role_b, role_c, role_d) or fix the file." }],
+      total_rows: totalRawRows,
+      detected_columns: firstHeaders,
+    };
   }
 
   if (allRows.length === 0) {
@@ -105,10 +134,26 @@ export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer): ParseR
     };
   }
 
+  // v3: run the import-time validator to populate structured mailing fields,
+  // detect inverted prénom/nom, and produce per-row audit reports.
+  const hardBlock = options.hardBlockUnparseableMailing ?? true;
+  const { audits } = validateAllRows(allRows, { hardBlockUnparseableMailing: hardBlock });
+
+  // Roll up audit warnings/blockings into the parser-level errors stream so
+  // the preview UI shows them alongside other errors.
+  const auditErrors: { row: number; message: string }[] = [];
+  for (const a of audits) {
+    for (const b of a.blocking) auditErrors.push({ row: a.row_number, message: `BLOCK: ${b}` });
+    for (const w of a.warnings) auditErrors.push({ row: a.row_number, message: `WARN: ${w}` });
+  }
+
   return {
     format: detectedFormat,
     rows: allRows,
-    errors: allRows.flatMap(r => r.errors.map(e => ({ row: r.row_number, message: e }))),
+    errors: [
+      ...allRows.flatMap(r => r.errors.map(e => ({ row: r.row_number, message: e }))),
+      ...auditErrors,
+    ],
     total_rows: totalRawRows,
     detected_columns: firstHeaders,
   };
