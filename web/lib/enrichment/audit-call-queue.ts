@@ -51,12 +51,16 @@ export interface AuditCallQueueOptions {
 export interface AuditCallQueueResult {
   scanned_leads: number;
   scanned_phones: number;
+  /** Leads with at least one trusted phone — left untouched (best case). */
+  protected_trusted_phones: number;
   /** Phones that would be (or were) demoted to status='wrong_person' */
   demoted_phones: number;
   /** Leads whose status would be (or was) transitioned out of ready_to_call */
   transitioned_leads: number;
-  /** Leads we skipped because their mailing address couldn't be parsed */
-  skipped_unparseable_mailing: number;
+  /** Leads with only enrichment-derived phones AND unparseable mailing — flagged for transition */
+  flagged_unparseable_mailing_only_enrichment: number;
+  /** Leads whose mailing is unparseable but they have trusted phones — kept callable, mailing quality logged */
+  flagged_unparseable_mailing_but_trusted: number;
   /** Phones we couldn't audit because no originating candidate row exists */
   skipped_no_candidate: number;
   /** Counts by reason — which gate failed */
@@ -127,9 +131,11 @@ export async function auditCallQueue(
   const result: AuditCallQueueResult = {
     scanned_leads: 0,
     scanned_phones: 0,
+    protected_trusted_phones: 0,
     demoted_phones: 0,
     transitioned_leads: 0,
-    skipped_unparseable_mailing: 0,
+    flagged_unparseable_mailing_only_enrichment: 0,
+    flagged_unparseable_mailing_but_trusted: 0,
     skipped_no_candidate: 0,
     by_failure_gate: {},
     by_new_disposition: {},
@@ -178,24 +184,7 @@ export async function auditCallQueue(
         numUnits: lead.properties?.num_units ?? null,
       };
 
-      const preflight = runPreflight(ctx);
-      if (!preflight.ok || !preflight.parsed) {
-        // Lead is in ready_to_call but its mailing address is unusable.
-        // We can't audit a phone for a lead with a bad address; flag the lead.
-        result.skipped_unparseable_mailing++;
-        if (!dryRun) {
-          await sb.from("leads").update({ status: "unsuitable_for_phone_enrichment" }).eq("id", lead.id);
-          result.transitioned_leads++;
-          await sb.from("enrichment_events").insert({
-            lead_id: lead.id,
-            event_type: "lead_status_updated",
-            payload: { from: "ready_to_call", to: "unsuitable_for_phone_enrichment", reason: "audit: mailing unparseable", failures: preflight.failures },
-          });
-        }
-        continue;
-      }
-
-      // 2. Pull all enrichment-derived phones for this contact
+      // 2. Pull all phones for this contact and categorize FIRST.
       const { data: phones, error: phonesErr } = await sb
         .from("phones")
         .select("id, contact_id, e164, display, status, source, confidence")
@@ -203,10 +192,67 @@ export async function auditCallQueue(
       if (phonesErr || !phones) continue;
       const phoneRows = phones as PhoneRow[];
 
-      const auditable = phoneRows.filter(p =>
-        !TRUSTED_PHONE_SOURCES.has(p.source) &&
-        TRUSTWORTHY_PHONE_STATUSES.has(p.status)
-      );
+      const callablePhones = phoneRows.filter(p => TRUSTWORTHY_PHONE_STATUSES.has(p.status));
+      const trustedCallable = callablePhones.filter(p => TRUSTED_PHONE_SOURCES.has(p.source));
+      const auditable = callablePhones.filter(p => !TRUSTED_PHONE_SOURCES.has(p.source));
+
+      // Fast path: lead has at least one trusted callable phone AND no
+      // enrichment-derived phones to audit. Leave it alone regardless of
+      // mailing quality — the lead is callable on the trusted number.
+      if (trustedCallable.length > 0 && auditable.length === 0) {
+        result.protected_trusted_phones++;
+        continue;
+      }
+
+      // 3. Now check mailing quality. Only run preflight if we actually
+      //    need to audit phones or decide on transitions.
+      const preflight = runPreflight(ctx);
+      const mailingOk = preflight.ok && !!preflight.parsed;
+
+      // Mailing is bad AND lead has only enrichment-derived phones → those
+      // phones came from a polluted enrichment context; demote them and
+      // transition the lead to unsuitable.
+      if (!mailingOk && auditable.length > 0 && trustedCallable.length === 0) {
+        result.flagged_unparseable_mailing_only_enrichment++;
+        if (!dryRun) {
+          for (const phone of auditable) {
+            await sb.from("phones").update({
+              status: "wrong_person",
+              notes: `Demoted by v3 audit on ${new Date().toISOString()} — mailing unparseable: ${preflight.failures.join(",")}`,
+            }).eq("id", phone.id);
+          }
+          await sb.from("leads").update({ status: "unsuitable_for_phone_enrichment" }).eq("id", lead.id);
+          result.transitioned_leads++;
+          await sb.from("enrichment_events").insert({
+            lead_id: lead.id,
+            event_type: "lead_status_updated",
+            payload: { from: "ready_to_call", to: "unsuitable_for_phone_enrichment",
+              reason: "audit: mailing unparseable AND only enrichment-derived phones",
+              failures: preflight.failures, demoted_phones: auditable.length },
+          });
+        }
+        continue;
+      }
+
+      // Mailing is bad BUT lead has trusted phones → keep the lead in
+      // ready_to_call. The bad mailing only matters if we ever try to
+      // re-enrich; the existing trusted phone stays callable.
+      if (!mailingOk && trustedCallable.length > 0) {
+        result.flagged_unparseable_mailing_but_trusted++;
+        // We still want to mark the contact's mailing_parse_quality so the
+        // enrichment gate refuses to act on this lead later. reparse-contacts
+        // already handles this; no action needed here.
+        continue;
+      }
+
+      // From here, mailingOk === true and we may have enrichment phones to audit.
+      if (auditable.length === 0) {
+        // No enrichment phones; nothing to do beyond logging.
+        if (trustedCallable.length > 0) result.protected_trusted_phones++;
+        continue;
+      }
+      // mailingOk is true so preflight.parsed is non-null. Pin it for TS.
+      const parsedAddress = preflight.parsed!;
 
       const demotedThisLead = new Set<string>();
 
@@ -245,7 +291,7 @@ export async function auditCallQueue(
         try {
           evald = await evaluateBraveResult({
             ctx,
-            parsedAddress: preflight.parsed,
+            parsedAddress,
             result: { url, title, description },
             useHaiku: opts.useHaiku ?? false,
           });
