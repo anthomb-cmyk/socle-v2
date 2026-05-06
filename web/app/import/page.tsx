@@ -18,6 +18,8 @@ type PreviewSummary = {
     errors: string[];
   }>;
   errorsCount: number;
+  dedupe?: { properties_existing: number; properties_new: number; leads_would_be_created: number };
+  warnings?: string[];
 };
 
 // Shape returned by GET /api/import/[jobId] while polling
@@ -69,6 +71,9 @@ export default function ImportPage() {
   const [assignResult, setAssignResult] = useState<{ count: number; name: string } | null>(null);
   const [newLeadIds, setNewLeadIds] = useState<string[]>([]);
   const [campaignIdForResult, setCampaignIdForResult] = useState<string | null>(null);
+
+  // Auto-enrich checkbox (Improvement 7)
+  const [autoEnrich, setAutoEnrich] = useState(false);
 
   // Post-import enrichment via banner
   const [enrichBusy, setEnrichBusy] = useState(false);
@@ -217,7 +222,11 @@ export default function ImportPage() {
 
     // Fire POST — it will run for up to 5 minutes server-side.
     // We don't await in a way that blocks UI; the interval above handles state.
-    fetch(`/api/import/${jobId}/confirm`, { method: "POST" }).then(async resp => {
+    fetch(`/api/import/${jobId}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ autoEnrich }),
+    }).then(async resp => {
       let json: { ok: boolean; error?: string } = { ok: true };
       try { json = await resp.json(); } catch { /* non-JSON response — keep polling */ }
       if (!json.ok) {
@@ -360,6 +369,25 @@ export default function ImportPage() {
             </p>
           )}
 
+          {/* Improvement 2: Phone-less file warning */}
+          {preview.warnings && preview.warnings.length > 0 && (
+            <div style={{ background: "var(--crm-amber-light, #FEF9EC)", border: "1px solid var(--crm-amber)", borderRadius: 8, padding: "10px 14px" }}>
+              {preview.warnings.map((w, i) => (
+                <p key={i} style={{ fontSize: 13, color: "var(--crm-amber)", margin: 0 }}>⚠ {w}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Improvement 1: Pre-import dedupe notice */}
+          {preview.dedupe && (
+            <div style={{ background: "var(--crm-bg-alt)", border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "var(--crm-text2)" }}>
+              <strong style={{ color: "var(--crm-text)" }}>Doublons détectés :</strong>{" "}
+              {preview.dedupe.properties_existing} propriété{preview.dedupe.properties_existing !== 1 ? "s" : ""} déjà dans la base ·{" "}
+              {preview.dedupe.properties_new} nouvelle{preview.dedupe.properties_new !== 1 ? "s" : ""} ·{" "}
+              environ <strong>{preview.dedupe.leads_would_be_created}</strong> lead{preview.dedupe.leads_would_be_created !== 1 ? "s" : ""} seraient créés.
+            </div>
+          )}
+
           {/* Preview table */}
           <div style={{ border: "1px solid var(--crm-card-border)", borderRadius: 10, overflowX: "auto" }}>
             <table style={{ width: "100%", fontSize: 12, whiteSpace: "nowrap", borderCollapse: "collapse" }}>
@@ -431,6 +459,17 @@ export default function ImportPage() {
               </button>
             </div>
           )}
+
+          {/* Improvement 7: Auto-enrich checkbox */}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: "var(--crm-text2)" }}>
+            <input
+              type="checkbox"
+              checked={autoEnrich}
+              onChange={e => setAutoEnrich(e.target.checked)}
+              style={{ width: 15, height: 15, cursor: "pointer" }}
+            />
+            Enrichissement auto après import (utilise Brave + Anthropic) — max 50 leads
+          </label>
 
           <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
             {/* Fix B: button disabled while confirming */}
