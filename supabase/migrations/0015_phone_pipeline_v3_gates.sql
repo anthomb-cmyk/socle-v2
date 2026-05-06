@@ -4,6 +4,13 @@
 -- This migration is purely additive. Existing candidates keep their statuses;
 -- the v3 pipeline writes the new statuses (weak_review, quarantined,
 -- pipeline_rejected) and populates gate_results / source_class.
+--
+-- Postgres quirk: ALTER TYPE ADD VALUE cannot be used in the same transaction
+-- as a query that references the new value (error 55P04 "unsafe use of new
+-- value"). We use a COMMIT to force the enum-altering transaction to flush
+-- before the indexes that reference the new values are created.
+-- supabase db push runs each statement individually, so this is fine; the
+-- COMMIT is mostly a safety net for environments that batch statements.
 
 -- ── Extend candidate_status enum ───────────────────────────────────────────
 ALTER TYPE candidate_status ADD VALUE IF NOT EXISTS 'weak_review';
@@ -26,6 +33,12 @@ ALTER TYPE enrichment_event_type ADD VALUE IF NOT EXISTS 'candidates_reclassifie
 ALTER TABLE phone_candidates
   ADD COLUMN IF NOT EXISTS gate_results jsonb,
   ADD COLUMN IF NOT EXISTS source_class text;
+
+-- Force the new enum values to be committed before any index references them.
+-- Without this, Supabase SQL Editor (and other batch executors) fail with
+-- 55P04 "unsafe use of new value" on the indexes below.
+COMMIT;
+BEGIN;
 
 CREATE INDEX IF NOT EXISTS phone_candidates_source_class_idx ON phone_candidates(source_class);
 
