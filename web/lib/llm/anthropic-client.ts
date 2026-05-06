@@ -190,7 +190,7 @@ interface LogUsageInput {
 async function logUsage(input: LogUsageInput): Promise<string | undefined> {
   try {
     const sb = createSupabaseAdminClient();
-    const { data } = await sb.from("llm_usage_log").insert({
+    const { data, error } = await sb.from("llm_usage_log").insert({
       feature:        input.feature,
       model:          input.model,
       input_tokens:   input.inputTokens,
@@ -204,6 +204,14 @@ async function logUsage(input: LogUsageInput): Promise<string | undefined> {
       candidate_id:   input.candidateId ?? null,
       metadata:       input.metadata ?? null,
     }).select("id").single();
+    if (error) {
+      // 42P01 = table does not exist (migration 0017 pending) — expected before migration.
+      // 42703 = column does not exist. Either way, silently skip — never block the LLM call.
+      if (error.code !== "42P01" && error.code !== "42703") {
+        console.error("[anthropic-client] usage logging failed:", error.message);
+      }
+      return undefined;
+    }
     return (data as { id: string } | null)?.id;
   } catch (err) {
     // Never let logging break the actual call.

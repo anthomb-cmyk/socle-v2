@@ -22,7 +22,7 @@ export default async function CallLeadPage(
   if (!lead) return notFound();
   if (role !== "admin" && lead.assigned_to !== user.id) return notFound();
 
-  const [phonesRes, historyRes, metaRes, briefingRes] = await Promise.all([
+  const [phonesRes, historyRes, metaRes] = await Promise.all([
     sb.from("phones")
       .select("id, e164, display, status, source, confidence")
       .eq("contact_id", lead.contact_id)
@@ -36,16 +36,27 @@ export default async function CallLeadPage(
       .select("twilio_forward_to")
       .eq("user_id", user.id)
       .single(),
-    sb.from("leads")
-      .select("briefing_text, briefing_generated_at")
-      .eq("id", leadId)
-      .single(),
   ]);
 
   const phones  = phonesRes.data ?? [];
   const history = historyRes.data ?? [];
   const userForwardTo: string | null = metaRes.data?.twilio_forward_to?.trim() || null;
-  const briefingRow = briefingRes.data as { briefing_text: string | null; briefing_generated_at: string | null } | null;
+
+  // Briefing columns added by migration 0017 — query separately so a missing
+  // column (42703) never crashes this page before the migration is applied.
+  let briefingRow: { briefing_text: string | null; briefing_generated_at: string | null } | null = null;
+  try {
+    const { data: briefingData, error: briefingErr } = await sb
+      .from("leads")
+      .select("briefing_text, briefing_generated_at")
+      .eq("id", leadId)
+      .single();
+    if (!briefingErr && briefingData) {
+      briefingRow = briefingData as { briefing_text: string | null; briefing_generated_at: string | null };
+    }
+  } catch {
+    // Migration 0017 not yet applied — briefing card shows empty state.
+  }
 
   return (
     <CallerAppShell width="wide">

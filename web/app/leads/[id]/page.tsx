@@ -26,7 +26,7 @@ export default async function LeadDetailPage(
   };
   if (role !== "admin" && lead.assigned_to !== user.id) return notFound();
 
-  const [phones, calls, fups, subs, events, propertyRes, contactRes, leadRow, users, enrichJobs, enrichResults, briefingRes] = await Promise.all([
+  const [phones, calls, fups, subs, events, propertyRes, contactRes, leadRow, users, enrichJobs, enrichResults] = await Promise.all([
     sb.from("phones").select("id, e164, display, status, source, confidence, evidence, source_column, notes")
       .eq("contact_id", lead.contact_id).order("confidence", { ascending: false }),
     sb.from("call_logs").select("id, outcome, notes, recorded_at, duration_sec, user_id")
@@ -45,8 +45,23 @@ export default async function LeadDetailPage(
       .eq("lead_id", id).order("created_at", { ascending: false }).limit(10),
     sb.from("enrichment_results").select("id, kind, value, source, source_url, confidence, evidence, status, created_at, found_in_job_id")
       .eq("lead_id", id).order("created_at", { ascending: false }),
-    sb.from("leads").select("briefing_text, briefing_generated_at").eq("id", id).single(),
   ]);
+
+  // Briefing columns are added by migration 0017. Query separately so a missing
+  // column (42703) or missing table (42P01) never breaks the rest of the page.
+  let briefingRow: { briefing_text: string | null; briefing_generated_at: string | null } | null = null;
+  try {
+    const { data: briefingData, error: briefingErr } = await sb
+      .from("leads")
+      .select("briefing_text, briefing_generated_at")
+      .eq("id", id)
+      .single();
+    if (!briefingErr && briefingData) {
+      briefingRow = briefingData as { briefing_text: string | null; briefing_generated_at: string | null };
+    }
+  } catch {
+    // Migration 0017 not yet applied — degrade gracefully, briefing card shows empty state.
+  }
 
   const phonesList = (phones.data ?? []) as Array<{ id: string; e164: string; display: string | null; status: string; source: string; confidence: number; evidence: string | null; source_column: string | null; notes: string | null }>;
   const callsList = (calls.data ?? []) as Array<{ id: string; outcome: string | null; notes: string | null; recorded_at: string | null; duration_sec: number | null; user_id: string | null }>;
@@ -59,7 +74,6 @@ export default async function LeadDetailPage(
   const leadNotes = (leadRow.data as { notes: string | null } | null)?.notes ?? "";
   const enrichJobsList = (enrichJobs.data ?? []) as Array<{ id: string; job_type: string; status: string; started_at: string | null; completed_at: string | null; error_message: string | null; created_at: string }>;
   const enrichResultsList = (enrichResults.data ?? []) as Array<{ id: string; kind: string; value: string; source: string; source_url: string | null; confidence: number; evidence: string | null; status: string; created_at: string; found_in_job_id: string | null }>;
-  const briefingRow = briefingRes.data as { briefing_text: string | null; briefing_generated_at: string | null } | null;
 
   const assignedUser = usersList.find(u => u.user_id === lead.assigned_to);
 

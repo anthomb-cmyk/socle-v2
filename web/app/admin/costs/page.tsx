@@ -62,13 +62,33 @@ export default async function CostsPage({
   const sb = createSupabaseAdminClient();
 
   // ── Parallel data fetches ─────────────────────────────────────────────────
-  const [topStats, featureRows, modelRows, dailyRows, recentCalls] = await Promise.all([
-    fetchTopStats(sb, { since, feature: featureFilter, model: modelFilter }),
-    fetchFeatureBreakdown(sb, { since, model: modelFilter }),
-    fetchModelBreakdown(sb, { since, feature: featureFilter }),
-    fetchDailyCosts(sb, { since, feature: featureFilter, model: modelFilter }),
-    fetchRecentCalls(sb, { since, feature: featureFilter, model: modelFilter, limit: PAGE_SIZE, offset }),
-  ]);
+  // Wrapped in try/catch: if migration 0017 hasn't been applied yet, the
+  // llm_usage_log table won't exist and Supabase returns a 42P01 error.
+  // In that case we render a migration banner instead of a 500.
+  let migrationPending = false;
+  let topStats: Awaited<ReturnType<typeof fetchTopStats>> = { totalCostUsd: 0, totalCalls: 0, totalTokens: 0, avgLatencyMs: 0 };
+  let featureRows: Awaited<ReturnType<typeof fetchFeatureBreakdown>> = [];
+  let modelRows: Awaited<ReturnType<typeof fetchModelBreakdown>> = [];
+  let dailyRows: Awaited<ReturnType<typeof fetchDailyCosts>> = [];
+  let recentCalls: Awaited<ReturnType<typeof fetchRecentCalls>> = [];
+
+  try {
+    // Quick probe: check if the table exists before running all queries.
+    const { error: probeErr } = await sb.from("llm_usage_log").select("id").limit(1);
+    if (probeErr && (probeErr.code === "42P01" || probeErr.code === "42703")) {
+      migrationPending = true;
+    } else {
+      [topStats, featureRows, modelRows, dailyRows, recentCalls] = await Promise.all([
+        fetchTopStats(sb, { since, feature: featureFilter, model: modelFilter }),
+        fetchFeatureBreakdown(sb, { since, model: modelFilter }),
+        fetchModelBreakdown(sb, { since, feature: featureFilter }),
+        fetchDailyCosts(sb, { since, feature: featureFilter, model: modelFilter }),
+        fetchRecentCalls(sb, { since, feature: featureFilter, model: modelFilter, limit: PAGE_SIZE, offset }),
+      ]);
+    }
+  } catch {
+    migrationPending = true;
+  }
 
   // ── Cost projection ───────────────────────────────────────────────────────
   const days = range === "all"
@@ -93,6 +113,34 @@ export default async function CostsPage({
 
   // ── Bar chart helpers ─────────────────────────────────────────────────────
   const maxDailyCost = dailyRows.reduce((m, r) => Math.max(m, r.totalCostUsd), 0);
+
+  if (migrationPending) {
+    return (
+      <main className="mx-auto max-w-6xl p-6">
+        <header className="crm-page-header mb-6">
+          <h1 className="crm-page-title">Coûts API</h1>
+          <p className="crm-page-sub">Suivi en temps réel des appels Anthropic</p>
+        </header>
+        <div
+          className="crm-card"
+          style={{
+            padding: "20px 24px",
+            borderLeft: "4px solid var(--crm-gold, #C9A84C)",
+            background: "var(--crm-gold-light, #F5EDD6)",
+          }}
+        >
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--crm-text)" }}>
+            Migration 0017 requise
+          </p>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--crm-text2)" }}>
+            Appliquez la migration <code>0017_llm_cost_tracking_and_briefings.sql</code> dans
+            Supabase pour activer le suivi des coûts API. Cette page sera disponible dès que
+            la table <code>llm_usage_log</code> aura été créée.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-6xl p-6">

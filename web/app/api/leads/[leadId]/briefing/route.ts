@@ -31,22 +31,42 @@ export async function POST(
 
   const sb = createSupabaseAdminClient();
 
-  // Check lead exists + fetch cached fields
-  const { data: leadRow, error: leadErr } = await sb
-    .from("leads")
-    .select("id, briefing_text, briefing_generated_at")
-    .eq("id", leadId)
-    .single();
+  // Check lead exists + fetch cached briefing fields.
+  // If migration 0017 hasn't been applied yet, the briefing columns won't exist
+  // (error code 42703). In that case we still confirm the lead exists and
+  // proceed straight to generation (skip cache check).
+  let row: { id: string; briefing_text: string | null; briefing_generated_at: string | null };
 
-  if (leadErr || !leadRow) {
+  try {
+    const { data: leadRow, error: leadErr } = await sb
+      .from("leads")
+      .select("id, briefing_text, briefing_generated_at")
+      .eq("id", leadId)
+      .single();
+
+    if (leadErr) {
+      // 42703 = column does not exist (migration pending) → fall back to id-only check
+      if (leadErr.code === "42703" || leadErr.code === "42P01") {
+        const { data: idRow, error: idErr } = await sb
+          .from("leads")
+          .select("id")
+          .eq("id", leadId)
+          .single();
+        if (idErr || !idRow) {
+          return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
+        }
+        row = { id: (idRow as { id: string }).id, briefing_text: null, briefing_generated_at: null };
+      } else {
+        return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
+      }
+    } else if (!leadRow) {
+      return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
+    } else {
+      row = leadRow as { id: string; briefing_text: string | null; briefing_generated_at: string | null };
+    }
+  } catch {
     return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
   }
-
-  const row = leadRow as {
-    id: string;
-    briefing_text: string | null;
-    briefing_generated_at: string | null;
-  };
 
   // Check cache freshness
   if (!forceRegen && row.briefing_text && row.briefing_generated_at) {
@@ -85,7 +105,10 @@ export async function POST(
     .eq("id", leadId);
 
   if (updateErr) {
-    console.error("[briefing route] update failed:", updateErr.message);
+    // 42703 = column does not exist (migration 0017 pending) — not an app error.
+    if (updateErr.code !== "42703" && updateErr.code !== "42P01") {
+      console.error("[briefing route] update failed:", updateErr.message);
+    }
     // Return the text anyway — generation succeeded even if persistence failed
     return NextResponse.json({
       ok: true,
