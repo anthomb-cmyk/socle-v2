@@ -71,9 +71,12 @@ export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOption
       }
 
       // Determine quality.
-      if (parsed.civicNumber && parsed.streetName && parsed.city && parsed.postal) {
+      // Accept either a single civicNumber ("3720") or a civicRange ("200-298").
+      // Quebec rôle uses ranges for multi-unit buildings — these ARE valid civics.
+      const hasCivic = !!(parsed.civicNumber || parsed.civicRange);
+      if (hasCivic && parsed.streetName && parsed.city && parsed.postal) {
         mailQuality = "complete";
-      } else if (!parsed.civicNumber) {
+      } else if (!hasCivic) {
         mailQuality = "missing_civic";
       } else if (!parsed.streetName) {
         mailQuality = "missing_street";

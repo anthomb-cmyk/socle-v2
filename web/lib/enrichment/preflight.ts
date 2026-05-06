@@ -25,7 +25,9 @@ export function runPreflight(ctx: LeadContext): PreflightResult {
 
   const parsed = parseQuebecAddress(ctx.mailingAddress);
 
-  if (!parsed.civicNumber) failures.push("missing_civic_number");
+  // Accept either a single civicNumber ("3720") or a civicRange ("200-298").
+  // Quebec rôle uses ranges for multi-unit buildings — they ARE valid civics.
+  if (!parsed.civicNumber && !parsed.civicRange) failures.push("missing_civic_number");
   if (!parsed.streetName)  failures.push("missing_street_name");
   if (!parsed.city)        failures.push("missing_city");
   if (!parsed.postal)      failures.push("missing_postal_code");

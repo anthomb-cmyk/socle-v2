@@ -81,11 +81,68 @@ export default function ImportPage() {
   // Banner data when import is done
   const [importDoneCounts, setImportDoneCounts] = useState<ImportDoneCounts | null>(null);
 
+  // Pending-preview detection: a previously uploaded file that was never
+  // confirmed (e.g. user refreshed before clicking Confirmer). On mount we
+  // check the server for any preview belonging to the current user.
+  const [pendingPreview, setPendingPreview] = useState<
+    { jobId: string; fileName: string; totalRows: number; createdAt: string } | null
+  >(null);
+  const [discarding, setDiscarding] = useState(false);
+
   useEffect(() => {
     fetch("/api/users").then(r => r.json()).then(j => {
       if (j.ok) setUsers(j.data.filter((u: User) => u.role === "caller" || u.role === "cold_caller"));
     });
+    // Check for an unfinished preview from a previous session.
+    fetch("/api/import/pending").then(r => r.json()).then(j => {
+      if (j.ok && j.data) {
+        setPendingPreview({
+          jobId:     j.data.jobId,
+          fileName:  j.data.fileName ?? "(fichier inconnu)",
+          totalRows: j.data.totalRows ?? 0,
+          createdAt: j.data.createdAt,
+        });
+      }
+    }).catch(() => { /* non-fatal */ });
   }, []);
+
+  /** Restore a previously-uploaded preview into the page state. */
+  async function resumePending() {
+    if (!pendingPreview) return;
+    setError(null);
+    const resp = await fetch("/api/import/pending");
+    const json = await resp.json();
+    if (!json.ok || !json.data) {
+      setPendingPreview(null);
+      setError("Impossible de récupérer la prévisualisation en attente.");
+      return;
+    }
+    const d = json.data;
+    setPreview({
+      jobId:        d.jobId,
+      campaignId:   d.campaignId ?? null,
+      format:       d.format,
+      totalRows:    d.totalRows,
+      summary:      d.summary,
+      previewRows:  d.previewRows,
+      errorsCount:  d.errorsCount,
+      dedupe:       d.dedupe ?? undefined,
+      warnings:     d.warnings ?? [],
+    });
+    setPendingPreview(null);
+  }
+
+  /** Cancel a pending preview so it stops surfacing on next load. */
+  async function discardPending() {
+    if (!pendingPreview || discarding) return;
+    setDiscarding(true);
+    try {
+      await fetch(`/api/import/${pendingPreview.jobId}/discard`, { method: "POST" });
+    } finally {
+      setDiscarding(false);
+      setPendingPreview(null);
+    }
+  }
 
   // Stop polling helper
   function stopPolling() {
@@ -300,6 +357,48 @@ export default function ImportPage() {
           Importez un fichier XLSX du rôle d&rsquo;évaluation du Québec. Prévisualisez d&rsquo;abord, puis confirmez pour écrire en base.
         </p>
       </div>
+
+      {/* ─── Pending-preview recovery banner ─── */}
+      {pendingPreview && !preview && !result && !confirming && (
+        <div
+          className="crm-card"
+          style={{
+            padding: "16px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            background: "var(--crm-amber-light, #FEF9EC)",
+            borderColor: "var(--crm-amber)",
+          }}
+        >
+          <div style={{ fontSize: 13, color: "var(--crm-text2)" }}>
+            <strong style={{ color: "var(--crm-text)" }}>Prévisualisation en attente :</strong>{" "}
+            {pendingPreview.fileName} ({pendingPreview.totalRows} lignes) — uploadée le{" "}
+            {new Date(pendingPreview.createdAt).toLocaleString("fr-CA")}.
+            <br />
+            Voulez-vous reprendre où vous en étiez, ou commencer un nouvel import ?
+          </div>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={resumePending}
+              className="crm-btn crm-btn-gold"
+            >
+              Reprendre
+            </button>
+            <button
+              type="button"
+              onClick={discardPending}
+              disabled={discarding}
+              className="crm-btn"
+              style={{ opacity: discarding ? 0.5 : 1 }}
+            >
+              {discarding ? "..." : "Annuler"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Upload form ─── */}
       {!result && !confirming && (
