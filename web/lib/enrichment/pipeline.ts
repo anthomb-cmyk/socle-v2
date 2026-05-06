@@ -32,6 +32,7 @@ import { requestOpenclawDeepSearch } from "./openclaw-validate";
 import { runPreflight } from "./preflight";
 import { suggestAlternateQueries } from "@/lib/llm/query-rewriter";
 import { enqueue } from "@/lib/queue/enqueue";
+import { tryExistingPhoneShortCircuit, tryCrossContactPortfolioMatch } from "./portfolio-shortcircuit";
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -221,6 +222,78 @@ export async function runEnrichmentPipeline(
     has_company:       !!ctx.companyName,
     has_director:      !!ctx.fullName,
   });
+
+  // ── Stage 0 — Same-contact existing-phone gate ─────────────────────────
+  // If the current contact already has any phone row, skip enrichment entirely.
+  const existingPhone = await tryExistingPhoneShortCircuit(sb, ctx);
+  if (existingPhone.hit) {
+    await logEvent(sb, ctx.leadId, "existing_phone_found", null, {
+      phone_e164:  existingPhone.phoneE164 ?? null,
+      source:      existingPhone.source ?? null,
+      status:      existingPhone.status ?? null,
+      confidence:  existingPhone.confidence ?? null,
+    });
+    await setLeadStatus(sb, ctx.leadId, "ready_to_call");
+    await enqueue(sb, ctx.leadId, "briefing", 3);
+    await enqueue(sb, ctx.leadId, "fit_score", 3);
+    return { outcome: "solved", stageReached: "none", candidateIds: [], openclawDispatched: false };
+  }
+
+  // ── Stage 0.5 — Cross-contact portfolio match ───────────────────────────
+  // Look for another contact representing the same owner (same normalized name +
+  // same postal FSA) that already has a trusted phone (caller_verified or valid).
+  const portfolioMatch = await tryCrossContactPortfolioMatch(sb, ctx);
+
+  if (portfolioMatch.ambiguous && portfolioMatch.candidateContactIds) {
+    // Two or more qualifying contacts — log for audit and fall through to Brave.
+    await logEvent(sb, ctx.leadId, "portfolio_match_ambiguous", null, {
+      candidate_contact_ids: portfolioMatch.candidateContactIds,
+      fsa: portfolioMatch.fsa ?? null,
+    });
+    // Fall through — do not short-circuit
+  } else if (portfolioMatch.hit && portfolioMatch.matchedContactId && portfolioMatch.matchedPhoneId && portfolioMatch.phoneE164) {
+    // One unambiguous match — insert a phone row for the current contact and short-circuit.
+    const { matchedContactId, matchedPhoneId, phoneE164, fsa, matchField } = portfolioMatch;
+
+    // Determine matched contact's display name for evidence string
+    const { data: matchedContactRow } = await sb
+      .from("contacts")
+      .select("full_name, company_name")
+      .eq("id", matchedContactId)
+      .single();
+    const matchedFullName =
+      (matchedContactRow as { full_name: string | null; company_name: string | null } | null)
+        ?.full_name ??
+      (matchedContactRow as { full_name: string | null; company_name: string | null } | null)
+        ?.company_name ??
+      matchedContactId;
+
+    await sb.from("phones").upsert(
+      {
+        contact_id: ctx.contactId,
+        e164:       phoneE164,
+        display:    phoneE164,
+        source:     "enrichment_other",
+        status:     "unverified",
+        confidence: 75,
+        evidence:   `portfolio match: same owner ${matchedFullName} at FSA ${fsa}`,
+        notes:      `stage=portfolio_short_circuit matched_contact_id=${matchedContactId} matched_phone_id=${matchedPhoneId}`,
+      },
+      { onConflict: "contact_id,e164", ignoreDuplicates: true },
+    );
+
+    await logEvent(sb, ctx.leadId, "portfolio_short_circuit_hit", null, {
+      matched_contact_id: matchedContactId,
+      matched_phone_id:   matchedPhoneId,
+      phone_e164:         phoneE164,
+      fsa:                fsa ?? null,
+      match_field:        matchField ?? null,
+    });
+    await setLeadStatus(sb, ctx.leadId, "ready_to_call");
+    await enqueue(sb, ctx.leadId, "briefing", 3);
+    await enqueue(sb, ctx.leadId, "fit_score", 3);
+    return { outcome: "solved", stageReached: "none", candidateIds: [], openclawDispatched: false };
+  }
 
   // ── Layer A — Pre-flight ────────────────────────────────────────────────
   const preflight = runPreflight(ctx);

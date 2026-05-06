@@ -104,7 +104,10 @@ export type EnrichmentEventType =
   | "phone_extraction_rejected"    // phone-shape rejection (NEQ, fax, area code)
   | "haiku_validation_started"
   | "haiku_validation_complete"
-  | "candidates_reclassified";     // one-time backfill
+  | "candidates_reclassified"      // one-time backfill
+  // ── Stage 0 short-circuit events ──────────────────────────────────────
+  | "portfolio_short_circuit_hit"  // cross-contact portfolio match resolved the lead
+  | "portfolio_match_ambiguous";   // 2+ qualifying contacts matched — fell through to Brave
 
 // ── Lead context fed to each stage ───────────────────────────────────────────
 
