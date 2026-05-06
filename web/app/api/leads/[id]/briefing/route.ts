@@ -1,4 +1,4 @@
-// POST /api/leads/[leadId]/briefing
+// POST /api/leads/[id]/briefing
 //
 // Generates or returns the cached AI briefing for a lead.
 // Admin-only. Body: { regenerate?: boolean }
@@ -14,12 +14,12 @@ const CACHE_HOURS = 24;
 
 export async function POST(
   request: Request,
-  ctx: { params: Promise<{ leadId: string }> },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
-  const { leadId } = await ctx.params;
+  const { id } = await ctx.params;
 
   let body: { regenerate?: boolean } = {};
   try {
@@ -41,7 +41,7 @@ export async function POST(
     const { data: leadRow, error: leadErr } = await sb
       .from("leads")
       .select("id, briefing_text, briefing_generated_at")
-      .eq("id", leadId)
+      .eq("id", id)
       .single();
 
     if (leadErr) {
@@ -50,7 +50,7 @@ export async function POST(
         const { data: idRow, error: idErr } = await sb
           .from("leads")
           .select("id")
-          .eq("id", leadId)
+          .eq("id", id)
           .single();
         if (idErr || !idRow) {
           return NextResponse.json({ ok: false, error: "Lead not found" }, { status: 404 });
@@ -86,7 +86,7 @@ export async function POST(
   }
 
   // Generate (or regenerate)
-  const briefing = await generateBriefing(leadId, sb);
+  const briefing = await generateBriefing(id, sb);
   if (!briefing) {
     return NextResponse.json(
       { ok: false, error: "Briefing generation failed. Check ANTHROPIC_API_KEY and Supabase connectivity." },
@@ -102,7 +102,7 @@ export async function POST(
       briefing_generated_at: now,
       briefing_metadata:     briefing.metadata,
     })
-    .eq("id", leadId);
+    .eq("id", id);
 
   if (updateErr) {
     // 42703 = column does not exist (migration 0017 pending) — not an app error.
