@@ -35,6 +35,7 @@ export async function middleware(request: NextRequest) {
     || request.nextUrl.pathname.startsWith("/api/n8n")          // machine-to-machine; uses Bearer token auth
     || request.nextUrl.pathname === "/api/enrichment/openclaw-callback" // n8n callback; uses N8N_SHARED_KEY Bearer auth
     || request.nextUrl.pathname === "/api/enrichment/run"        // n8n runner; uses N8N_SHARED_KEY Bearer auth
+    || request.nextUrl.pathname === "/api/cron/process-queue"    // Railway cron; uses CRON_SECRET Bearer auth
     || request.nextUrl.pathname.startsWith("/api/twilio/voice/"); // Twilio webhooks — called by Twilio servers, no session cookie
 
   if (isProtected && !user && !isAuthRoute) {
