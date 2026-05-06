@@ -12,6 +12,7 @@
 
 import type { ParsedRow, ParsedOwner, ParsedProperty, ContactKind } from "./types.ts";
 import { extractPhonesFromValue } from "./phone-utils.ts";
+import { llmClassifyOwnerKind } from "@/lib/llm/owner-kind-fallback";
 
 function getCol(row: Record<string, unknown>, ...patterns: RegExp[]): string {
   for (const key of Object.keys(row)) {
@@ -42,6 +43,19 @@ function classifyOwner(name: string): ContactKind {
   if (/[a-zA-ZÀ-ÿ]+,\s*[a-zA-ZÀ-ÿ]+/.test(name)) return "person";
   if (/[a-zA-ZÀ-ÿ]+\s+[a-zA-ZÀ-ÿ]+/.test(name)) return "person";
   return "unknown";
+}
+
+/** Classify an owner name; if the regex returns "unknown" and llmFallback is
+ *  enabled, call Haiku as a best-effort fallback.
+ *  Returns "unknown" when both regex and LLM cannot determine the kind. */
+export async function classifyOwnerWithFallback(
+  name: string,
+  opts: { llmFallback?: boolean; leadId?: string } = {},
+): Promise<ContactKind> {
+  const kind = classifyOwner(name);
+  if (kind !== "unknown" || opts.llmFallback === false) return kind;
+  const llmKind = await llmClassifyOwnerKind(name, { leadId: opts.leadId });
+  return llmKind ?? "unknown";
 }
 
 function titleCase(s: string): string {

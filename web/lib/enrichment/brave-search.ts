@@ -76,7 +76,16 @@ export async function runCompanySearch(ctx: LeadContext, parsed: ParsedAddress, 
 
 // ── Shared runner ────────────────────────────────────────────────────────────
 
-async function runQueries(
+/**
+ * Run a list of pre-built queries through the Brave search pipeline and
+ * evaluate the results. Exported so Stage 2.5 (query rewriter) can feed
+ * LLM-generated queries without re-deriving them from ctx.
+ *
+ * @param stage - The pipeline stage label to attach to each candidate.
+ *   Pass "address_search" for rewritten queries so they get the same
+ *   source-class treatment as address queries.
+ */
+export async function runQueries(
   ctx: LeadContext,
   parsed: ParsedAddress,
   queries: BuiltQuery[],

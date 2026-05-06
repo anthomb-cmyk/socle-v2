@@ -4,18 +4,13 @@
 // the phone belongs to the lead's owner. Adds the cheap-but-strong final
 // signal that catches subtle mismatches the deterministic gates miss.
 //
-// Cost: ~$0.001 per candidate. Cached by (snippet hash + lead id).
-// Failure mode: if ANTHROPIC_API_KEY is not set, this is a no-op that
-// returns null, and the gate engine treats G6 as "not invoked" (passes).
-//
-// Uses fetch() against the public Anthropic Messages API. We avoid adding the
-// SDK to package.json; the call shape is stable.
+// All calls go through lib/llm/anthropic-client.ts so cost is logged into
+// llm_usage_log automatically. Failure mode: if ANTHROPIC_API_KEY is not set,
+// the client returns ok:false and we return null, letting the gate engine
+// treat G6 as "not invoked" (passes).
 
 import type { LeadContext, ParsedAddress } from "./types";
-
-const HAIKU_MODEL = "claude-haiku-4-5";  // latest small model
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MAX_TOKENS = 400;
+import { callAnthropic, parseFirstJson } from "@/lib/llm/anthropic-client";
 
 export interface HaikuVerdict {
   isOwnersPhone: boolean;
@@ -34,11 +29,8 @@ export interface HaikuInput {
   snippet: string;
 }
 
-/** Returns null if the API key is not configured (graceful degradation). */
+/** Returns null if the API key is not configured or the call fails. */
 export async function validateWithHaiku(input: HaikuInput): Promise<HaikuVerdict | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-
   const ownerName = input.ctx.fullName ?? input.ctx.companyName ?? "(unknown)";
   const company = input.ctx.companyName ?? "(none)";
   const mailingAddr = input.parsedAddress.civicNumber && input.parsedAddress.streetName
@@ -71,45 +63,21 @@ Be strict. Reject if:
 Respond with EXACTLY this JSON, no prose:
 {"is_owners_phone": <bool>, "confidence": <0-100 integer>, "name_in_source": <bool>, "address_in_source": <bool>, "reasoning": "<one sentence>"}`;
 
-  const body = {
-    model: HAIKU_MODEL,
-    max_tokens: MAX_TOKENS,
-    messages: [{ role: "user", content: prompt }],
-  };
+  const result = await callAnthropic({
+    feature: "g6_haiku_validation",
+    model: "claude-haiku-4-5",
+    maxTokens: 400,
+    prompt,
+    leadId: input.ctx.leadId,
+    metadata: { phone: input.phone, url: input.url },
+  });
+  if (!result.ok || !result.text) return null;
 
-  let res: Response;
-  try {
-    res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    console.error("[haiku-validator] fetch failed:", err);
-    return null;
-  }
-  if (!res.ok) {
-    console.error("[haiku-validator] non-200:", res.status, await res.text().catch(() => ""));
-    return null;
-  }
-
-  let data: { content?: Array<{ type: string; text?: string }> };
-  try { data = await res.json(); }
-  catch { return null; }
-
-  const text = (data.content ?? []).map(c => c.text ?? "").join("").trim();
-  if (!text) return null;
-
-  // Pull the first JSON object out of the response (Haiku usually emits it directly).
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  let parsed: { is_owners_phone?: boolean; confidence?: number; reasoning?: string; name_in_source?: boolean; address_in_source?: boolean };
-  try { parsed = JSON.parse(jsonMatch[0]); }
-  catch { return null; }
+  const parsed = parseFirstJson<{
+    is_owners_phone?: boolean; confidence?: number; reasoning?: string;
+    name_in_source?: boolean; address_in_source?: boolean;
+  }>(result.text);
+  if (!parsed) return null;
 
   return {
     isOwnersPhone: !!parsed.is_owners_phone,

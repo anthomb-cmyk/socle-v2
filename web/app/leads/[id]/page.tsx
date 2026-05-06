@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import LeadDossierClient from "./LeadDossierClient";
+import LeadBriefingCard from "@/components/lead-briefing-card";
 
 export default async function LeadDetailPage(
   { params }: { params: Promise<{ id: string }> }
@@ -25,7 +26,7 @@ export default async function LeadDetailPage(
   };
   if (role !== "admin" && lead.assigned_to !== user.id) return notFound();
 
-  const [phones, calls, fups, subs, events, propertyRes, contactRes, leadRow, users, enrichJobs, enrichResults] = await Promise.all([
+  const [phones, calls, fups, subs, events, propertyRes, contactRes, leadRow, users, enrichJobs, enrichResults, briefingRes] = await Promise.all([
     sb.from("phones").select("id, e164, display, status, source, confidence, evidence, source_column, notes")
       .eq("contact_id", lead.contact_id).order("confidence", { ascending: false }),
     sb.from("call_logs").select("id, outcome, notes, recorded_at, duration_sec, user_id")
@@ -44,6 +45,7 @@ export default async function LeadDetailPage(
       .eq("lead_id", id).order("created_at", { ascending: false }).limit(10),
     sb.from("enrichment_results").select("id, kind, value, source, source_url, confidence, evidence, status, created_at, found_in_job_id")
       .eq("lead_id", id).order("created_at", { ascending: false }),
+    sb.from("leads").select("briefing_text, briefing_generated_at").eq("id", id).single(),
   ]);
 
   const phonesList = (phones.data ?? []) as Array<{ id: string; e164: string; display: string | null; status: string; source: string; confidence: number; evidence: string | null; source_column: string | null; notes: string | null }>;
@@ -57,6 +59,7 @@ export default async function LeadDetailPage(
   const leadNotes = (leadRow.data as { notes: string | null } | null)?.notes ?? "";
   const enrichJobsList = (enrichJobs.data ?? []) as Array<{ id: string; job_type: string; status: string; started_at: string | null; completed_at: string | null; error_message: string | null; created_at: string }>;
   const enrichResultsList = (enrichResults.data ?? []) as Array<{ id: string; kind: string; value: string; source: string; source_url: string | null; confidence: number; evidence: string | null; status: string; created_at: string; found_in_job_id: string | null }>;
+  const briefingRow = briefingRes.data as { briefing_text: string | null; briefing_generated_at: string | null } | null;
 
   const assignedUser = usersList.find(u => u.user_id === lead.assigned_to);
 
@@ -66,6 +69,12 @@ export default async function LeadDetailPage(
         <Link href="/leads" className="text-sm text-zinc-500 hover:underline">← Back to leads</Link>
         <Link href={`/calls/${id}` as never} className="text-sm bg-zinc-900 text-white rounded-lg px-3 py-1.5">Open in caller workspace →</Link>
       </div>
+
+      <LeadBriefingCard
+        leadId={id}
+        initialText={briefingRow?.briefing_text ?? null}
+        initialGeneratedAt={briefingRow?.briefing_generated_at ?? null}
+      />
 
       <header>
         <h1 className="text-2xl font-semibold">{lead.full_name ?? lead.company_name ?? "—"}</h1>

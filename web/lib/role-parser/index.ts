@@ -70,7 +70,7 @@ function parseSheet(
   return { rows, format, headers };
 }
 
-export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer, options: ParseRoleFileOptions = {}): ParseResult {
+export async function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer, options: ParseRoleFileOptions = {}): Promise<ParseResult> {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
 
   if (workbook.SheetNames.length === 0) {
@@ -137,7 +137,7 @@ export function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer, options
   // v3: run the import-time validator to populate structured mailing fields,
   // detect inverted prénom/nom, and produce per-row audit reports.
   const hardBlock = options.hardBlockUnparseableMailing ?? true;
-  const { audits } = validateAllRows(allRows, { hardBlockUnparseableMailing: hardBlock });
+  const { audits } = await validateAllRows(allRows, { hardBlockUnparseableMailing: hardBlock });
 
   // Roll up audit warnings/blockings into the parser-level errors stream so
   // the preview UI shows them alongside other errors.

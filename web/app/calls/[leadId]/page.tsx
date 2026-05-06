@@ -4,6 +4,7 @@ import CallerAppShell from "@/components/caller/CallerAppShell";
 import CallWorkspace from "./CallWorkspace";
 import CallHistoryPanel from "./CallHistoryPanel";
 import CallPageTabs from "./CallPageTabs";
+import LeadBriefingCard from "@/components/lead-briefing-card";
 
 export default async function CallLeadPage(
   { params }: { params: Promise<{ leadId: string }> }
@@ -21,7 +22,7 @@ export default async function CallLeadPage(
   if (!lead) return notFound();
   if (role !== "admin" && lead.assigned_to !== user.id) return notFound();
 
-  const [phonesRes, historyRes, metaRes] = await Promise.all([
+  const [phonesRes, historyRes, metaRes, briefingRes] = await Promise.all([
     sb.from("phones")
       .select("id, e164, display, status, source, confidence")
       .eq("contact_id", lead.contact_id)
@@ -35,14 +36,26 @@ export default async function CallLeadPage(
       .select("twilio_forward_to")
       .eq("user_id", user.id)
       .single(),
+    sb.from("leads")
+      .select("briefing_text, briefing_generated_at")
+      .eq("id", leadId)
+      .single(),
   ]);
 
   const phones  = phonesRes.data ?? [];
   const history = historyRes.data ?? [];
   const userForwardTo: string | null = metaRes.data?.twilio_forward_to?.trim() || null;
+  const briefingRow = briefingRes.data as { briefing_text: string | null; briefing_generated_at: string | null } | null;
 
   return (
     <CallerAppShell width="wide">
+      <div style={{ padding: "0 0 0 0" }}>
+        <LeadBriefingCard
+          leadId={leadId}
+          initialText={briefingRow?.briefing_text ?? null}
+          initialGeneratedAt={briefingRow?.briefing_generated_at ?? null}
+        />
+      </div>
       <CallPageTabs historyCount={history.length}>
         <CallWorkspace
           leadId={leadId}

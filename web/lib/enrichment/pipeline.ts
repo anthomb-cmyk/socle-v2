@@ -5,6 +5,7 @@
 //   A. Pre-flight              — parse mailing address; reject if incomplete
 //   1. Address search          — Brave queries built from parsed mailing address
 //   2. Company/person search   — only if Stage 1 produced no reviewable candidate
+//   2.5 Query rewriter         — LLM-suggested alternate queries (no-op if no API key)
 //   3. OpenClaw fallback       — async deep search (n8n)
 //
 // Disposition semantics (per candidate):
@@ -25,9 +26,12 @@ import type {
   GateReport,
   SourceClassification,
 } from "./types";
-import { runAddressSearch, runCompanySearch, type EvaluatedStageResult } from "./brave-search";
+import { runAddressSearch, runCompanySearch, runQueries, type EvaluatedStageResult } from "./brave-search";
+import type { BuiltQuery } from "./query-builder";
 import { requestOpenclawDeepSearch } from "./openclaw-validate";
 import { runPreflight } from "./preflight";
+import { generateBriefing } from "@/lib/llm/briefing";
+import { suggestAlternateQueries } from "@/lib/llm/query-rewriter";
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -155,6 +159,22 @@ async function autoAttachPhone(sb: SupabaseClient, ctx: LeadContext, c: Evaluate
     notes:       `stage=${c.stage} matched_on=${c.matchedOn} candidate=${candidateId} score=${c.report.score}`,
   }, { onConflict: "contact_id,e164", ignoreDuplicates: true });
   await setLeadStatus(sb, ctx.leadId, "ready_to_call");
+
+  // Fire-and-forget briefing generation — do not await, caller should not wait.
+  void (async () => {
+    try {
+      const briefing = await generateBriefing(ctx.leadId, sb);
+      if (briefing) {
+        await sb.from("leads").update({
+          briefing_text:         briefing.text,
+          briefing_generated_at: new Date().toISOString(),
+          briefing_metadata:     briefing.metadata,
+        }).eq("id", ctx.leadId);
+      }
+    } catch (err) {
+      console.error("[pipeline] briefing generation failed:", err);
+    }
+  })();
 }
 
 // ── Routing decision per stage ──────────────────────────────────────────────
@@ -301,11 +321,68 @@ export async function runEnrichmentPipeline(
 
   await setLeadStatus(sb, ctx.leadId, "unresolved_after_company");
 
+  // ── Stage 2.5 — LLM query rewriter ─────────────────────────────────────
+  // Only runs when ANTHROPIC_API_KEY is set. No-op otherwise.
+  if (process.env.ANTHROPIC_API_KEY) {
+    const priorQueries = [
+      ...(addressResult?.queries ?? []),
+      ...(companyResult?.queries ?? []),
+    ].map(q => q.query);
+
+    const rewrittenQueries = await suggestAlternateQueries(ctx, parsed, priorQueries).catch(err => {
+      console.error("[pipeline] stage 2.5 query rewriter error:", err);
+      return [] as BuiltQuery[];
+    });
+
+    if (rewrittenQueries.length > 0) {
+      await logEvent(sb, ctx.leadId, "query_built", "address_search", {
+        stage_label: "stage_2_5_query_rewriter",
+        rewritten_count: rewrittenQueries.length,
+        queries: rewrittenQueries.map(q => ({ variant: q.variant, query: q.query })),
+      });
+
+      const rewrittenResult = await runQueries(ctx, parsed, rewrittenQueries, "address_search").catch(err => {
+        console.error("[pipeline] stage 2.5 brave search error:", err);
+        return null;
+      });
+
+      if (rewrittenResult) {
+        for (const q of rewrittenResult.queries) {
+          await logEvent(sb, ctx.leadId, "query_built", "address_search", {
+            variant: q.variant, query: q.query, inputs: q.inputs, stage_label: "stage_2_5",
+          });
+        }
+        for (const cls of rewrittenResult.classifications) {
+          await logEvent(sb, ctx.leadId, "source_classified", "address_search", {
+            host: cls.host, source_class: cls.sourceClass, reason: cls.reason,
+            confidence: cls.confidence, stage_label: "stage_2_5",
+          });
+        }
+        await logEvent(sb, ctx.leadId, "address_search_complete", "address_search", {
+          stage_label:       "stage_2_5_query_rewriter",
+          total_results:     rewrittenResult.totalResults,
+          candidates:        rewrittenResult.candidates.length,
+          auto:              rewrittenResult.candidates.filter(c => c.report.disposition === "auto_attached").length,
+          review:            rewrittenResult.candidates.filter(c => c.report.disposition === "needs_anthony_review").length,
+          weak:              rewrittenResult.candidates.filter(c => c.report.disposition === "weak_review").length,
+          quarantined:       rewrittenResult.candidates.filter(c => c.report.disposition === "quarantined").length,
+          pipeline_rejected: rewrittenResult.candidates.filter(c => c.report.disposition === "pipeline_rejected").length,
+        });
+
+        const { outcome, candidateIds } = await routeStageResult(sb, ctx, rewrittenResult);
+        allCandidateIds.push(...candidateIds);
+        if (outcome === "solved" || outcome === "review") {
+          return { outcome, stageReached: "address_search", candidateIds: allCandidateIds, openclawDispatched: false };
+        }
+      }
+    }
+  }
+
   // ── Stage 3 — OpenClaw automated browser research ──────────────────────
   await setLeadStatus(sb, ctx.leadId, "openclaw_researching");
   await logEvent(sb, ctx.leadId, "openclaw_dispatched", "openclaw", {
     prior_candidate_ids: allCandidateIds,
-    stages_tried:        ["address_search", "company_search"],
+    stages_tried:        ["address_search", "company_search", "stage_2_5_query_rewriter"],
   });
 
   const { dispatched, reason } = await requestOpenclawDeepSearch(ctx, allCandidateIds);

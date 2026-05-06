@@ -113,6 +113,10 @@ describe("given-names list", () => {
 });
 
 // ── Import-validator integration ─────────────────────────────────────────────
+// llmFallback is disabled in tests to avoid network calls.
+
+const NO_LLM = { hardBlockUnparseableMailing: true, llmFallback: false };
+const NO_LLM_SOFT = { hardBlockUnparseableMailing: false, llmFallback: false };
 
 describe("import-validator — mailing-address quality", () => {
   function makeRow(mailingAddress: string, mailingCity?: string | null): ParsedRow {
@@ -133,25 +137,25 @@ describe("import-validator — mailing-address quality", () => {
     };
   }
 
-  it("complete address gets quality=complete", () => {
+  it("complete address gets quality=complete", async () => {
     const row = makeRow("3720 Avenue Kent, Montréal QC H3S 1N3", "Montréal");
-    const audit = validateAndEnrichRow(row);
+    const audit = await validateAndEnrichRow(row, NO_LLM);
     expect(row.owners[0].mailing_parse_quality).toBe("complete");
     expect(row.owners[0].mailing_civic).toBe("3720");
     expect(row.owners[0].mailing_postal).toBe("H3S 1N3");
     expect(audit.blocking).toHaveLength(0);
   });
 
-  it("missing-street address blocks the row", () => {
+  it("missing-street address blocks the row", async () => {
     const row = makeRow("BROMONT QC J2L 2X5", "Bromont");
-    const audit = validateAndEnrichRow(row);
+    const audit = await validateAndEnrichRow(row, NO_LLM);
     expect(row.owners[0].mailing_parse_quality).not.toBe("complete");
     expect(audit.blocking.length).toBeGreaterThan(0);
   });
 
-  it("incoherent city is flagged but not blocked", () => {
+  it("incoherent city is flagged but not blocked", async () => {
     const row = makeRow("3720 Avenue Kent, Montréal QC H3S 1N3", "Granby");
-    const audit = validateAndEnrichRow(row);
+    const audit = await validateAndEnrichRow(row, NO_LLM_SOFT);
     expect(row.owners[0].mailing_parse_quality).toBe("incoherent_city");
     expect(audit.warnings.some(w => w.includes("disagrees"))).toBe(true);
     expect(audit.blocking).toHaveLength(0);
@@ -159,7 +163,7 @@ describe("import-validator — mailing-address quality", () => {
 });
 
 describe("import-validator — name inversion correction", () => {
-  it("corrects an inverted prénom/nom", () => {
+  it("corrects an inverted prénom/nom", async () => {
     const row: ParsedRow = {
       row_number: 1,
       property: { address: "1 rue Test", city: "Granby", raw_role_row: {} },
@@ -174,14 +178,14 @@ describe("import-validator — name inversion correction", () => {
       }],
       errors: [],
     };
-    validateAndEnrichRow(row);
+    await validateAndEnrichRow(row, NO_LLM);
     expect(row.owners[0].first_name).toBe("Richard");
     expect(row.owners[0].last_name).toBe("Lapointe");
     expect(row.owners[0].name_was_inverted).toBe(true);
     expect(row.owners[0].name_parse_quality).toBe("inverted_corrected");
   });
 
-  it("moves middle names from prénom to nom", () => {
+  it("moves middle names from prénom to nom", async () => {
     const row: ParsedRow = {
       row_number: 1,
       property: { address: "1 rue Test", city: "Granby", raw_role_row: {} },
@@ -196,7 +200,7 @@ describe("import-validator — name inversion correction", () => {
       }],
       errors: [],
     };
-    validateAndEnrichRow(row);
+    await validateAndEnrichRow(row, NO_LLM);
     expect(row.owners[0].first_name).toBe("Marius");
     expect(row.owners[0].last_name).toBe("Ioan Boitiu");
     expect(row.owners[0].middle_names).toEqual(["Ioan"]);

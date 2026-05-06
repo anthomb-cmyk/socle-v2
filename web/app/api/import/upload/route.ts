@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { parseRoleFile, type RoleFormat } from "@/lib/role-parser";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { llmSuggestFormat } from "@/lib/llm/format-detection";
 
 const VALID_FORMATS = new Set<RoleFormat>(["role_a", "role_b", "role_c", "role_d"]);
 
@@ -33,18 +34,26 @@ export async function POST(request: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   let parse;
   try {
-    parse = parseRoleFile(buffer, { formatOverride });
+    parse = await parseRoleFile(buffer, { formatOverride });
   } catch (err) {
     return NextResponse.json({ ok: false, error: `Parse failed: ${(err as Error).message}` }, { status: 400 });
   }
 
   // v3: refuse to proceed when format is unknown and the user hasn't picked one.
+  // As a best-effort UX improvement, try to suggest a format via Haiku so the
+  // UI can prompt the user with a pre-filled suggestion instead of just blocking.
   if (parse.format === "unknown" && !formatOverride) {
+    const firstRows = parse.rows.slice(0, 3).map(r => r.property.raw_role_row);
+    const suggestion = await llmSuggestFormat(parse.detected_columns, firstRows).catch(() => null);
     return NextResponse.json({
       ok: false,
       error: "format_unknown",
       detail: "Could not auto-detect the rôle format. Please re-upload and pick a format manually.",
-      data: { detectedColumns: parse.detected_columns, errors: parse.errors },
+      data: {
+        detectedColumns: parse.detected_columns,
+        errors: parse.errors,
+        ...(suggestion ? { suggestion } : {}),
+      },
     }, { status: 400 });
   }
 

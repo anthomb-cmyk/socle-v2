@@ -36,6 +36,7 @@ const PRIMARY_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users",   label: "Utilisateurs",       icon: "users"      },
   { href: "/admin/events",  label: "Journal événements", icon: "events"     },
+  { href: "/admin/costs",   label: "Coûts API",          icon: "costs"      },
   { href: "/data-health",   label: "Santé données",      icon: "health"     },
   { href: "/properties",    label: "Propriétés",         icon: "properties" },
   { href: "/contacts",      label: "Contacts",           icon: "contacts"   },
@@ -391,6 +392,7 @@ function NavIcon({ name, small }: { name: string; small?: boolean }) {
     map:         "M9 20.42l-5.95-5.95a7 7 0 1112.04-4.95A7 7 0 019 20.42zM9 13a2 2 0 100-4 2 2 0 000 4z",
     enrichment:  "M13 10V3L4 14h7v7l9-11h-7z",
     events:      "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+    costs:       "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
     health:      "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z",
     properties:  "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
     contacts:    "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",

@@ -10,6 +10,8 @@
 //     hard-rejecting NEQ/fax/matricule context that the legacy regex missed.
 //   - Re-runs the new name-parser (with inversion + middle-name detection).
 //   - Decides whether the row should be hard-blocked from import.
+//   - When llmFallback is enabled (default), calls the LLM address and name
+//     fallbacks when the deterministic parsers cannot produce a complete result.
 //
 // The validator MUTATES the ParsedRow (fills in the new structured fields
 // and the audit) so the downstream commit step can act on it without
@@ -20,16 +22,25 @@ import type { ParsedRow, ParsedRowAudit, ContactParseQuality } from "./types";
 import { parseQuebecAddress, foldText, levenshtein } from "@/lib/enrichment/address-parser";
 import { extractPhonesWithContext } from "@/lib/enrichment/phone-context-extractor";
 import { parseNameFromFields, parseFullNameOnly } from "./name-parser";
+import { llmParseAddress } from "@/lib/llm/address-fallback";
+import { llmParseName } from "@/lib/llm/name-fallback";
 
 export interface ValidatorOptions {
   /** When true, owners whose mailing address is unparseable cause the row
    *  to be flagged as blocking. When false, only warnings are emitted. */
   hardBlockUnparseableMailing: boolean;
+  /** When true (default in production), engage LLM fallbacks for address/name
+   *  parsing when the deterministic parser cannot produce a complete result.
+   *  Set to false in tests to avoid network calls. */
+  llmFallback?: boolean;
+  /** Lead ID forwarded to cost-tracking when LLM fallbacks fire. */
+  leadId?: string;
 }
 
-const DEFAULT_OPTS: ValidatorOptions = { hardBlockUnparseableMailing: true };
+const DEFAULT_OPTS: ValidatorOptions = { hardBlockUnparseableMailing: true, llmFallback: true };
 
-export function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOptions = DEFAULT_OPTS): ParsedRowAudit {
+export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOptions = DEFAULT_OPTS): Promise<ParsedRowAudit> {
+  const useLlm = opts.llmFallback !== false;
   const audit: ParsedRowAudit = {
     row_number: row.row_number,
     blocking: [],
@@ -79,6 +90,27 @@ export function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOptions = DE
       }
       // Backfill missing city / postal from the parser.
       if (!owner.mailing_city && parsed.city) owner.mailing_city = parsed.city;
+
+      // ── LLM address fallback ─────────────────────────────────────────
+      // If the deterministic parser produced an incomplete result, try Haiku.
+      if (mailQuality !== "complete" && mailQuality !== "incoherent_city" && useLlm) {
+        const llmAddr = await llmParseAddress(owner.mailing_address, { leadId: opts.leadId });
+        if (llmAddr && llmAddr.civicNumber && llmAddr.streetName && llmAddr.city && llmAddr.postal) {
+          // Overwrite fields with the LLM result.
+          owner.mailing_civic = llmAddr.civicNumber;
+          owner.mailing_street = llmAddr.streetName;
+          owner.mailing_unit = llmAddr.unit ?? owner.mailing_unit;
+          owner.mailing_province = llmAddr.province ?? owner.mailing_province;
+          owner.mailing_postal = llmAddr.postal;
+          owner.mailing_postal_fsa = llmAddr.postalFsa;
+          if (!owner.mailing_city && llmAddr.city) owner.mailing_city = llmAddr.city;
+          mailQuality = "complete";
+          // Audit trail: record that the LLM fallback resolved this address.
+          audit.warnings.push(
+            `Owner ${i + 1}: mailing address resolved via llm_fallback (was ${owner.mailing_parse_quality ?? "incomplete"})`,
+          );
+        }
+      }
     } else {
       mailQuality = "unparseable";
     }
@@ -121,6 +153,30 @@ export function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOptions = DE
       if (result.notes.length) audit.warnings.push(`Owner ${i + 1}: ${result.notes.join("; ")}`);
       if (result.wasInverted)  audit.warnings.push(`Owner ${i + 1}: prénom/nom were inverted; corrected automatically`);
       if (result.parseQuality === "ambiguous") audit.warnings.push(`Owner ${i + 1}: name order is ambiguous; left as imported`);
+
+      // ── LLM name fallback ───────────────────────────────────────────
+      // If the deterministic parser could not resolve the name, try Haiku.
+      if ((result.parseQuality === "ambiguous" || result.parseQuality === "unparseable") && useLlm) {
+        const llmName = await llmParseName(
+          {
+            fullName: owner.full_name,
+            prenomField: owner.first_name ?? null,
+            nomField: owner.last_name ?? null,
+          },
+          { leadId: opts.leadId },
+        );
+        if (llmName && llmName.parseQuality !== "unparseable") {
+          if (llmName.firstName) owner.first_name = llmName.firstName;
+          if (llmName.lastName)  owner.last_name  = llmName.lastName;
+          if (llmName.fullName)  owner.full_name  = llmName.fullName;
+          owner.middle_names = llmName.middleNames;
+          owner.name_was_inverted = llmName.wasInverted;
+          owner.name_parse_quality = llmName.parseQuality;
+          if (llmName.notes.length) {
+            audit.warnings.push(`Owner ${i + 1} (llm_fallback): ${llmName.notes.join("; ")}`);
+          }
+        }
+      }
     } else if (owner.kind === "company" || owner.kind === "numbered_co" || owner.kind === "trust") {
       owner.name_parse_quality = "company";
     } else {
@@ -152,16 +208,16 @@ export function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOptions = DE
 }
 
 /** Run validation across an entire ParseResult. Returns aggregate counts. */
-export function validateAllRows(rows: ParsedRow[], opts: ValidatorOptions = DEFAULT_OPTS): {
+export async function validateAllRows(rows: ParsedRow[], opts: ValidatorOptions = DEFAULT_OPTS): Promise<{
   audits: ParsedRowAudit[];
   blockedRows: number;
   warningRows: number;
-} {
+}> {
   let blockedRows = 0;
   let warningRows = 0;
   const audits: ParsedRowAudit[] = [];
   for (const r of rows) {
-    const a = validateAndEnrichRow(r, opts);
+    const a = await validateAndEnrichRow(r, opts);
     audits.push(a);
     if (a.blocking.length) blockedRows++;
     else if (a.warnings.length) warningRows++;

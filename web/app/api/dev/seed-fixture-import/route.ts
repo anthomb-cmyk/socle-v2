@@ -174,7 +174,7 @@ export async function POST() {
   const buf = buildFixtureBuffer();
   let parse;
   try {
-    parse = parseRoleFile(buf);
+    parse = await parseRoleFile(buf);
   } catch (err) {
     return NextResponse.json({ ok: false, error: `parse: ${(err as Error).message}` }, { status: 500 });
   }
