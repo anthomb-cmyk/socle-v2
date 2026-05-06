@@ -6,6 +6,7 @@ import { normalizeCity } from "./cities";
 import { formatDisplay } from "./role-parser/phone-utils";
 import type { ParseResult, ParsedRow, ParsedOwner } from "./role-parser/types";
 import { refreshPortfolioFlags } from "./portfolio/detector";
+import { enqueue } from "./queue/enqueue";
 
 // Flush incremental counters to import_jobs every N rows so the client can poll progress.
 const INCREMENTAL_FLUSH_EVERY = 5;
@@ -50,28 +51,46 @@ export async function commitImport(
 
   for (let i = 0; i < parse.rows.length; i++) {
     const row = parse.rows[i];
-    // v3: hard-block rows that the import validator marked as unfit.
-    if (row.audit && row.audit.blocking.length > 0) {
-      counts.errors.push({ row: row.row_number, message: `BLOCKED: ${row.audit.blocking.join("; ")}` });
-      // Persist the row audit so the user can see why it was rejected.
+
+    // v3: partial-row import — instead of hard-blocking the whole row when any
+    // owner fails validation, we split owners into "good" and "blocked" sets
+    // and import the good ones. Blocked owners still get a contact record (for
+    // the family/co-ownership graph) but their lead is marked unsuitable.
+    const hasAuditBlocking = row.audit && row.audit.blocking.length > 0;
+    const hasOwnerBlocking = row.audit && row.audit.owners.some(o =>
+      o.mailing_parse_quality === "missing_civic" ||
+      o.mailing_parse_quality === "unparseable",
+    );
+
+    const isFullBlock = hasAuditBlocking && !hasOwnerBlocking;
+
+    if (isFullBlock) {
+      // Entire row is invalid (e.g. property data missing) — block as before.
+      counts.errors.push({ row: row.row_number, message: `BLOCKED: ${row.audit!.blocking.join("; ")}` });
       await supabase.from("import_row_audits").insert({
         import_job_id: opts.importJobId,
         row_number:    row.row_number,
         outcome:       "blocked",
-        blocking:      row.audit.blocking,
-        warnings:      row.audit.warnings,
-        owners:        row.audit.owners,
+        blocking:      row.audit!.blocking,
+        warnings:      row.audit!.warnings,
+        owners:        row.audit!.owners,
       });
       continue;
     }
+
     try {
       await commitRow(supabase, row, opts, counts);
       if (row.audit) {
+        const hasWarnings = row.audit.warnings.length > 0;
+        const hasPartialBlock = row.audit.owners.some(o =>
+          o.mailing_parse_quality === "missing_civic" ||
+          o.mailing_parse_quality === "unparseable",
+        );
         await supabase.from("import_row_audits").insert({
           import_job_id: opts.importJobId,
           row_number:    row.row_number,
-          outcome:       row.audit.warnings.length ? "imported_with_warnings" : "imported_clean",
-          blocking:      [],
+          outcome:       hasPartialBlock ? "imported_with_warnings" : hasWarnings ? "imported_with_warnings" : "imported_clean",
+          blocking:      row.audit.blocking,
           warnings:      row.audit.warnings,
           owners:        row.audit.owners,
         });
@@ -166,8 +185,16 @@ async function commitRow(
     counts.properties_created++;
   }
 
-  // 2. For each owner: find or create contact
+  // 2. For each owner: find or create contact.
+  //    Owners with an unparseable/missing-civic address are still created as
+  //    contacts (preserves co-ownership graph) but their lead is marked
+  //    unsuitable_for_phone_enrichment instead of "new".
   for (const owner of owners) {
+    // Determine if this specific owner's address is blocked.
+    const ownerQuality = owner.mailing_parse_quality;
+    const isOwnerAddressBlocked =
+      ownerQuality === "missing_civic" || ownerQuality === "unparseable";
+
     const contactId = await upsertContact(supabase, owner, opts.importJobId, counts);
     if (!contactId) continue;
 
@@ -181,7 +208,7 @@ async function commitRow(
       source_import_job_id: opts.importJobId,
     }, { onConflict: "property_id,contact_id,relationship", ignoreDuplicates: true });
 
-    // 4. Phones — one row per E.164 per contact
+    // 4. Phones — one row per E.164 per contact (skipped for blocked owners who have none)
     for (const e164 of owner.phones) {
       const { error } = await supabase.from("phones").upsert({
         contact_id: contactId,
@@ -198,30 +225,70 @@ async function commitRow(
     }
 
     // 5. Lead per (campaign, property, contact)
+    const leadStatus: string = isOwnerAddressBlocked
+      ? "unsuitable_for_phone_enrichment"
+      : "new";
+
     const leadPayload = {
       campaign_id: opts.campaignId,
       property_id: propertyId,
       contact_id: contactId,
-      status: "new" as const,
+      status: leadStatus,
       source: "role_import",
       source_import_job_id: opts.importJobId,
     };
+
     const { data: existingLead } = await supabase.from("leads")
-      .select("id")
+      .select("id, status")
       .eq("campaign_id", opts.campaignId ?? "")
       .eq("property_id", propertyId)
       .eq("contact_id", contactId)
       .maybeSingle();
 
+    let leadId: string | null = null;
+
     if (existingLead) {
       await supabase.from("leads").update({ source_import_job_id: opts.importJobId }).eq("id", existingLead.id);
       counts.leads_updated++;
+      leadId = existingLead.id;
     } else {
-      // For null campaign_id we have to insert directly (eq with null doesn't work above)
-      const { error } = await supabase.from("leads").insert(leadPayload);
-      if (!error) counts.leads_created++;
-      else if (error.code === "23505") counts.leads_updated++;     // unique violation = already exists
-      else counts.errors.push({ row: row.row_number, message: `lead: ${error.message}` });
+      const { data: newLead, error } = await supabase.from("leads").insert(leadPayload).select("id").single();
+      if (!error && newLead) {
+        counts.leads_created++;
+        leadId = (newLead as { id: string }).id;
+      } else if (error?.code === "23505") {
+        counts.leads_updated++;
+      } else if (error) {
+        counts.errors.push({ row: row.row_number, message: `lead: ${error.message}` });
+      }
+    }
+
+    // 6. If the owner's address is blocked, log an enrichment event so the banner
+    //    on /leads/[id] can surface the failure reason.
+    if (isOwnerAddressBlocked && leadId) {
+      await supabase.from("enrichment_events").insert({
+        lead_id:    leadId,
+        event_type: "lead_status_updated",
+        stage:      null,
+        payload: {
+          to:       "unsuitable_for_phone_enrichment",
+          failures: [`mailing_parse_quality=${ownerQuality}`],
+          reason:   `Adresse postale incomplète lors de l'import (${ownerQuality})`,
+        },
+      });
+    }
+
+    // 7. Enqueue post-processing tasks for the lead.
+    if (leadId) {
+      if (owner.phones.length === 0 && !isOwnerAddressBlocked) {
+        // No phone yet — needs enrichment pipeline
+        await enqueue(supabase, leadId, "enrichment", 5);
+      } else if (owner.phones.length > 0) {
+        // Phone already attached via role import — skip enrichment, just run briefing + fit-score
+        await enqueue(supabase, leadId, "briefing", 5);
+        await enqueue(supabase, leadId, "fit_score", 5);
+      }
+      // Blocked owners: no enrichment tasks (address incomplete)
     }
   }
 }

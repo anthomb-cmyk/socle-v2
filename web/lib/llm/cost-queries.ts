@@ -204,6 +204,47 @@ export async function fetchDailyCosts(
     .sort((a, b) => a.day.localeCompare(b.day));
 }
 
+export interface CostPerLeadStats {
+  /** Average cost (USD) across all leads that have at least one LLM call. */
+  avgCostPerLead: number;
+  /** Number of distinct leads with LLM usage in the range. */
+  distinctLeads: number;
+}
+
+/** Average cost per lead — groups llm_usage_log by lead_id and averages the sums. */
+export async function fetchCostPerLead(
+  sb: SupabaseClient,
+  opts: { since: string | null; feature: string | null; model: string | null },
+): Promise<CostPerLeadStats> {
+  let q = sb
+    .from("llm_usage_log")
+    .select("lead_id, cost_usd");
+
+  if (opts.since)   q = q.gte("created_at", opts.since);
+  if (opts.feature) q = q.eq("feature", opts.feature);
+  if (opts.model)   q = q.eq("model", opts.model);
+  // Only rows with a lead_id
+  q = q.not("lead_id", "is", null);
+
+  const { data, error } = await q;
+  if (error || !data) return { avgCostPerLead: 0, distinctLeads: 0 };
+
+  // Group by lead_id
+  const byLead = new Map<string, number>();
+  for (const row of data) {
+    const lid = row.lead_id as string;
+    byLead.set(lid, (byLead.get(lid) ?? 0) + Number(row.cost_usd ?? 0));
+  }
+
+  if (byLead.size === 0) return { avgCostPerLead: 0, distinctLeads: 0 };
+
+  const total = Array.from(byLead.values()).reduce((s, v) => s + v, 0);
+  return {
+    avgCostPerLead: total / byLead.size,
+    distinctLeads:  byLead.size,
+  };
+}
+
 /** Fetch the most recent N calls. */
 export async function fetchRecentCalls(
   sb: SupabaseClient,

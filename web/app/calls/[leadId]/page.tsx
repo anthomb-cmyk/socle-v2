@@ -42,6 +42,32 @@ export default async function CallLeadPage(
   const history = historyRes.data ?? [];
   const userForwardTo: string | null = metaRes.data?.twilio_forward_to?.trim() || null;
 
+  // Fetch preflight failure reasons if lead is unsuitable.
+  let unsuitableFailures: string[] | null = null;
+  if ((lead as Record<string, unknown>).status === "unsuitable_for_phone_enrichment") {
+    try {
+      const { data: evtData } = await sb
+        .from("enrichment_events")
+        .select("payload")
+        .eq("lead_id", leadId)
+        .in("event_type", ["preflight_failed", "lead_status_updated"])
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (evtData) {
+        for (const evt of evtData) {
+          const p = (evt as Record<string, unknown>).payload as Record<string, unknown> | null;
+          const f = p?.failures;
+          if (Array.isArray(f) && f.length > 0) {
+            unsuitableFailures = f.map(String);
+            break;
+          }
+        }
+      }
+    } catch {
+      // fail gracefully
+    }
+  }
+
   // Briefing columns added by migration 0017 — query separately so a missing
   // column (42703) never crashes this page before the migration is applied.
   let briefingRow: { briefing_text: string | null; briefing_generated_at: string | null } | null = null;
@@ -60,6 +86,22 @@ export default async function CallLeadPage(
 
   return (
     <CallerAppShell width="wide">
+      {unsuitableFailures && (
+        <div style={{
+          margin: "0 0 12px",
+          padding: "12px 16px",
+          background: "#FFFBEB",
+          border: "1px solid #FCD34D",
+          borderRadius: 12,
+          fontSize: 13,
+          color: "#92400E",
+        }}>
+          <strong>Adresse postale incomplète.</strong>{" "}
+          {unsuitableFailures.length > 0
+            ? `Cette adresse postale est incomplète : ${unsuitableFailures.join(", ")}. Corrigez le fichier source et réimportez.`
+            : "Cette adresse postale est incomplète. Corrigez le fichier source et réimportez."}
+        </div>
+      )}
       <div style={{ padding: "0 0 0 0" }}>
         <LeadBriefingCard
           leadId={leadId}

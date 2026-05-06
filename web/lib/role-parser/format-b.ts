@@ -108,8 +108,10 @@ function titleCase(s: string): string {
 function parseMailingAddress(addr: string): { street?: string; city?: string; postal?: string } {
   if (!addr || /^non\s+disponible$/i.test(addr.trim())) return {};
 
-  const postalM = addr.match(/\b([A-Z]\d[A-Z][\s]?\d[A-Z]\d)\b/i);
-  const postal = postalM ? postalM[1].toUpperCase().replace(/\s/g, "") : undefined;
+  const postalM = addr.match(/\b([A-Z]\d[A-Z])[\s]?(\d[A-Z]\d)\b/i);
+  const postal = postalM
+    ? `${postalM[1].toUpperCase()} ${postalM[2].toUpperCase()}`
+    : undefined;
 
   // Format: ", City, QC" or ", City, Québec" or ", City QC"
   const qcCommaM = addr.match(/,\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\-']{1,40}?)\s*,\s*(?:QC|QU[ÉE]BEC|QUE)\b/i);

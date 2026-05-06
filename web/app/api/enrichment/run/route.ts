@@ -1046,17 +1046,18 @@ export async function POST(request: Request) {
     if (anyAutoAttached) {
       newLeadStatus = 'ready_to_call';
     } else if (finalCandidates.length > 0) {
-      newLeadStatus = 'needs_human_review';
+      newLeadStatus = 'needs_phone_review';
     } else {
       newLeadStatus = 'unresolved_after_openclaw';
     }
 
     // Downgrade protection:
     // - never demote from ready_to_call unless the new status is also ready_to_call
-    // - never demote from needs_human_review to unresolved_after_openclaw
+    // - never demote from needs_phone_review to unresolved_after_openclaw
     const statusRank: Record<string, number> = {
       ready_to_call: 3,
-      needs_human_review: 2,
+      needs_phone_review: 2,
+      needs_human_review: 2,  // kept for backward compat with in-flight rows
       unresolved_after_openclaw: 1,
     };
     const currentRank = statusRank[currentStatus ?? ''] ?? 0;

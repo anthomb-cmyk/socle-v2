@@ -26,6 +26,32 @@ export default async function LeadDetailPage(
   };
   if (role !== "admin" && lead.assigned_to !== user.id) return notFound();
 
+  // Check if lead is unsuitable and fetch the failure reason from enrichment events.
+  let unsuitable_failures: string[] | null = null;
+  if (lead.status === "unsuitable_for_phone_enrichment") {
+    try {
+      const { data: evtData } = await sb
+        .from("enrichment_events")
+        .select("payload")
+        .eq("lead_id", id)
+        .in("event_type", ["preflight_failed", "lead_status_updated"])
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (evtData) {
+        for (const evt of evtData) {
+          const p = evt.payload as Record<string, unknown> | null;
+          const failures = p?.failures ?? p?.failures;
+          if (Array.isArray(failures) && failures.length > 0) {
+            unsuitable_failures = failures.map(String);
+            break;
+          }
+        }
+      }
+    } catch {
+      // enrichment_events may not exist yet — fail gracefully
+    }
+  }
+
   const [phones, calls, fups, subs, events, propertyRes, contactRes, leadRow, users, enrichJobs, enrichResults] = await Promise.all([
     sb.from("phones").select("id, e164, display, status, source, confidence, evidence, source_column, notes")
       .eq("contact_id", lead.contact_id).order("confidence", { ascending: false }),
@@ -83,6 +109,15 @@ export default async function LeadDetailPage(
         <Link href="/leads" className="text-sm text-zinc-500 hover:underline">← Back to leads</Link>
         <Link href={`/calls/${id}` as never} className="text-sm bg-zinc-900 text-white rounded-lg px-3 py-1.5">Open in caller workspace →</Link>
       </div>
+
+      {unsuitable_failures && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
+          <strong>Adresse postale incomplète.</strong>{" "}
+          {unsuitable_failures.length > 0
+            ? `Cette adresse postale est incomplète : ${unsuitable_failures.join(", ")}. Corrigez le fichier source et réimportez.`
+            : "Cette adresse postale est incomplète. Corrigez le fichier source et réimportez."}
+        </div>
+      )}
 
       <LeadBriefingCard
         leadId={id}

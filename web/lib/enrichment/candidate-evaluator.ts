@@ -150,7 +150,8 @@ export async function evaluateBraveResult(input: EvaluatorInput): Promise<Evalua
 
     const allPassed = outcomes.every(o => o.pass);
     const ownerHit = !!(outcomes.find(o => o.gate === "G4_owner_match")?.signal as Record<string, unknown> | undefined)?.ownerHit;
-    const disposition = chooseDisposition(allPassed, scoreOut.score, classification.sourceClass, ownerHit);
+    // Pass gate outcomes so chooseDisposition can apply G6-aware auto-attach tuning.
+    const disposition = chooseDisposition(allPassed, scoreOut.score, classification.sourceClass, ownerHit, outcomes);
 
     candidates.push({
       report: {

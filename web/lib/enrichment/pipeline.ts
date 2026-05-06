@@ -30,9 +30,8 @@ import { runAddressSearch, runCompanySearch, runQueries, type EvaluatedStageResu
 import type { BuiltQuery } from "./query-builder";
 import { requestOpenclawDeepSearch } from "./openclaw-validate";
 import { runPreflight } from "./preflight";
-import { generateBriefing } from "@/lib/llm/briefing";
 import { suggestAlternateQueries } from "@/lib/llm/query-rewriter";
-import { scoreLeadFit } from "@/lib/llm/fit-scorer";
+import { enqueue } from "@/lib/queue/enqueue";
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -161,29 +160,9 @@ async function autoAttachPhone(sb: SupabaseClient, ctx: LeadContext, c: Evaluate
   }, { onConflict: "contact_id,e164", ignoreDuplicates: true });
   await setLeadStatus(sb, ctx.leadId, "ready_to_call");
 
-  // Fire-and-forget briefing + fit scoring — do not await, caller should not wait.
-  void (async () => {
-    try {
-      const briefing = await generateBriefing(ctx.leadId, sb);
-      if (briefing) {
-        await sb.from("leads").update({
-          briefing_text:         briefing.text,
-          briefing_generated_at: new Date().toISOString(),
-          briefing_metadata:     briefing.metadata,
-        }).eq("id", ctx.leadId);
-      }
-    } catch (err) {
-      console.error("[pipeline] briefing generation failed:", err);
-    }
-  })();
-
-  void (async () => {
-    try {
-      await scoreLeadFit(ctx.leadId, sb);
-    } catch (err) {
-      console.error("[pipeline] fit scoring failed:", err);
-    }
-  })();
+  // Enqueue briefing + fit-score via durable queue (replaces fire-and-forget).
+  await enqueue(sb, ctx.leadId, "briefing", 3);
+  await enqueue(sb, ctx.leadId, "fit_score", 3);
 }
 
 // ── Routing decision per stage ──────────────────────────────────────────────

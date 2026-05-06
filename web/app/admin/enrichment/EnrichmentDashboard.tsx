@@ -300,7 +300,14 @@ export default function EnrichmentDashboard() {
                   <td className="p-2 font-mono text-xs">{j.id.slice(0, 8)}…{j.attempts > 1 && <> · attempt {j.attempts}</>}</td>
                   <td className="p-2 text-xs">{j.job_type}</td>
                   <td className="p-2"><JobStatusPill s={j.status} /></td>
-                  <td className="p-2">{j.lead_id ? <Link href={`/leads/${j.lead_id}` as never} className="underline text-xs">open →</Link> : "—"}</td>
+                  <td className="p-2">
+                    {j.lead_id ? (
+                      <span className="flex gap-2">
+                        <Link href={`/leads/${j.lead_id}` as never} className="underline text-xs">lead →</Link>
+                        <Link href={`/admin/enrichment/${j.lead_id}` as never} className="underline text-xs text-amber-700">details →</Link>
+                      </span>
+                    ) : "—"}
+                  </td>
                   <td className="p-2 text-xs text-zinc-500">{new Date(j.created_at).toLocaleString()}</td>
                   <td className="p-2 text-xs max-w-xs truncate" title={j.error_message ?? summarizeRawOutput(j.raw_output)}>
                     {j.error_message

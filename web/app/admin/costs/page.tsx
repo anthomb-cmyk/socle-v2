@@ -10,6 +10,7 @@ import {
   fetchModelBreakdown,
   fetchDailyCosts,
   fetchRecentCalls,
+  fetchCostPerLead,
   type CostRange,
 } from "@/lib/llm/cost-queries";
 
@@ -71,6 +72,7 @@ export default async function CostsPage({
   let modelRows: Awaited<ReturnType<typeof fetchModelBreakdown>> = [];
   let dailyRows: Awaited<ReturnType<typeof fetchDailyCosts>> = [];
   let recentCalls: Awaited<ReturnType<typeof fetchRecentCalls>> = [];
+  let costPerLead: Awaited<ReturnType<typeof fetchCostPerLead>> = { avgCostPerLead: 0, distinctLeads: 0 };
 
   try {
     // Quick probe: check if the table exists before running all queries.
@@ -78,12 +80,13 @@ export default async function CostsPage({
     if (probeErr && (probeErr.code === "42P01" || probeErr.code === "42703")) {
       migrationPending = true;
     } else {
-      [topStats, featureRows, modelRows, dailyRows, recentCalls] = await Promise.all([
+      [topStats, featureRows, modelRows, dailyRows, recentCalls, costPerLead] = await Promise.all([
         fetchTopStats(sb, { since, feature: featureFilter, model: modelFilter }),
         fetchFeatureBreakdown(sb, { since, model: modelFilter }),
         fetchModelBreakdown(sb, { since, feature: featureFilter }),
         fetchDailyCosts(sb, { since, feature: featureFilter, model: modelFilter }),
         fetchRecentCalls(sb, { since, feature: featureFilter, model: modelFilter, limit: PAGE_SIZE, offset }),
+        fetchCostPerLead(sb, { since, feature: featureFilter, model: modelFilter }),
       ]);
     }
   } catch {
@@ -203,7 +206,7 @@ export default async function CostsPage({
       </div>
 
       {/* ── Top stats cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14, marginBottom: 28 }}>
         <StatCard
           label="Dépense totale"
           value={formatCostUsd(topStats.totalCostUsd)}
@@ -214,6 +217,10 @@ export default async function CostsPage({
         <StatCard
           label="Latence moy."
           value={`${topStats.avgLatencyMs.toLocaleString("fr-FR")} ms`}
+        />
+        <StatCard
+          label={`Coût/lead (${costPerLead.distinctLeads} leads)`}
+          value={costPerLead.distinctLeads > 0 ? formatCostUsd(costPerLead.avgCostPerLead) : "—"}
         />
       </div>
 

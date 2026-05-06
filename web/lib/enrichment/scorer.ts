@@ -15,6 +15,9 @@
 
 import type { GateOutcome, PhoneExtractionResult, SourceClass } from "./types";
 
+// Re-export GateOutcome for external callers that import from scorer.
+export type { GateOutcome };
+
 export interface ScoreInput {
   sourceClass: SourceClass;
   domainHintApplied: boolean;
@@ -100,11 +103,39 @@ function round2(x: number): number {
   return Math.round(x * 100) / 100;
 }
 
-/** Decide candidate disposition from the score + gate report. */
-export function chooseDisposition(allGatesPassed: boolean, score: number, sourceClass: SourceClass, ownerNameHit: boolean): "auto_attached" | "needs_anthony_review" | "weak_review" | "quarantined" {
+/** Decide candidate disposition from the score + gate report.
+ *
+ * Gate outcomes are passed through so the G6 Haiku verdict can promote
+ * borderline (score ≥ 70) candidates from review → auto_attached when
+ * Haiku has high confidence.
+ */
+export function chooseDisposition(
+  allGatesPassed: boolean,
+  score: number,
+  sourceClass: SourceClass,
+  ownerNameHit: boolean,
+  gateOutcomes?: GateOutcome[],
+): "auto_attached" | "needs_anthony_review" | "weak_review" | "quarantined" {
   if (!allGatesPassed) return "quarantined";
+
   // Auto-attach only with high score + authoritative source + owner-name hit.
-  if (score >= 85 && (sourceClass === "directory_authoritative" || sourceClass === "company_website") && ownerNameHit) return "auto_attached";
+  if (score >= 85 && (sourceClass === "directory_authoritative" || sourceClass === "company_website") && ownerNameHit) {
+    return "auto_attached";
+  }
+
+  // G6-aware promotion: if score >= 70 AND Haiku approved with confidence >= 85,
+  // trust Haiku's full-snippet verdict and auto-attach.
+  if (score >= 70 && gateOutcomes) {
+    const g6 = gateOutcomes.find(o => o.gate === "G6_haiku_validation");
+    if (g6 && g6.pass) {
+      const sig = g6.signal as Record<string, unknown> | undefined;
+      const haikuConf = typeof sig?.confidence === "number" ? sig.confidence as number : 0;
+      if (haikuConf >= 85) {
+        return "auto_attached";
+      }
+    }
+  }
+
   if (score >= 70) return "needs_anthony_review";
   if (score >= 50) return "weak_review";
   return "quarantined";

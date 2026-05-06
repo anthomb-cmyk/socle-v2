@@ -176,8 +176,8 @@ export async function POST(request: Request) {
     }
   }
 
-  // Update lead status to needs_human_review
-  await sb.from("leads").update({ status: "needs_human_review" }).eq("id", leadId);
+  // Update lead status to needs_phone_review
+  await sb.from("leads").update({ status: "needs_phone_review" }).eq("id", leadId);
 
   if (jobId) {
     await sb.from("enrichment_jobs").update({
