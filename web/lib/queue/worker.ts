@@ -10,8 +10,11 @@ import { scoreLeadFit } from "@/lib/llm/fit-scorer";
 import { runEnrichmentPipeline } from "@/lib/enrichment/pipeline";
 
 const MAX_ATTEMPTS = 3;
-const DEFAULT_BATCH_SIZE = 10;
-const DEFAULT_MAX_RUNTIME_MS = 50_000; // 50 s — leave headroom in a 60-s cron
+const DEFAULT_BATCH_SIZE = 30;
+const DEFAULT_MAX_RUNTIME_MS = 240_000; // 240 s — Railway HTTP timeout is ~5 min, keep 60 s buffer
+const CONCURRENCY = 3;                 // process up to 3 leads in parallel
+                                        // safe ceiling: Brave handles 3 RPS easily,
+                                        // n8n OpenClaw can run 3 concurrent browser sessions
 
 export interface WorkerOptions {
   batchSize?: number;
@@ -60,12 +63,9 @@ export async function processNextBatch(
     return result;
   }
 
-  for (const row of rows as QueueRow[]) {
-    // Respect max runtime — stop picking up new tasks if running long.
-    if (Date.now() - startedAt > maxRuntime) break;
-
-    result.processed++;
-
+  // Process one queue row end-to-end (mark running → dispatch → mark done/failed/pending).
+  // Used inside the concurrency-limited chunk loop below.
+  const processRow = async (row: QueueRow): Promise<void> => {
     // Mark as running
     await sb
       .from("lead_post_processing_queue")
@@ -110,6 +110,17 @@ export async function processNextBatch(
         })
         .eq("id", row.id);
     }
+  };
+
+  // Chunk the rows into groups of CONCURRENCY and process each group in parallel.
+  // Each row's status updates and retry/backoff logic are unchanged — only the
+  // outer iteration is parallelised.
+  const queueRows = rows as QueueRow[];
+  for (let i = 0; i < queueRows.length; i += CONCURRENCY) {
+    if (Date.now() - startedAt > maxRuntime) break;
+    const chunk = queueRows.slice(i, i + CONCURRENCY);
+    result.processed += chunk.length;
+    await Promise.allSettled(chunk.map(processRow));
   }
 
   return result;
