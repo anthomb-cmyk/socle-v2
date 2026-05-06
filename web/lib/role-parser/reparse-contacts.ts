@@ -63,13 +63,11 @@ export async function reparseAllContacts(
     mailing_parsed_at: string | null;
   };
 
-  let q = sb.from("contacts")
+  // (unenrichedOnly handling is left as a follow-up — requires a join on leads.)
+  const { data, error } = await sb.from("contacts")
     .select("id, kind, full_name, first_name, last_name, company_name, mailing_address, mailing_city, mailing_postal, mailing_parsed_at")
     .is("mailing_parsed_at", null)
     .limit(limit);
-  // (unenrichedOnly handling is left as a follow-up — requires a join on leads.)
-
-  const { data, error } = await q;
   if (error || !data) return out;
 
   for (const r of data as Row[]) {

@@ -139,7 +139,6 @@ export function parseNameFromFields(input: NameParseInput): NameParseOutput {
   const prenomLooksGiven = isLikelyGivenName(prenom) || isLikelyCompoundGivenName(prenom);
   const nomLooksGiven    = isLikelyGivenName(nom);
   const prenomLooksSur   = looksLikeSurname(prenom);
-  const nomLooksSur      = looksLikeSurname(nom);
 
   // Strong inversion signal: prénom looks like a surname AND nom looks like a given name.
   if (!prenomLooksGiven && nomLooksGiven && prenomLooksSur) {

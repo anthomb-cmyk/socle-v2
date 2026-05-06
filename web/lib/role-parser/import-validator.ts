@@ -16,7 +16,7 @@
 // re-parsing. This keeps the importer the single source of truth for
 // structure.
 
-import type { ParsedRow, ParsedRowAudit, ParsedOwner, ContactParseQuality } from "./types";
+import type { ParsedRow, ParsedRowAudit, ContactParseQuality } from "./types";
 import { parseQuebecAddress, foldText, levenshtein } from "@/lib/enrichment/address-parser";
 import { extractPhonesWithContext } from "@/lib/enrichment/phone-context-extractor";
 import { parseNameFromFields, parseFullNameOnly } from "./name-parser";

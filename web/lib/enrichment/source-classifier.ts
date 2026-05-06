@@ -103,8 +103,9 @@ const AGGREGATE_TITLE_RE = /\b(?:all|tous|toutes les|in granby|in [A-Z][a-z]+(?:
 export function classifyResult(input: { url: string; title: string; description: string }): SourceClassification {
   const url = input.url || "";
   const title = input.title || "";
-  const description = input.description || "";
-
+  // Description is intentionally not used in classification — page-shape
+  // signals come from URL + title only. Kept in the input shape for symmetry
+  // with downstream extractors that DO use the description.
   let host = "";
   try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
   const path = (() => { try { return new URL(url).pathname + (new URL(url).search || ""); } catch { return ""; } })();

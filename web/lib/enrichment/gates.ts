@@ -61,7 +61,6 @@ export function evaluateG3(input: GateInput): GateOutcome {
   const street = input.parsedAddress.streetName ?? "";
   const postal = input.parsedAddress.postal ?? "";
   const blob = foldText(`${input.title} ${input.snippet} ${input.url}`);
-  const civicFolded = civic.toLowerCase();
   const streetFolded = foldText(street);
 
   // Take the most distinctive 2 words of the street (after dropping prefix words like "rue", "avenue", "boulevard").

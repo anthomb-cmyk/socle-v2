@@ -87,23 +87,6 @@ function strpProvincePostalSuffix(s: string): {
   return { rest: working, province, postal, postalFsa };
 }
 
-/** Quebec unit-prefix form: "408 - 1020 Rue Levert" → unit=408, civic=1020. */
-function tryUnitPrefix(s: string): { unit: string; civic: string; rest: string } | null {
-  const m = CIVIC_RANGE_PREFIX_RE.exec(s);
-  if (!m) return null;
-  const left = m[1];
-  const right = m[2];
-  const rest = m[3];
-  // Heuristic: if left < right and left is short (1-4 digits), treat left as unit.
-  // Civic ranges (e.g. "189-197") have left < right too — distinguish by trailing
-  // street type: a civic range will produce a normal "Rue X" rest; that's the
-  // default case (return null here, let CIVIC_RANGE_PREFIX_RE handle it).
-  if (parseInt(left, 10) >= parseInt(right, 10)) return null;
-  // True unit prefix usually has " - " with spaces around the dash. CIVIC_RANGE_PREFIX_RE
-  // is greedy on whitespace, so we can't distinguish from here; rely on the original string.
-  return { unit: left, civic: right, rest };
-}
-
 export function parseQuebecAddress(rawInput: string | null | undefined): ParsedAddress {
   const empty: ParsedAddress = {
     raw: rawInput ?? "",
