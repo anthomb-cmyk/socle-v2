@@ -19,7 +19,7 @@
 // structure.
 
 import type { ParsedRow, ParsedRowAudit, ContactParseQuality } from "./types";
-import { parseQuebecAddress, foldText, levenshtein, fsaFromPostal } from "@/lib/enrichment/address-parser";
+import { parseQuebecAddress, foldText, levenshtein } from "@/lib/enrichment/address-parser";
 import { extractPhonesWithContext } from "@/lib/enrichment/phone-context-extractor";
 import { parseNameFromFields, parseFullNameOnly } from "./name-parser";
 import { llmParseAddress } from "@/lib/llm/address-fallback";
@@ -64,12 +64,6 @@ export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOption
       // Always normalize the postal to the canonical "XXX YXY" form.
       if (parsed.postal) owner.mailing_postal = parsed.postal;
 
-      // Bug 2: if the parser didn't extract an FSA but mailing_postal is populated,
-      // derive the FSA from the existing postal.
-      if (!owner.mailing_postal_fsa && owner.mailing_postal) {
-        owner.mailing_postal_fsa = fsaFromPostal(owner.mailing_postal);
-      }
-
       // Determine quality.
       if (parsed.civicNumber && parsed.streetName && parsed.city && parsed.postal) {
         mailQuality = "complete";
@@ -78,12 +72,7 @@ export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOption
       } else if (!parsed.streetName) {
         mailQuality = "missing_street";
       } else if (!parsed.postal) {
-        // Bug 3: if mailing_postal is already populated, don't call this "missing_postal"
-        if (owner.mailing_postal) {
-          mailQuality = "complete";
-        } else {
-          mailQuality = "missing_postal";
-        }
+        mailQuality = "missing_postal";
       } else {
         mailQuality = "unparseable";
       }
@@ -104,10 +93,7 @@ export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOption
 
       // ── LLM address fallback ─────────────────────────────────────────
       // If the deterministic parser produced an incomplete result, try Haiku.
-      // Bug 3: skip LLM if the only thing missing is the postal AND mailing_postal
-      // is already populated (i.e. quality would be "missing_postal" but postal exists).
-      const postalAlreadyKnown = mailQuality === "missing_postal" && !!owner.mailing_postal;
-      if (mailQuality !== "complete" && mailQuality !== "incoherent_city" && !postalAlreadyKnown && useLlm) {
+      if (mailQuality !== "complete" && mailQuality !== "incoherent_city" && useLlm) {
         const llmAddr = await llmParseAddress(owner.mailing_address, { leadId: opts.leadId });
         if (llmAddr && llmAddr.civicNumber && llmAddr.streetName && llmAddr.city && llmAddr.postal) {
           // Overwrite fields with the LLM result.
@@ -116,7 +102,7 @@ export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOption
           owner.mailing_unit = llmAddr.unit ?? owner.mailing_unit;
           owner.mailing_province = llmAddr.province ?? owner.mailing_province;
           owner.mailing_postal = llmAddr.postal;
-          owner.mailing_postal_fsa = llmAddr.postalFsa ?? fsaFromPostal(llmAddr.postal);
+          owner.mailing_postal_fsa = llmAddr.postalFsa;
           if (!owner.mailing_city && llmAddr.city) owner.mailing_city = llmAddr.city;
           mailQuality = "complete";
           // Audit trail: record that the LLM fallback resolved this address.
@@ -136,12 +122,7 @@ export async function validateAndEnrichRow(row: ParsedRow, opts: ValidatorOption
       if (opts.hardBlockUnparseableMailing && (mailQuality === "missing_civic" || mailQuality === "missing_street" || mailQuality === "unparseable")) {
         audit.blocking.push(warn);
       } else {
-        // Bug 3: don't emit "missing_postal" warning if mailing_postal is already set
-        if (mailQuality === "missing_postal" && owner.mailing_postal) {
-          // Postal is already stored — no warning needed
-        } else {
-          audit.warnings.push(warn);
-        }
+        audit.warnings.push(warn);
       }
     }
 

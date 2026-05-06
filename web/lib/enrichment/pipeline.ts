@@ -32,6 +32,7 @@ import { requestOpenclawDeepSearch } from "./openclaw-validate";
 import { runPreflight } from "./preflight";
 import { generateBriefing } from "@/lib/llm/briefing";
 import { suggestAlternateQueries } from "@/lib/llm/query-rewriter";
+import { scoreLeadFit } from "@/lib/llm/fit-scorer";
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -160,7 +161,7 @@ async function autoAttachPhone(sb: SupabaseClient, ctx: LeadContext, c: Evaluate
   }, { onConflict: "contact_id,e164", ignoreDuplicates: true });
   await setLeadStatus(sb, ctx.leadId, "ready_to_call");
 
-  // Fire-and-forget briefing generation — do not await, caller should not wait.
+  // Fire-and-forget briefing + fit scoring — do not await, caller should not wait.
   void (async () => {
     try {
       const briefing = await generateBriefing(ctx.leadId, sb);
@@ -173,6 +174,14 @@ async function autoAttachPhone(sb: SupabaseClient, ctx: LeadContext, c: Evaluate
       }
     } catch (err) {
       console.error("[pipeline] briefing generation failed:", err);
+    }
+  })();
+
+  void (async () => {
+    try {
+      await scoreLeadFit(ctx.leadId, sb);
+    } catch (err) {
+      console.error("[pipeline] fit scoring failed:", err);
     }
   })();
 }

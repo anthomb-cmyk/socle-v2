@@ -31,9 +31,7 @@
       "Bash(curl -sI \"https://raw.githubusercontent.com/anthomb-cmyk/socle-v2/codex/stabilize-alpha-e2e/CLAUDE_CODE_HANDOFF.md\")",
       "Bash(curl -sI \"https://raw.githubusercontent.com/anthomb-cmyk/socle-v2/claude/charming-cray-f255b6/CLAUDE_CODE_HANDOFF.md\")",
       "Bash(echo \"exit=$?\")",
-      "Bash(grep -B 1 -A 5 'fetch\\(`/api/phone-review' web/app/phone-review/PhoneReviewClient.tsx)",
-      "Bash(ssh-add -l)",
-      "Bash(ssh -T -o BatchMode=yes -o ConnectTimeout=5 git@github.com)"
+      "Bash(grep -B 1 -A 5 'fetch\\(`/api/phone-review' web/app/phone-review/PhoneReviewClient.tsx)"
     ]
   }
 }

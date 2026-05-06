@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { callAnthropic } from "@/lib/llm/anthropic-client";
+import { getPortfolioInfo } from "@/lib/portfolio/detector";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,22 @@ export async function generateBriefing(
     // notes table may not exist — skip silently
   }
 
-  // 5. Build prompt
+  // 5. Load portfolio info (fire-and-forget friendly; gracefully returns zeros on error)
+  let portfolioLine = "";
+  if (lead.contact_id) {
+    try {
+      const portfolio = await getPortfolioInfo(lead.contact_id, sb);
+      if (portfolio.propertyCount > 1) {
+        const cities = [...new Set(portfolio.properties.map(p => p.city).filter(Boolean))];
+        const cityList = cities.length > 0 ? cities.join(", ") : "diverses villes";
+        portfolioLine = `- Portefeuille : propriétaire de ${portfolio.propertyCount} propriétés à travers ${cityList}`;
+      }
+    } catch {
+      // getPortfolioInfo failure must never break briefing generation
+    }
+  }
+
+  // 6. Build prompt
   const ownerName = contact?.full_name ?? contact?.company_name ?? "Propriétaire inconnu";
   const ownerKind = contact?.kind ?? "inconnu";
   const mailingAddr = [contact?.mailing_address, contact?.mailing_city, contact?.mailing_postal]
@@ -162,6 +178,7 @@ DONNÉES DU PROSPECT :
 - Téléphones : ${phoneSummary}
 - Statut du lead : ${lead.status}
 - Événements récents : ${recentEvents}
+${portfolioLine ? `${portfolioLine}` : ""}
 ${notesBlock ? `\n${notesBlock}` : ""}
 
 CONSIGNES :
@@ -187,7 +204,7 @@ Réponds UNIQUEMENT avec le briefing (pas de JSON, pas de balises, pas de titre)
     eventsCount: events.length,
   };
 
-  // 6. Call Haiku
+  // 7. Call Haiku
   const result = await callAnthropic({
     feature: "briefing",
     model: "claude-haiku-4-5",
@@ -205,7 +222,7 @@ Réponds UNIQUEMENT avec le briefing (pas de JSON, pas de balises, pas de titre)
   const text = result.text.trim();
   if (!text) return null;
 
-  // 7. Return text + metadata
+  // 8. Return text + metadata
   return {
     text,
     metadata: {

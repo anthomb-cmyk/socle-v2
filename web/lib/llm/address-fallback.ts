@@ -10,6 +10,7 @@
 
 import type { ParsedAddress } from "@/lib/enrichment/types";
 import { callAnthropic, parseFirstJson } from "@/lib/llm/anthropic-client";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 interface LlmAddressJson {
   civic_number?: string | null;
@@ -45,10 +46,14 @@ Respond with EXACTLY this JSON, no prose:
 
 /** LLM fallback address parser.
  *  Returns null if the API key is not set, the call fails, or Haiku marks the
- *  address as unparseable. */
+ *  address as unparseable.
+ *
+ *  When parserOutput is provided (what the deterministic parser produced) and
+ *  the LLM succeeds, a row is inserted into address_parse_corrections so we
+ *  can improve the regex later. Fire-and-forget — never blocks. */
 export async function llmParseAddress(
   rawAddress: string,
-  opts: { leadId?: string } = {},
+  opts: { leadId?: string; parserOutput?: ParsedAddress | null; contactId?: string } = {},
 ): Promise<ParsedAddress | null> {
   if (!rawAddress || !rawAddress.trim()) return null;
 
@@ -76,7 +81,7 @@ export async function llmParseAddress(
   // Normalise province to uppercase 2-letter code.
   const province = parsed.province ? parsed.province.toUpperCase().trim().slice(0, 2) : null;
 
-  return {
+  const addressResult: ParsedAddress = {
     raw: rawAddress,
     civicNumber: parsed.civic_number?.trim() || null,
     civicRange: parsed.civic_range?.trim() || null,
@@ -87,6 +92,27 @@ export async function llmParseAddress(
     postal,
     postalFsa,
   };
+
+  // Fire-and-forget: log to address_parse_corrections when the deterministic
+  // parser failed (parserOutput provided) so we can improve regexes later.
+  // Never block — any DB error is caught and discarded.
+  if (opts.parserOutput !== undefined) {
+    void (async () => {
+      try {
+        const adminSb = createSupabaseAdminClient();
+        await adminSb.from("address_parse_corrections").insert({
+          raw_input:    rawAddress,
+          parser_output: opts.parserOutput ?? null,
+          llm_output:   addressResult,
+          contact_id:   opts.contactId ?? null,
+        });
+      } catch {
+        // Never break the LLM flow on logging failure.
+      }
+    })();
+  }
+
+  return addressResult;
 }
 
 /** Ensure "H3S1N3" → "H3S 1N3"; already-spaced "H3S 1N3" passes through. */

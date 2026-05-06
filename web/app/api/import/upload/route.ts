@@ -104,47 +104,6 @@ export async function POST(request: Request) {
     errors: r.errors,
   }));
 
-  // Improvement 2: Phone-less file detection
-  const ownersWithPhone = parse.rows.reduce(
-    (n, r) => n + r.owners.filter(o => (o.phones ?? []).length > 0).length,
-    0,
-  );
-  const uploadWarnings: string[] = [];
-  if (ownerCount > 0 && ownersWithPhone === 0) {
-    uploadWarnings.push("This file has no phone numbers; every contact will need enrichment.");
-  }
-
-  // Improvement 1: Pre-import dedupe check — count how many parsed properties already exist.
-  let propertiesExisting = 0;
-  try {
-    for (const row of parse.rows) {
-      let found = false;
-      if (row.property.matricule) {
-        const { data } = await admin.from("properties").select("id").eq("matricule", row.property.matricule).maybeSingle();
-        if (data) { found = true; }
-      }
-      if (!found) {
-        const q = admin.from("properties").select("id").eq("address", row.property.address);
-        const rowCity = row.property.city ? row.property.city : null;
-        if (rowCity) q.eq("city", rowCity);
-        const { data } = await q.maybeSingle();
-        if (data) found = true;
-      }
-      if (found) propertiesExisting++;
-    }
-  } catch {
-    // Non-critical — proceed without dedupe info
-  }
-  const propertiesNew = parse.rows.length - propertiesExisting;
-  // Each new property creates leads for its owners; existing properties may also create new leads
-  // (we approximate: owners on new properties all become leads)
-  const leadsWouldBeCreated = ownerCount;
-  const dedupeInfo = {
-    properties_existing: propertiesExisting,
-    properties_new: propertiesNew,
-    leads_would_be_created: leadsWouldBeCreated,
-  };
-
   const { data: job, error: jobErr } = await admin.from("import_jobs").insert({
     campaign_id: campaignId,
     uploaded_by: user.id,
@@ -181,8 +140,6 @@ export async function POST(request: Request) {
       summary: { properties: parse.rows.length, owners: ownerCount, phones: phoneCount, cities },
       previewRows,
       errorsCount: parse.errors.length,
-      dedupe: dedupeInfo,
-      warnings: uploadWarnings,
     },
   });
 }

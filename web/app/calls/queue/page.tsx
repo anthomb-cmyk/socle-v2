@@ -58,11 +58,12 @@ export default async function CallQueuePage({
   // The assigned_to predicate is the only thing that branches on scope.
   let queueQuery = sb
     .from("leads_view")
-    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority,assigned_to")
+    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority,assigned_to,fit_score")
     .in("status", CALLABLE_STATUSES as unknown as string[])
     .not("best_phone", "is", null)
     .or(`next_action_at.is.null,next_action_at.lte.${now}`)
     .order("priority", { ascending: false })
+    .order("fit_score", { ascending: false, nullsFirst: false })
     .order("next_action_at", { ascending: true, nullsFirst: false })
     .order("last_contacted_at", { ascending: true, nullsFirst: true });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runPreflight } from "../preflight";
 import { evaluateBraveResult } from "../candidate-evaluator";
-import { parseQuebecAddress, fsaFromPostal } from "../address-parser";
+import { parseQuebecAddress } from "../address-parser";
 import { extractPhonesWithContext } from "../phone-context-extractor";
 import { classifyResult } from "../source-classifier";
 import { ERR_FIXTURES, GOOD_FIXTURES } from "./fixtures/err-cases";
@@ -74,49 +74,6 @@ describe("Layer B — address parser", () => {
     expect(p.postal).toBe("H1L 3M3");
     expect(p.postalFsa).toBe("H1L");
     expect(p.province).toBe("QC");
-  });
-
-  // Improvement 4: apartment-prefix form without spaces ("300-150 rue Grant")
-  it("handles apartment-prefix form without spaces '300-150 rue Grant' → unit=300, civic=150", () => {
-    const p = parseQuebecAddress("300-150 rue Grant, Longueuil QC J4H 3H6");
-    expect(p.unit).toBe("300");
-    expect(p.civicNumber).toBe("150");
-    expect(p.streetName).toBe("rue Grant");
-    expect(p.city).toBe("Longueuil");
-    expect(p.postal).toBe("J4H 3H6");
-  });
-
-  // Ensure original civic-range behaviour is still intact (left < right → range)
-  it("still treats '189-197' as a civic range (left < right → not apartment-prefix)", () => {
-    const p = parseQuebecAddress("189-197 Rue Desjardins Nord, Granby QC J2G 0A1");
-    expect(p.civicNumber).toBe("189");
-    expect(p.civicRange).toBe("189-197");
-    expect(p.unit).toBeNull();
-  });
-});
-
-describe("fsaFromPostal helper", () => {
-  it("extracts FSA from spaced postal", () => {
-    expect(fsaFromPostal("H3S 1N3")).toBe("H3S");
-  });
-
-  it("extracts FSA from compact postal (no space)", () => {
-    expect(fsaFromPostal("H3S1N3")).toBe("H3S");
-  });
-
-  it("returns null for null/undefined input", () => {
-    expect(fsaFromPostal(null)).toBeNull();
-    expect(fsaFromPostal(undefined)).toBeNull();
-    expect(fsaFromPostal("")).toBeNull();
-  });
-
-  it("returns null for invalid FSA format", () => {
-    expect(fsaFromPostal("123456")).toBeNull();
-    expect(fsaFromPostal("AB")).toBeNull();
-  });
-
-  it("is case-insensitive", () => {
-    expect(fsaFromPostal("j4h 3h6")).toBe("J4H");
   });
 });
 

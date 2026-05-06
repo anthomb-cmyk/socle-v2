@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeCity } from "./cities";
 import { formatDisplay } from "./role-parser/phone-utils";
 import type { ParseResult, ParsedRow, ParsedOwner } from "./role-parser/types";
+import { refreshPortfolioFlags } from "./portfolio/detector";
 
 // Flush incremental counters to import_jobs every N rows so the client can poll progress.
 const INCREMENTAL_FLUSH_EVERY = 5;
@@ -101,6 +102,16 @@ export async function commitImport(
       }).eq("id", opts.importJobId);
     }
   }
+
+  // Fire-and-forget: refresh portfolio flags so is_portfolio_owner stays current
+  // after each import. Never block — errors are logged but don't affect counts.
+  void (async () => {
+    try {
+      await refreshPortfolioFlags(supabase);
+    } catch (err) {
+      console.error("[import-commit] refreshPortfolioFlags failed:", err);
+    }
+  })();
 
   return counts;
 }

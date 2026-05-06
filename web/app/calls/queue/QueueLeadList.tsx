@@ -31,6 +31,7 @@ export type QueueLead = {
   last_contacted_at: string | null;
   next_action_at: string | null;
   priority: number | null;
+  fit_score: number | null;
 };
 
 export type AugmentedLead = {

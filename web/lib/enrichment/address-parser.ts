@@ -133,21 +133,10 @@ export function parseQuebecAddress(rawInput: string | null | undefined): ParsedA
   } else {
     const rangeMatch = CIVIC_RANGE_PREFIX_RE.exec(streetPart);
     if (rangeMatch) {
-      const left = parseInt(rangeMatch[1], 10);
-      const right = parseInt(rangeMatch[2], 10);
-      // Apartment-prefix form (no spaces): "300-150 rue Grant" where left > right
-      // (the unit number is larger than the civic, a classic Québec pattern).
-      // Heuristic: left > right AND left is ≤ 4 digits → treat left as unit, right as civic.
-      if (left > right && rangeMatch[1].length <= 4) {
-        unit = unit ?? rangeMatch[1];
-        civicNumber = rangeMatch[2];
-        streetName = rangeMatch[3].trim();
-      } else {
-        // True civic range: "189-197 Rue Desjardins Nord" (left ≤ right)
-        civicRange = `${rangeMatch[1]}-${rangeMatch[2]}`;
-        civicNumber = rangeMatch[1];
-        streetName = rangeMatch[3].trim();
-      }
+      // Civic range: "189-197 Rue Desjardins Nord"
+      civicRange = `${rangeMatch[1]}-${rangeMatch[2]}`;
+      civicNumber = rangeMatch[1];
+      streetName = rangeMatch[3].trim();
     } else {
       const civicMatch = CIVIC_PREFIX_RE.exec(streetPart);
       if (civicMatch) {
@@ -219,17 +208,4 @@ export function levenshtein(a: string, b: string): number {
 /** Is a parsed address considered usable for a search? */
 export function isAddressSearchable(p: ParsedAddress): boolean {
   return Boolean(p.civicNumber && p.streetName && p.city && p.postal);
-}
-
-/**
- * Derive the FSA (first 3 chars of postal code) from a raw postal string.
- * Returns null if the input is empty or not a valid Canadian FSA prefix.
- */
-export function fsaFromPostal(postal: string | null | undefined): string | null {
-  if (!postal) return null;
-  const cleaned = postal.toUpperCase().replace(/\s+/g, "");
-  if (cleaned.length < 3) return null;
-  const fsa = cleaned.slice(0, 3);
-  if (!/^[A-CEGHJ-NPR-TVXY]\d[A-CEGHJ-NPR-TV-Z]$/.test(fsa)) return null;
-  return fsa;
 }

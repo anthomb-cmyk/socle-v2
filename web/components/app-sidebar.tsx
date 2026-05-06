@@ -37,7 +37,6 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users",   label: "Utilisateurs",       icon: "users"      },
   { href: "/admin/events",  label: "Journal événements", icon: "events"     },
   { href: "/admin/costs",   label: "Coûts API",          icon: "costs"      },
-  { href: "/admin/imports", label: "Imports",            icon: "import"     },
   { href: "/data-health",   label: "Santé données",      icon: "health"     },
   { href: "/properties",    label: "Propriétés",         icon: "properties" },
   { href: "/contacts",      label: "Contacts",           icon: "contacts"   },
