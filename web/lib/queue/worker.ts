@@ -156,25 +156,29 @@ async function dispatch(
     const contact    = (lead as Record<string, unknown>).contacts as Record<string, unknown> | null;
     const property   = (lead as Record<string, unknown>).properties as Record<string, unknown> | null;
     const contactId  = (lead as Record<string, unknown>).contact_id as string;
-    const propertyId = (lead as Record<string, unknown>).property_id as string;
-
-    // Build a synthetic enrichment job id
-    const jobId = `queue_${Date.now()}`;
 
     // Create a minimal enrichment_jobs row so pipeline logging works.
-    const { data: jobRow } = await sb.from("enrichment_jobs").insert({
+    // NOTE: enrichment_jobs has no property_id column — do NOT include it here,
+    // or the insert will silently fail and downstream phone_candidates inserts
+    // will reject the synthetic fallback id as a non-uuid.
+    const { data: jobRow, error: jobInsertErr } = await sb.from("enrichment_jobs").insert({
       lead_id:     leadId,
       contact_id:  contactId,
-      property_id: propertyId,
       job_type:    "find_phone",
       workflow_id: "queue_worker",
       status:      "running",
     }).select("id").single();
 
+    if (jobInsertErr || !jobRow) {
+      // Fail loudly — the queue dispatcher will record last_error and retry.
+      // Better than silently propagating a synthetic non-uuid id downstream.
+      throw new Error(`enrichment_jobs insert failed: ${jobInsertErr?.message ?? "no row returned"}`);
+    }
+
     const ctx = {
       leadId,
       contactId,
-      enrichmentJobId: (jobRow as { id: string } | null)?.id ?? jobId,
+      enrichmentJobId: (jobRow as { id: string }).id,
       fullName:        (contact?.full_name as string | null) ?? null,
       companyName:     (contact?.company_name as string | null) ?? null,
       secondaryName:   null,
@@ -190,13 +194,11 @@ async function dispatch(
     const pipelineResult = await runEnrichmentPipeline(sb, ctx);
 
     // Update the enrichment job with the outcome.
-    if (jobRow) {
-      await sb.from("enrichment_jobs").update({
-        status:       pipelineResult.outcome === "unsuitable" || pipelineResult.outcome === "unresolved" ? "failed" : "success",
-        completed_at: new Date().toISOString(),
-        raw_output:   { outcome: pipelineResult.outcome, stageReached: pipelineResult.stageReached },
-      }).eq("id", (jobRow as { id: string }).id);
-    }
+    await sb.from("enrichment_jobs").update({
+      status:       pipelineResult.outcome === "unsuitable" || pipelineResult.outcome === "unresolved" ? "failed" : "success",
+      completed_at: new Date().toISOString(),
+      raw_output:   { outcome: pipelineResult.outcome, stageReached: pipelineResult.stageReached },
+    }).eq("id", (jobRow as { id: string }).id);
     return;
   }
 
