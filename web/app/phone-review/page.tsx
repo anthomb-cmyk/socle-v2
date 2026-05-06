@@ -48,6 +48,8 @@ export default async function PhoneReviewPage({
         openclaw_reasoning,
         candidate_status,
         review_reason,
+        gate_results,
+        source_class,
         created_at,
         leads (
           id,
@@ -65,7 +67,7 @@ export default async function PhoneReviewPage({
           )
         )
       `)
-      .eq("candidate_status", "needs_anthony_review")
+      .in("candidate_status", ["needs_anthony_review", "weak_review"])
       .order("created_at", { ascending: false })
       .limit(200),
     sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),

@@ -215,6 +215,7 @@ export default function PhoneReviewEvidencePanel({
 }: Props) {
   const { t } = useLocale();
   const [note, setNote] = useState("");
+  const [confirmOverride, setConfirmOverride] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   if (!candidate) {
@@ -260,6 +261,12 @@ export default function PhoneReviewEvidencePanel({
     analysis.recommendation === "approve" ? { text: "Recommandation : approuver",  color: "var(--so-success)" }
     : analysis.recommendation === "reject"  ? { text: "Recommandation : refuser",   color: "var(--so-danger)"  }
     : { text: "Recommandation : vérifier manuellement", color: "var(--so-warn)" };
+
+  // v3: when the analysis recommends rejection, the green Approve button must
+  // require an explicit override. We surface a confirm checkbox; without it,
+  // Approve is disabled. This closes the loophole where every "refuser"
+  // candidate could still be approved with one click.
+  const blockApprove = analysis.recommendation === "reject";
 
   return (
     <div className="pr-evidence">
@@ -465,6 +472,47 @@ export default function PhoneReviewEvidencePanel({
         </div>
       )}
 
+      {/* v3 Gate Report — surfaces every gate decision */}
+      {candidate.gate_results && (
+        <div className="pr-evidence__section" style={{
+          background: "var(--so-bg-2, #fafaf7)",
+          padding: "10px 12px",
+          borderRadius: 6,
+          border: "1px solid var(--so-border, #e8e4d8)",
+        }}>
+          <div className="pr-evidence__section-title" style={{ marginBottom: 8 }}>
+            Pipeline gate report
+            {candidate.source_class && (
+              <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 6px", background: "var(--so-bg-3,#eee)", borderRadius: 4 }}>
+                source: {candidate.source_class}
+              </span>
+            )}
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", fontSize: 12, lineHeight: 1.5 }}>
+            {candidate.gate_results.outcomes.map((o, i) => (
+              <li key={i} style={{ marginBottom: 4 }}>
+                <span style={{
+                  display: "inline-block", width: 18,
+                  color: o.pass ? "var(--so-success,#2d7a3e)" : "var(--so-danger,#b04545)",
+                  fontWeight: 700,
+                }}>{o.pass ? "✓" : "✗"}</span>
+                <strong>{o.gate}</strong>: {o.reason}
+              </li>
+            ))}
+          </ul>
+          {candidate.gate_results.scoreFactors && (
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--so-fg-5)" }}>
+              Score factors — source: {candidate.gate_results.scoreFactors.source}; address: {candidate.gate_results.scoreFactors.address}; name: {candidate.gate_results.scoreFactors.name}; phone: {candidate.gate_results.scoreFactors.phoneAuthority}
+            </div>
+          )}
+          {candidate.gate_results.haiku && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--so-border,#e8e4d8)", fontSize: 12 }}>
+              <strong>Haiku G6:</strong> {candidate.gate_results.haiku.isOwnersPhone ? "approves" : "rejects"} ({candidate.gate_results.haiku.confidence}%) — {candidate.gate_results.haiku.reasoning}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Note + actions */}
       <input
         type="text"
@@ -477,12 +525,28 @@ export default function PhoneReviewEvidencePanel({
 
       {errorText && <p className="pr-evidence__error">{errorText}</p>}
 
+      {blockApprove && (
+        <label style={{
+          display: "flex", alignItems: "center", gap: 8,
+          marginBottom: 8, fontSize: 12, color: "var(--so-danger,#b04545)",
+        }}>
+          <input
+            type="checkbox"
+            checked={confirmOverride}
+            onChange={(e) => setConfirmOverride(e.target.checked)}
+            disabled={isPending}
+          />
+          Override the &laquo;refuser&raquo; recommendation and approve anyway
+        </label>
+      )}
+
       <div className="pr-evidence__actions">
         <button
           type="button"
           onClick={() => act("approve")}
-          disabled={isPending}
+          disabled={isPending || (blockApprove && !confirmOverride)}
           className="crm-action-btn crm-action-btn--primary"
+          title={blockApprove && !confirmOverride ? "Cochez la case d'override pour approuver malgré la recommandation refuser" : ""}
         >
           {t.review.approve}
         </button>

@@ -12,6 +12,8 @@
     "start": "next start -p 8985",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "gen:types": "supabase gen types typescript --project-id mkgkrfcfhtrlecfuzroz > lib/database.types.ts"
   },
   "dependencies": {
@@ -34,6 +36,7 @@
     "eslint-config-next": "15.5.15",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.2.4",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.0"
   }
 }

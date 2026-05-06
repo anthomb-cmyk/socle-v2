@@ -55,6 +55,18 @@ export type PhoneCandidate = {
   openclaw_reasoning: string | null;
   candidate_status: string;
   review_reason: string | null;
+  /** v3 gate engine results (jsonb) — present on candidates produced by pipeline_v3. */
+  gate_results: {
+    outcomes: Array<{ gate: string; pass: boolean; reason: string; signal?: Record<string, unknown> }>;
+    passed: boolean;
+    firstFailure: string | null;
+    disposition: "auto_attached" | "needs_anthony_review" | "weak_review" | "quarantined" | "pipeline_rejected";
+    score: number;
+    scoreFactors?: { source: number; address: number; name: number; phoneAuthority: number };
+    haiku?: { isOwnersPhone: boolean; confidence: number; reasoning: string; nameInSource: boolean; addressInSource: boolean };
+  } | null;
+  /** v3 source classification (page-shape classifier output). */
+  source_class: string | null;
   created_at: string;
   leads: Lead;
 };

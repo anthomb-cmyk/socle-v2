@@ -64,6 +64,9 @@ export type CandidateStatus =
   | "uncertain"
   | "rejected_by_openclaw"
   | "needs_anthony_review"    // medium-confidence → phone review queue
+  | "weak_review"             // v3: gate-passing but low score; collapsible in UI
+  | "quarantined"             // v3: failed at least one gate; not shown by default
+  | "pipeline_rejected"       // v3: hard reject (NEQ, fax, invalid format) — audit only
   | "approved_by_anthony"
   | "rejected_by_anthony";
 
@@ -90,7 +93,18 @@ export type EnrichmentEventType =
   | "phone_approved_by_anthony"
   | "phone_rejected_by_anthony"
   | "unresolved_after_openclaw"
-  | "lead_status_updated";
+  | "lead_status_updated"
+  // ── v3 gate-engine events ──────────────────────────────────────────────
+  | "preflight_failed"             // mailing address invalid/incomplete
+  | "preflight_passed"             // mailing address parsed cleanly
+  | "query_built"                  // structured query emitted
+  | "source_classified"            // Brave result was classified into a source class
+  | "candidate_quarantined"        // candidate failed a gate
+  | "candidate_pipeline_rejected"  // hard reject (NEQ/fax/etc.)
+  | "phone_extraction_rejected"    // phone-shape rejection (NEQ, fax, area code)
+  | "haiku_validation_started"
+  | "haiku_validation_complete"
+  | "candidates_reclassified";     // one-time backfill
 
 // ── Lead context fed to each stage ───────────────────────────────────────────
 
@@ -175,4 +189,109 @@ export type PipelineLeadStatus =
   // Outcomes
   | "ready_to_call"               // high-confidence auto-attach
   | "needs_phone_review"          // medium-confidence → human review queue
+  | "unsuitable_for_phone_enrichment"  // v3: pre-flight failed (incomplete mailing address)
   | "enrichment_failed";
+
+// ── v3 — Source classification (Layer C) ────────────────────────────────────
+
+/** Page-shape classifier output for a single Brave/web result. */
+export type SourceClass =
+  | "directory_authoritative"   // Per-entity detail page (Canada411 person page, REQ entreprise, B2BHint detail, OACIQ broker, etc.)
+  | "directory_aggregate"       // Category/result/list/locator page ("All retailers in X", "Succursales par province")
+  | "municipal_or_institutional" // City/government contact pages, public bodies
+  | "bulk_document"             // PDFs, CSVs, Scribd, postal-code lists, member directories
+  | "commerce_unrelated"        // eBay, Amazon, Kijiji product pages
+  | "social"                    // LinkedIn/Facebook/Twitter (caution)
+  | "company_website"           // The owner's own website (highest authority for B2B)
+  | "web_other";                // Anything else
+
+export interface SourceClassification {
+  sourceClass: SourceClass;
+  /** Per-result confidence in the classification, 0–1 */
+  confidence: number;
+  /** Why this class was chosen — appears in audit log */
+  reason: string;
+  /** Hostname (e.g. "fr.canada411.ca") */
+  host: string;
+  /** Was a domain hint applied (in addition to page-shape signals)? */
+  domainHintApplied: boolean;
+}
+
+// ── v3 — Address parsing (Layer A) ──────────────────────────────────────────
+
+export interface ParsedAddress {
+  raw: string;
+  /** "3720" — civic number; null if missing */
+  civicNumber: string | null;
+  /** "3720-3722" — civic range form; null if not a range */
+  civicRange: string | null;
+  /** "Avenue Kent" — normalized street name (no diacritic-folding here) */
+  streetName: string | null;
+  /** "Apt 408" / "Bureau 12" / "408" — extracted unit, if any */
+  unit: string | null;
+  /** "Montréal" */
+  city: string | null;
+  /** "QC" / "ON" / etc. */
+  province: string | null;
+  /** "H3S 1N3" — uppercase, single-spaced */
+  postal: string | null;
+  /** "H3S" */
+  postalFsa: string | null;
+}
+
+export interface PreflightResult {
+  ok: boolean;
+  parsed: ParsedAddress | null;
+  /** Coherence between mailing_city field and parsed address; null if N/A */
+  cityMatch: "match" | "mismatch" | "missing" | null;
+  /** Specific failure reasons (multiple possible) */
+  failures: string[];
+}
+
+// ── v3 — Gate engine (Layer E) ──────────────────────────────────────────────
+
+export type GateName = "G1_phone_shape" | "G2_source_class" | "G3_address_match" | "G4_owner_match" | "G5_negative_signals" | "G6_haiku_validation";
+
+export interface GateOutcome {
+  gate: GateName;
+  pass: boolean;
+  reason: string;
+  /** Auxiliary signal used to decide (for audit/debug) */
+  signal?: Record<string, unknown>;
+}
+
+export interface GateReport {
+  outcomes: GateOutcome[];
+  passed: boolean;
+  /** First failing gate, or null if all passed */
+  firstFailure: GateName | null;
+  /** Final disposition: how the candidate should be stored */
+  disposition: "auto_attached" | "needs_anthony_review" | "weak_review" | "quarantined" | "pipeline_rejected";
+  /** Final score 0–100 (only meaningful when passed === true) */
+  score: number;
+  /** Multiplicative score factors, for audit */
+  scoreFactors?: { source: number; address: number; name: number; phoneAuthority: number };
+  /** Optional Haiku verdict (when G6 ran) */
+  haiku?: { isOwnersPhone: boolean; confidence: number; reasoning: string; nameInSource: boolean; addressInSource: boolean };
+}
+
+// ── v3 — Phone extraction context (Layer D) ─────────────────────────────────
+
+export interface PhoneExtractionResult {
+  e164: string;
+  display: string;
+  /** ±40 char window around the matched digits (for audit) */
+  window: string;
+  /** Was this number labelled "fax/télécopieur" within the window? */
+  isFax: boolean;
+  /** Was the number contiguous with NEQ / business-id markers? */
+  hasBusinessIdContext: boolean;
+  /** True if this is a known Quebec/Canadian area code */
+  isInRegion: boolean;
+}
+
+export interface PhoneExtractionRejection {
+  reason: "neq_context" | "fax_context" | "out_of_region_non_authoritative" | "invalid_nanp" | "matricule" | "cadastre" | "numbered_company";
+  rawDigits: string;
+  window: string;
+}
