@@ -166,7 +166,7 @@ async function dispatch(
       contact_id:  contactId,
       job_type:    "find_phone",
       workflow_id: "queue_worker",
-      status:      "running",
+      status:      "processing",
     }).select("id").single();
 
     if (jobInsertErr || !jobRow) {
@@ -195,7 +195,7 @@ async function dispatch(
 
     // Update the enrichment job with the outcome.
     await sb.from("enrichment_jobs").update({
-      status:       pipelineResult.outcome === "unsuitable" || pipelineResult.outcome === "unresolved" ? "failed" : "success",
+      status:       pipelineResult.outcome === "unsuitable" || pipelineResult.outcome === "unresolved" ? "failed" : "completed",
       completed_at: new Date().toISOString(),
       raw_output:   { outcome: pipelineResult.outcome, stageReached: pipelineResult.stageReached },
     }).eq("id", (jobRow as { id: string }).id);
