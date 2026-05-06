@@ -216,20 +216,28 @@ export async function auditCallQueue(
         result.flagged_unparseable_mailing_only_enrichment++;
         if (!dryRun) {
           for (const phone of auditable) {
-            await sb.from("phones").update({
+            const { error: phErr } = await sb.from("phones").update({
               status: "wrong_person",
               notes: `Demoted by v3 audit on ${new Date().toISOString()} — mailing unparseable: ${preflight.failures.join(",")}`,
             }).eq("id", phone.id);
+            if (phErr) result.errors.push({ leadId: lead.id, message: `phone update failed: ${phErr.message}` });
           }
-          await sb.from("leads").update({ status: "unsuitable_for_phone_enrichment" }).eq("id", lead.id);
-          result.transitioned_leads++;
-          await sb.from("enrichment_events").insert({
-            lead_id: lead.id,
-            event_type: "lead_status_updated",
-            payload: { from: "ready_to_call", to: "unsuitable_for_phone_enrichment",
-              reason: "audit: mailing unparseable AND only enrichment-derived phones",
-              failures: preflight.failures, demoted_phones: auditable.length },
-          });
+          const { error: lErr } = await sb.from("leads")
+            .update({ status: "unsuitable_for_phone_enrichment" })
+            .eq("id", lead.id);
+          if (lErr) {
+            // The transition failed at the DB layer — surface it so the caller can see.
+            result.errors.push({ leadId: lead.id, message: `lead status update failed: ${lErr.message}` });
+          } else {
+            result.transitioned_leads++;
+            await sb.from("enrichment_events").insert({
+              lead_id: lead.id,
+              event_type: "lead_status_updated",
+              payload: { from: "ready_to_call", to: "unsuitable_for_phone_enrichment",
+                reason: "audit: mailing unparseable AND only enrichment-derived phones",
+                failures: preflight.failures, demoted_phones: auditable.length },
+            });
+          }
         }
         continue;
       }
@@ -324,14 +332,22 @@ export async function auditCallQueue(
         );
         if (remaining.length === 0) {
           if (!dryRun) {
-            await sb.from("leads").update({ status: "needs_phone_review" }).eq("id", lead.id);
-            await sb.from("enrichment_events").insert({
-              lead_id: lead.id,
-              event_type: "lead_status_updated",
-              payload: { from: "ready_to_call", to: "needs_phone_review", reason: "audit: all phones demoted", demoted_count: demotedThisLead.size },
-            });
+            const { error: lErr } = await sb.from("leads")
+              .update({ status: "needs_phone_review" })
+              .eq("id", lead.id);
+            if (lErr) {
+              result.errors.push({ leadId: lead.id, message: `lead status update failed: ${lErr.message}` });
+            } else {
+              result.transitioned_leads++;
+              await sb.from("enrichment_events").insert({
+                lead_id: lead.id,
+                event_type: "lead_status_updated",
+                payload: { from: "ready_to_call", to: "needs_phone_review", reason: "audit: all phones demoted", demoted_count: demotedThisLead.size },
+              });
+            }
+          } else {
+            result.transitioned_leads++;
           }
-          result.transitioned_leads++;
         }
       }
     } catch (err) {

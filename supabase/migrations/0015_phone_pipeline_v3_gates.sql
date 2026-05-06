@@ -53,5 +53,10 @@ CREATE INDEX IF NOT EXISTS phone_candidates_quarantined_idx
   WHERE candidate_status IN ('quarantined', 'pipeline_rejected');
 
 -- ── Allow new lead status ──────────────────────────────────────────────────
--- The leads.status column is text in the current schema, so no enum change
--- is required for unsuitable_for_phone_enrichment. (Verified in migration 0007.)
+-- leads.status is the lead_status enum (declared in 0001). v3 introduces a new
+-- terminal state for leads whose mailing address can't be parsed — used both
+-- by the runtime preflight gate and by the call-queue audit endpoint.
+-- ALTER TYPE ADD VALUE is non-transactional, so we COMMIT/BEGIN around it.
+COMMIT;
+BEGIN;
+ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'unsuitable_for_phone_enrichment';
