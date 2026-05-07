@@ -8,7 +8,11 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["lib/**/__tests__/**/*.spec.ts", "lib/**/*.spec.ts"],
+    include: [
+      "lib/**/__tests__/**/*.spec.ts",
+      "lib/**/*.spec.ts",
+      "scripts/__tests__/**/*.spec.ts",
+    ],
     environment: "node",
   },
 });

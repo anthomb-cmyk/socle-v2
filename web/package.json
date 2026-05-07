@@ -19,6 +19,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
+    "csv-parse": "^6.2.1",
     "next": "15.5.15",
     "openai": "^6.35.0",
     "react": "^19.0.0",
