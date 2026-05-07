@@ -1,6 +1,6 @@
 {
-  "current_phase": 9,
-  "current_phase_name": "CRM publish bridge",
+  "current_phase": 10,
+  "current_phase_name": "Backtest (USER GATE)",
   "phases_completed": [
     0,
     1,
@@ -10,11 +10,14 @@
     5,
     6,
     7,
-    8
+    8,
+    9
   ],
-  "last_phase_completed_at": "2026-05-07T19:01:55.256480Z",
+  "last_phase_completed_at": "2026-05-07T19:06:08.530659Z",
   "blockers": [],
-  "user_gates_pending": [],
+  "user_gates_pending": [
+    "phase_10_backtest"
+  ],
   "schema_version": "v0",
   "git_commit_at_phase_start": "cf1bf2d68ef9d87fea4e5fde0323e25ae13fc6a9",
   "stats": {
