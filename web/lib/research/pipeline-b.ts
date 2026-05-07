@@ -5,7 +5,7 @@
  * with an optional Twilio caller-name lookup, then tiers the evidence and
  * produces hypothesis rows.
  *
- * Tier matrix (per phone group):
+ * Tier matrix (per phone group) — delegated to scoreHypothesis (scorer.ts):
  *   A — 2+ independent sources AND (≥1 postalCorroborated OR ≥1 directoryMatch)
  *   B — 1 authoritative directory source only (no postal corroboration)
  *   C — directory match only, no postal corroboration
@@ -32,6 +32,7 @@ import {
 import { crossPropertyResearcher } from "./researchers/cross-property";
 import { lookupCallerName } from "../twilio/lookup";
 import type { EvidenceCandidate } from "./researchers/types";
+import { scoreHypothesis } from "./scorer";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any>;
@@ -49,45 +50,14 @@ export interface PipelineBResult {
 }
 
 // ---------------------------------------------------------------------------
-// Tier helpers
+// Internal types
 // ---------------------------------------------------------------------------
 
 interface PhoneGroup {
   phone: string;
   evidenceIds: string[];
-  sources: EvidenceCandidate["source"][];
-  postalCorroborated: boolean;
-  directoryMatch: boolean;
+  candidates: EvidenceCandidate[];
   isDirectorPhone: boolean;
-  hasAuthoritative: boolean;
-}
-
-function computeTierB(group: PhoneGroup): HypothesisTier {
-  const uniqueSources = new Set(group.sources);
-
-  // Tier D — phone came from a director-of-other-entity connection
-  if (group.isDirectorPhone) return "D";
-
-  // Tier A — 2+ independent sources AND at least one with postal corroboration
-  if (uniqueSources.size >= 2 && group.postalCorroborated) {
-    return "A";
-  }
-
-  // Tier B — 2+ independent sources with a directory match (no postal corroboration)
-  if (uniqueSources.size >= 2 && group.directoryMatch) return "B";
-
-  // Tier C — single directory match only (no postal corroboration, single source)
-  if (group.directoryMatch) return "C";
-
-  // Tier E — single weak source, no postal, no directory
-  return "E";
-}
-
-function tierToLabel(tier: HypothesisTier): HypothesisConfidenceLabel {
-  if (tier === "A") return "confirmed";
-  if (tier === "B") return "likely";
-  if (tier === "C" || tier === "D") return "connected";
-  return "weak";
 }
 
 const TIER_RANK: Record<HypothesisTier, number> = {
@@ -251,28 +221,13 @@ export async function runPipelineB(
       groups.set(c.phone, {
         phone: c.phone,
         evidenceIds: [],
-        sources: [],
-        postalCorroborated: false,
-        directoryMatch: false,
+        candidates: [],
         isDirectorPhone: directorPhones.has(c.phone),
-        hasAuthoritative: false,
       });
     }
     const g = groups.get(c.phone)!;
     if (c.evidenceId) g.evidenceIds.push(c.evidenceId);
-    g.sources.push(c.source);
-    if (c.isAuthoritative) g.hasAuthoritative = true;
-
-    // Propagate postal corroboration and directory match flags
-    if (isNamePostalCandidate(c)) {
-      if (c.postalCorroborated) g.postalCorroborated = true;
-      if (c.directoryMatch) g.directoryMatch = true;
-    }
-
-    // Twilio corroboration also counts as postal-level corroboration
-    if (c.source === "twilio_caller_name") {
-      g.postalCorroborated = true;
-    }
+    g.candidates.push(c);
   }
 
   // 6. Insert hypothesis rows
@@ -281,8 +236,31 @@ export async function runPipelineB(
   let bestTierRank = -1;
 
   for (const group of groups.values()) {
-    const tier = computeTierB(group);
-    const confidenceLabel = tierToLabel(tier);
+    // Build evidence rows for the scorer, attaching extra flags from
+    // NamePostalDirectoryCandidate and director-phone classification.
+    const evidenceRows = group.candidates.map((c) => {
+      const base = {
+        source: c.source,
+        sourceUrl: c.sourceUrl,
+        isAuthoritative: c.isAuthoritative,
+        postalCorroborated: isNamePostalCandidate(c) ? c.postalCorroborated : undefined,
+        isDirectorOf: group.isDirectorPhone ? true : undefined,
+      };
+      // Twilio corroboration counts as postal-level corroboration
+      if (c.source === "twilio_caller_name") {
+        return { ...base, postalCorroborated: true };
+      }
+      return base;
+    });
+
+    const scored = scoreHypothesis({
+      evidenceRows,
+      ownerType: "individual",
+      pipeline: "B",
+    });
+
+    const tier = scored.tier as HypothesisTier;
+    const confidenceLabel = scored.label as HypothesisConfidenceLabel;
 
     let status: "accepted" | "candidate" | "rejected";
     let statusReason: string;
@@ -305,7 +283,7 @@ export async function runPipelineB(
       claim_value_e164: group.phone,
       tier,
       confidence_label: confidenceLabel,
-      is_direct: tier === "A" || tier === "B",
+      is_direct: scored.isDirect,
       status,
       status_reason: statusReason,
       evidence_ids: group.evidenceIds,

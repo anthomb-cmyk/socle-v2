@@ -1,6 +1,6 @@
 {
-  "current_phase": 7,
-  "current_phase_name": "Hypothesis scoring & owner record assembly",
+  "current_phase": 8,
+  "current_phase_name": "Briefing generation",
   "phases_completed": [
     0,
     1,
@@ -8,9 +8,10 @@
     3,
     4,
     5,
-    6
+    6,
+    7
   ],
-  "last_phase_completed_at": "2026-05-07T18:47:55.877937Z",
+  "last_phase_completed_at": "2026-05-07T18:55:44.700660Z",
   "blockers": [],
   "user_gates_pending": [],
   "schema_version": "v0",

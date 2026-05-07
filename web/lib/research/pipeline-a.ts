@@ -5,7 +5,7 @@
  * with a Twilio caller-name lookup, then tiers the evidence and produces
  * hypothesis rows.
  *
- * Tier matrix (per phone group):
+ * Tier matrix (per phone group) — delegated to scoreHypothesis (scorer.ts):
  *   A — 2+ sources, ≥1 authoritative → "confirmed"
  *   B — 1 authoritative source       → "likely"
  *   C — directory-only (no auth)     → "connected"
@@ -24,6 +24,7 @@ import { companyWebsiteResearcher } from "./researchers/company-website";
 import { pagesJaunesBusinessResearcher } from "./researchers/pages-jaunes-business";
 import { lookupCallerName } from "../twilio/lookup";
 import type { EvidenceCandidate } from "./researchers/types";
+import { scoreHypothesis } from "./scorer";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any>;
@@ -41,36 +42,13 @@ export interface PipelineAResult {
 }
 
 // ---------------------------------------------------------------------------
-// Tier helpers
+// Internal types
 // ---------------------------------------------------------------------------
-
-const AUTHORITATIVE_SOURCES = new Set<EvidenceCandidate["source"]>([
-  "req_phone",
-  "twilio_caller_name",
-]);
 
 interface PhoneGroup {
   phone: string;
   evidenceIds: string[];
-  sources: EvidenceCandidate["source"][];
-  hasAuthoritative: boolean;
-}
-
-function computeTier(group: PhoneGroup): HypothesisTier {
-  const { sources, hasAuthoritative } = group;
-  const uniqueSources = new Set(sources);
-
-  if (uniqueSources.size >= 2 && hasAuthoritative) return "A";
-  if (hasAuthoritative) return "B";
-  if (uniqueSources.size >= 1) return "C";
-  return "E";
-}
-
-function tierToLabel(tier: HypothesisTier): HypothesisConfidenceLabel {
-  if (tier === "A") return "confirmed";
-  if (tier === "B") return "likely";
-  if (tier === "C" || tier === "D") return "connected";
-  return "weak";
+  candidates: EvidenceCandidate[];
 }
 
 const TIER_RANK: Record<HypothesisTier, number> = {
@@ -212,14 +190,12 @@ export async function runPipelineA(
       groups.set(c.phone, {
         phone: c.phone,
         evidenceIds: [],
-        sources: [],
-        hasAuthoritative: false,
+        candidates: [],
       });
     }
     const g = groups.get(c.phone)!;
     if (c.evidenceId) g.evidenceIds.push(c.evidenceId);
-    g.sources.push(c.source);
-    if (c.isAuthoritative) g.hasAuthoritative = true;
+    g.candidates.push(c);
   }
 
   // 5. Insert hypothesis rows
@@ -228,8 +204,18 @@ export async function runPipelineA(
   let bestTierRank = -1;
 
   for (const group of groups.values()) {
-    const tier = computeTier(group);
-    const confidenceLabel = tierToLabel(tier);
+    const scored = scoreHypothesis({
+      evidenceRows: group.candidates.map((c) => ({
+        source: c.source,
+        sourceUrl: c.sourceUrl,
+        isAuthoritative: c.isAuthoritative,
+      })),
+      ownerType: "named_co",
+      pipeline: "A",
+    });
+
+    const tier = scored.tier as HypothesisTier;
+    const confidenceLabel = scored.label as HypothesisConfidenceLabel;
     const shouldAccept = tier === "A" || tier === "B";
 
     const { data: hyp } = await insertHypothesis(sb, {
@@ -239,7 +225,7 @@ export async function runPipelineA(
       claim_value_e164: group.phone,
       tier,
       confidence_label: confidenceLabel,
-      is_direct: true,
+      is_direct: scored.isDirect,
       status: shouldAccept ? "accepted" : "candidate",
       status_reason: shouldAccept
         ? `Pipeline A tier ${tier} — auto-accepted`
