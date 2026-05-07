@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-05-07T19:16:19.139Z",
+  "run_at": "2026-05-07T20:10:00.000Z",
   "leads_evaluated": 369,
   "released_count": 0,
   "held_count": 0,
@@ -8,8 +8,14 @@
   "released_wrong": 0,
   "released_unverifiable": 0,
   "held_correctly": 0,
-  "held_when_should_release": 0,
+  "held_when_should_release": 8,
   "precision": null,
+  "canonical_owner_match_count": 264,
+  "canonical_owner_no_match_count": 105,
+  "canonical_owner_match_rate": 0.7154,
+  "sql_fallback": true,
+  "smoke_test": true,
+  "dry_run": true,
   "by_pipeline": {
     "A": {
       "evaluated": 0,

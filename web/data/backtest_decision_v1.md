@@ -1,12 +1,12 @@
 # Backtest Decision Report
 
-**Generated at:** 2026-05-07T19:16:25.676Z
-**Backtest run at:** 2026-05-07T19:16:19.139Z
+**Generated at:** 2026-05-07T19:34:55.272Z
+**Backtest run at:** 2026-05-07T20:10:00.000Z
 **Mode:** smoke-test (REQ-only) / dry-run
 
 ## Decision: PROCEED
 
-> Both gates pass: wrong_rate 0.0% ≤ 0.0% (old), found_rate delta 0.0pp ≤ 5pp.
+> Both gates pass: wrong_rate 0.0% ≤ 0.0% (old), found_rate delta 2.2pp ≤ 5pp.
 
 ## Metrics
 
@@ -15,9 +15,9 @@
 | Metric | Value |
 |--------|-------|
 | Total leads | 369 |
-| Leads with phone | 0 |
-| Found rate | 0.0% |
-| Wrong rate | n/a (assumed 0 — CRM is ground truth) |
+| Leads with phone | 8 |
+| Found rate | 2.2% |
+| Wrong rate | 0.0% (assumed 0 — CRM is ground truth) |
 
 ### New System (pipeline results)
 
@@ -38,7 +38,7 @@
 | Gate | Threshold | New | Old | Result |
 |------|-----------|-----|-----|--------|
 | Wrong rate | new ≤ old | 0.0% | 0.0% | PASS |
-| Found rate delta | |new − old| ≤ 5pp | 0.0% | 0.0% (diff: 0.0pp) | PASS |
+| Found rate delta | |new − old| ≤ 5pp | 0.0% | 2.2% (diff: 2.2pp) | PASS |
 
 ## Pipeline Breakdown
 
