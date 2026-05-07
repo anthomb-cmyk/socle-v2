@@ -1,14 +1,15 @@
 {
-  "current_phase": 5,
-  "current_phase_name": "Pipeline A (Business researcher)",
+  "current_phase": 6,
+  "current_phase_name": "Pipeline B (Individual researcher)",
   "phases_completed": [
     0,
     1,
     2,
     3,
-    4
+    4,
+    5
   ],
-  "last_phase_completed_at": "2026-05-07T18:34:28.004661Z",
+  "last_phase_completed_at": "2026-05-07T18:40:42.687334Z",
   "blockers": [],
   "user_gates_pending": [],
   "schema_version": "v0",
