@@ -1,13 +1,14 @@
 {
-  "current_phase": 4,
-  "current_phase_name": "Routing classifier",
+  "current_phase": 5,
+  "current_phase_name": "Pipeline A (Business researcher)",
   "phases_completed": [
     0,
     1,
     2,
-    3
+    3,
+    4
   ],
-  "last_phase_completed_at": "2026-05-07T18:30:57.319167Z",
+  "last_phase_completed_at": "2026-05-07T18:34:28.004661Z",
   "blockers": [],
   "user_gates_pending": [],
   "schema_version": "v0",
