@@ -1,12 +1,13 @@
 {
-  "current_phase": 3,
-  "current_phase_name": "Canonical owner derivation",
+  "current_phase": 4,
+  "current_phase_name": "Routing classifier",
   "phases_completed": [
     0,
     1,
-    2
+    2,
+    3
   ],
-  "last_phase_completed_at": "2026-05-07T18:22:30.399914Z",
+  "last_phase_completed_at": "2026-05-07T18:30:57.319167Z",
   "blockers": [],
   "user_gates_pending": [],
   "schema_version": "v0",
