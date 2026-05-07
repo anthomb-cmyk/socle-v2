@@ -15,12 +15,6 @@ import {
   parseDateField,
 } from "../ingest-req";
 
-// Mock the geocode module so tests never make HTTP calls
-vi.mock("../../lib/req/geocode", () => ({
-  geocodeAddress: vi.fn().mockResolvedValue(null),
-  resetGeocodeCache: vi.fn(),
-}));
-
 // ---------------------------------------------------------------------------
 // Fixture data — Entreprise.csv
 // ---------------------------------------------------------------------------

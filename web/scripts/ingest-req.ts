@@ -12,7 +12,10 @@
  * Requires:
  *   - NEXT_PUBLIC_SUPABASE_URL
  *   - SUPABASE_SERVICE_ROLE_KEY
- *   - GOOGLE_GEOCODING_API_KEY  (optional; geocoding is skipped if missing)
+ *
+ * Geocoding is NOT performed at ingest time (removed to keep bulk ingest
+ * affordable at ~3M row scale). Geocodes are filled lazily on first use via
+ * getOrFetchGeocode in geocode.ts.
  *
  * The script is idempotent: entities are upserted on conflict(neq), directors
  * are deleted-and-reinserted per NEQ batch.
@@ -24,7 +27,6 @@ import { execSync } from "node:child_process";
 import { parse } from "csv-parse";
 import { createClient } from "@supabase/supabase-js";
 import { normalizeEntityName, normalizePersonName, extractFsa } from "../lib/req/normalize";
-import { geocodeAddress } from "../lib/req/geocode";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -401,11 +403,6 @@ async function ingestEntrepriseFile(csvPath: string) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const hasGeoKey = Boolean(process.env.GOOGLE_GEOCODING_API_KEY);
-  if (!hasGeoKey) {
-    console.warn("[ingest-req] GOOGLE_GEOCODING_API_KEY not set — geocoding will be skipped.");
-  }
-
   const parser = fs.createReadStream(csvPath).pipe(
     parse({ columns: true, skip_empty_lines: true, trim: true, bom: true }),
   );
@@ -420,29 +417,12 @@ async function ingestEntrepriseFile(csvPath: string) {
   const flushEntities = async () => {
     if (entityBatch.length === 0) return;
 
-    const toInsert = await Promise.all(
-      entityBatch.map(async (e) => {
-        let registered_geocode: string | null = null;
-        let mailing_geocode: string | null = null;
-
-        if (hasGeoKey) {
-          if (e.registered_address_raw) {
-            const g = await geocodeAddress(e.registered_address_raw, true);
-            if (g) registered_geocode = `POINT(${g.lng} ${g.lat})`;
-          }
-          if (e.mailing_address_raw) {
-            const g = await geocodeAddress(e.mailing_address_raw, true);
-            if (g) mailing_geocode = `POINT(${g.lng} ${g.lat})`;
-          }
-        }
-
-        return {
-          ...e,
-          registered_geocode,
-          mailing_geocode,
-        };
-      }),
-    );
+    // Geocodes are intentionally omitted — filled lazily on first use.
+    const toInsert = entityBatch.map((e) => ({
+      ...e,
+      registered_geocode: null,
+      mailing_geocode: null,
+    }));
 
     const { error } = await sb
       .from("req_entities")
@@ -663,11 +643,6 @@ async function ingestAddressesFile(csvPath: string) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const hasGeoKey = Boolean(process.env.GOOGLE_GEOCODING_API_KEY);
-  if (!hasGeoKey) {
-    console.warn("[ingest-req] GOOGLE_GEOCODING_API_KEY not set — geocoding will be skipped.");
-  }
-
   const parser = fs.createReadStream(csvPath).pipe(
     parse({ columns: true, skip_empty_lines: true, trim: true, bom: true }),
   );
@@ -679,26 +654,13 @@ async function ingestAddressesFile(csvPath: string) {
   const flushAddressBatch = async (rows: ParsedEtabRow[]) => {
     if (rows.length === 0) return;
 
-    const updates = await Promise.all(
-      rows.map(async (r) => {
-        const postal_fsa = extractFsa(r.addressRaw);
-        let registered_geocode: string | null = null;
-
-        if (hasGeoKey) {
-          const g = await geocodeAddress(r.addressRaw, true);
-          if (g) {
-            registered_geocode = `POINT(${g.lng} ${g.lat})`;
-          }
-        }
-
-        return {
-          neq: r.neq,
-          registered_address_raw: r.addressRaw,
-          postal_fsa,
-          registered_geocode,
-        };
-      }),
-    );
+    // registered_geocode is left null — filled lazily on first use.
+    const updates = rows.map((r) => ({
+      neq: r.neq,
+      registered_address_raw: r.addressRaw,
+      postal_fsa: extractFsa(r.addressRaw),
+      registered_geocode: null,
+    }));
 
     const { error } = await sb
       .from("req_entities")

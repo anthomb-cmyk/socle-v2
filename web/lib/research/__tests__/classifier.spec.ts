@@ -4,16 +4,20 @@
  * All DB / lookup calls are mocked — no real Supabase connection required.
  *
  * Test matrix:
- *   1. Numbered company with NEQ → Pipeline A, primaryTarget set.
- *   2. Named company without NEQ, name match → Pipeline A.
- *   3. Named company name match returns 4 entities → primary + 3 candidates.
- *   4. Individual, geocode hits 1 entity, owner is director → Pipeline A + reqEnrichment.
- *   5. Individual, geocode hits 1 entity but no director/name link → Pipeline B.
- *   6. Individual, geocode hits 11 entities → Pipeline B + isAggregator.
- *   7. Individual, no geocode but is director of 2 entities → Pipeline B + reqEnrichment.
- *   8. Individual, no geocode, not a director → Pipeline B no enrichment.
- *   9. Owner not found → throws.
- *  10. Geocode RPC throws → Pipeline B fallback (graceful degradation).
+ *   1.  Numbered company with NEQ → Pipeline A, primaryTarget set.
+ *   2.  Named company without NEQ, name match → Pipeline A.
+ *   3.  Named company name match returns 4 entities → primary + 3 candidates.
+ *   4.  Individual, geocode hits 1 entity, owner is director → Pipeline A + reqEnrichment.
+ *   5.  Individual, geocode hits 1 entity but no director/name link → Pipeline B.
+ *   6.  Individual, geocode hits 11 entities → Pipeline B + isAggregator.
+ *   7.  Individual, no geocode but is director of 2 entities → Pipeline B + reqEnrichment.
+ *   8.  Individual, no geocode, not a director → Pipeline B no enrichment.
+ *   9.  Owner not found → throws.
+ *  10.  Geocode RPC throws → Pipeline B fallback (graceful degradation).
+ *  11.  Individual, no geocode on owner, has mailing_address_raw → lazy geocode called.
+ *  12.  Individual, lazy geocode returns null → falls through to director result.
+ *  13.  Individual, name-first: director match found even when geocode is absent.
+ *  14.  Individual, geocode hits 2–10 entities, is a director → Pipeline B + reqEnrichment.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -34,10 +38,16 @@ vi.mock("../db", () => ({
   findCanonicalOwnerById: vi.fn(),
 }));
 
+vi.mock("../../req/geocode", () => ({
+  getOrFetchGeocode: vi.fn(),
+  getOrFetchEntityGeocode: vi.fn(),
+}));
+
 // Import after mocks are registered
 import { routeOwner } from "../classifier";
 import * as lookup from "../../req/lookup";
 import * as db from "../db";
+import * as geocodeModule from "../../req/geocode";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -143,6 +153,8 @@ const mockFindCanonicalOwnerById = db.findCanonicalOwnerById as ReturnType<typeo
 const mockFindEntitiesByGeocode = lookup.findEntitiesByGeocode as ReturnType<typeof vi.fn>;
 const mockFindEntitiesByName = lookup.findEntitiesByName as ReturnType<typeof vi.fn>;
 const mockFindEntitiesByDirector = lookup.findEntitiesByDirector as ReturnType<typeof vi.fn>;
+const mockGetOrFetchGeocode = geocodeModule.getOrFetchGeocode as ReturnType<typeof vi.fn>;
+const mockGetOrFetchEntityGeocode = geocodeModule.getOrFetchEntityGeocode as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -150,6 +162,9 @@ beforeEach(() => {
   mockFindEntitiesByGeocode.mockResolvedValue([]);
   mockFindEntitiesByName.mockResolvedValue([]);
   mockFindEntitiesByDirector.mockResolvedValue([]);
+  // Default: lazy geocode helpers return null (no API key in test env)
+  mockGetOrFetchGeocode.mockResolvedValue(null);
+  mockGetOrFetchEntityGeocode.mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -305,5 +320,86 @@ describe("routeOwner — error handling", () => {
     const sb = makeSupabaseMock();
 
     await expect(routeOwner(sb, "nonexistent-id")).rejects.toThrow(/canonical_owner not found/);
+  });
+});
+
+describe("routeOwner — lazy geocode integration", () => {
+  it("11. individual with no geocode but has mailing_address_raw → getOrFetchGeocode is called", async () => {
+    const owner = makeIndividualOwner({
+      mailing_geocode: null,
+      canonical_name: "Jean Tremblay",
+    });
+    // Add mailing_address_raw to owner
+    const ownerWithAddress = { ...owner, mailing_address_raw: "100 Rue Main, Montréal QC H2X 1A1" };
+    mockFindCanonicalOwnerById.mockResolvedValue({ data: ownerWithAddress, error: null });
+    mockFindEntitiesByDirector.mockResolvedValue([]);
+    // Lazy geocode returns a point
+    mockGetOrFetchGeocode.mockResolvedValue({ lat: 45.5, lng: -73.6 });
+    mockFindEntitiesByGeocode.mockResolvedValue([]);
+    const sb = makeSupabaseMock();
+
+    await routeOwner(sb, owner.owner_id);
+
+    expect(mockGetOrFetchGeocode).toHaveBeenCalledWith(
+      sb,
+      "canonical_owner",
+      "owner_id",
+      owner.owner_id,
+      ownerWithAddress.mailing_address_raw,
+      "mailing_geocode",
+    );
+  });
+
+  it("12. individual, lazy geocode returns null → falls through to director result Pipeline B", async () => {
+    const owner = makeIndividualOwner({ mailing_geocode: null });
+    const ownerWithAddress = { ...owner, mailing_address_raw: "123 Rue Test, QC" };
+    mockFindCanonicalOwnerById.mockResolvedValue({ data: ownerWithAddress, error: null });
+    mockFindEntitiesByDirector.mockResolvedValue([{ entity: ENTITY_A, director: {} }]);
+    mockGetOrFetchGeocode.mockResolvedValue(null); // geocoding failed
+    const sb = makeSupabaseMock();
+
+    const result = await routeOwner(sb, owner.owner_id);
+
+    expect(result.pipeline).toBe("B");
+    expect(result.reqEnrichment?.isDirector).toBe(true);
+    expect(result.reqEnrichment?.directorOf).toHaveLength(1);
+  });
+
+  it("13. individual, name-first: director match returned even when geocode is null", async () => {
+    // Owner has no geocode and no mailing_address_raw — pure name-first path
+    const owner = makeIndividualOwner({ mailing_geocode: null });
+    mockFindCanonicalOwnerById.mockResolvedValue({ data: owner, error: null });
+    mockFindEntitiesByDirector.mockResolvedValue([
+      { entity: ENTITY_A, director: {} },
+      { entity: ENTITY_B, director: {} },
+    ]);
+    const sb = makeSupabaseMock();
+
+    const result = await routeOwner(sb, owner.owner_id);
+
+    expect(result.pipeline).toBe("B");
+    expect(result.reqEnrichment?.isDirector).toBe(true);
+    expect(result.reqEnrichment?.directorOf).toHaveLength(2);
+    // getOrFetchGeocode should not have been called (null geocode + no address)
+    expect(mockGetOrFetchGeocode).not.toHaveBeenCalled();
+  });
+
+  it("14. individual, geocode hits 2–10 entities, is a director → Pipeline B + reqEnrichment", async () => {
+    const fiveEntities = Array.from({ length: 5 }, (_, i) =>
+      makeEntity(`900000000${i}`, `entity ${i}`),
+    );
+    const owner = makeIndividualOwner({ mailing_geocode: GEOCODE_POINT });
+    mockFindCanonicalOwnerById.mockResolvedValue({ data: owner, error: null });
+    mockFindEntitiesByGeocode.mockResolvedValue(fiveEntities);
+    mockFindEntitiesByDirector.mockResolvedValue([{ entity: ENTITY_A, director: {} }]);
+    const sb = makeSupabaseMock();
+
+    const result = await routeOwner(sb, owner.owner_id);
+
+    // 2-10 entity geocode result falls through to director check
+    expect(result.pipeline).toBe("B");
+    expect(result.reqEnrichment?.isDirector).toBe(true);
+    expect(result.isAggregator).toBe(false);
+    expect(result.reason).toContain("director");
   });
 });
