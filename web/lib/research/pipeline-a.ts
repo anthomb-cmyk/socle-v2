@@ -41,6 +41,14 @@ export interface PipelineAResult {
   reason: string;
 }
 
+/** Options that modify pipeline behaviour (e.g. for smoke-test / backtest runs). */
+export interface PipelineAOptions {
+  /** Skip all Brave-powered researchers (company-website, pages-jaunes-business). */
+  skipBrave?: boolean;
+  /** Skip the Twilio caller-name lookup. */
+  skipTwilio?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
@@ -89,7 +97,9 @@ function hasNameOverlap(entityName: string, callerName: string): boolean {
 export async function runPipelineA(
   sb: AnyClient,
   ownerId: string,
+  _options: PipelineAOptions = {},
 ): Promise<PipelineAResult> {
+  const { skipBrave = false, skipTwilio = false } = _options;
   // 1. Route check
   const routing = await routeOwner(sb, ownerId);
   if (routing.pipeline !== "A") {
@@ -120,29 +130,33 @@ export async function runPipelineA(
         console.error("[pipeline-a] reqPhoneResearcher failed:", err);
       }
 
-      // 2b. Company website
-      try {
-        const webCandidates = await companyWebsiteResearcher(sb, owner, primaryTarget);
-        allCandidates.push(...webCandidates);
-      } catch (err) {
-        console.error("[pipeline-a] companyWebsiteResearcher failed:", err);
+      // 2b. Company website (Brave-powered — skipped in smoke-test mode)
+      if (!skipBrave) {
+        try {
+          const webCandidates = await companyWebsiteResearcher(sb, owner, primaryTarget);
+          allCandidates.push(...webCandidates);
+        } catch (err) {
+          console.error("[pipeline-a] companyWebsiteResearcher failed:", err);
+        }
       }
 
-      // 2c. Pages Jaunes
-      try {
-        const pjCandidates = await pagesJaunesBusinessResearcher(sb, owner, primaryTarget);
-        allCandidates.push(...pjCandidates);
-      } catch (err) {
-        console.error("[pipeline-a] pagesJaunesBusinessResearcher failed:", err);
+      // 2c. Pages Jaunes (Brave-powered — skipped in smoke-test mode)
+      if (!skipBrave) {
+        try {
+          const pjCandidates = await pagesJaunesBusinessResearcher(sb, owner, primaryTarget);
+          allCandidates.push(...pjCandidates);
+        } catch (err) {
+          console.error("[pipeline-a] pagesJaunesBusinessResearcher failed:", err);
+        }
       }
     }
   }
 
-  // 3. Twilio caller-name enrichment
+  // 3. Twilio caller-name enrichment (skipped in smoke-test mode)
   const uniquePhones = [...new Set(allCandidates.map((c) => c.phone))];
   const twilioExtraCandidates: EvidenceCandidate[] = [];
 
-  for (const phone of uniquePhones) {
+  for (const phone of skipTwilio ? [] : uniquePhones) {
     const lookup = await lookupCallerName(sb, phone);
     if (lookup.error) {
       console.warn(`[pipeline-a] Twilio lookup skipped for ${phone}: ${lookup.error}`);

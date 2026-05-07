@@ -49,6 +49,14 @@ export interface PipelineBResult {
   reason: string;
 }
 
+/** Options that modify pipeline behaviour (e.g. for smoke-test / backtest runs). */
+export interface PipelineBOptions {
+  /** Skip all Brave-powered researchers (reverse-address, name-postal-directory). */
+  skipBrave?: boolean;
+  /** Skip the Twilio caller-name lookup. */
+  skipTwilio?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
@@ -111,7 +119,9 @@ function isNamePostalCandidate(
 export async function runPipelineB(
   sb: AnyClient,
   ownerId: string,
+  _options: PipelineBOptions = {},
 ): Promise<PipelineBResult> {
+  const { skipBrave = false, skipTwilio = false } = _options;
   // 1. Route check
   const routing = await routeOwner(sb, ownerId);
   if (routing.pipeline !== "B") {
@@ -148,16 +158,22 @@ export async function runPipelineB(
   }
 
   // 3. Run researchers in parallel
+  //    Brave-powered researchers (reverseAddress, namePostal) are skipped in
+  //    smoke-test mode; crossProperty is always run (DB-only, no external API).
   const [reverseCandidates, namePostalCandidates, crossPropertyCandidates] =
     await Promise.all([
-      reverseAddressResearcher(sb, owner).catch((err) => {
-        console.error("[pipeline-b] reverseAddressResearcher failed:", err);
-        return [] as EvidenceCandidate[];
-      }),
-      namePostalDirectoryResearcher(sb, owner).catch((err) => {
-        console.error("[pipeline-b] namePostalDirectoryResearcher failed:", err);
-        return [] as NamePostalDirectoryCandidate[];
-      }),
+      skipBrave
+        ? Promise.resolve([] as EvidenceCandidate[])
+        : reverseAddressResearcher(sb, owner).catch((err) => {
+            console.error("[pipeline-b] reverseAddressResearcher failed:", err);
+            return [] as EvidenceCandidate[];
+          }),
+      skipBrave
+        ? Promise.resolve([] as NamePostalDirectoryCandidate[])
+        : namePostalDirectoryResearcher(sb, owner).catch((err) => {
+            console.error("[pipeline-b] namePostalDirectoryResearcher failed:", err);
+            return [] as NamePostalDirectoryCandidate[];
+          }),
       crossPropertyResearcher(sb, owner).catch((err) => {
         console.error("[pipeline-b] crossPropertyResearcher failed:", err);
         return [] as EvidenceCandidate[];
@@ -170,11 +186,11 @@ export async function runPipelineB(
     ...crossPropertyCandidates,
   ];
 
-  // 4. Opportunistic Twilio caller-name lookup
+  // 4. Opportunistic Twilio caller-name lookup (skipped in smoke-test mode)
   const uniquePhones = [...new Set(allCandidates.map((c) => c.phone))];
   const twilioExtraCandidates: EvidenceCandidate[] = [];
 
-  for (const phone of uniquePhones) {
+  for (const phone of skipTwilio ? [] : uniquePhones) {
     const lookup = await lookupCallerName(sb, phone);
     if (lookup.error) {
       console.warn(`[pipeline-b] Twilio lookup skipped for ${phone}: ${lookup.error}`);
