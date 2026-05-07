@@ -399,8 +399,11 @@ async function main() {
   );
 }
 
-// Only run when executed directly (not imported in tests)
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.url.replace("file://", ""))) {
+// Only run when executed directly (not imported in tests).
+// Use fileURLToPath to handle URL-encoded paths (e.g. spaces → %20).
+import { fileURLToPath } from "node:url";
+const __thisFile = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__thisFile)) {
   main().catch((err) => {
     console.error(err);
     process.exit(1);
