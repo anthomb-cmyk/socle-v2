@@ -32,6 +32,16 @@ export interface ReqDirector {
   end_date: string | null;
 }
 
+export interface ReqEntityAlias {
+  id: string;
+  neq: string;
+  alias_name: string;
+  alias_name_normalized: string;
+  alias_type: string | null;
+  start_date: string | null; // ISO date string
+  end_date: string | null;   // ISO date string
+}
+
 export interface ReqSnapshotMeta {
   id: number;
   imported_at: string;

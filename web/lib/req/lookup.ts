@@ -66,10 +66,13 @@ export async function findEntitiesByGeocode(
  * Find REQ entities by normalized legal name.
  *
  * Strategy (in order):
- *   1. Exact match on legal_name_normalized
- *   2. If no results, fall back to ILIKE prefix match (legal_name_normalized ILIKE '<name>%')
+ *   1. Exact match on legal_name_normalized in req_entities
+ *   2. Exact match on alias_name_normalized in req_entity_alias → fetch parent entities
+ *   3. If still no results, fall back to ILIKE prefix match on legal_name_normalized
  *      — levenshtein / pg_trgm similarity would require an extension not guaranteed present;
  *        ILIKE prefix is reliable and fast given the existing index.
+ *
+ * Results are deduped by NEQ across all three strategies.
  *
  * The `fuzzyDistance` parameter is accepted for API compatibility but is not
  * used in the current ILIKE implementation (reserved for a pg_trgm upgrade).
@@ -80,7 +83,7 @@ export async function findEntitiesByName(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _fuzzyDistance = 3,
 ): Promise<ReqEntity[]> {
-  // 1. Exact match
+  // 1. Exact match on primary legal_name_normalized
   const { data: exact } = await sb
     .from("req_entities")
     .select("*")
@@ -88,7 +91,25 @@ export async function findEntitiesByName(
 
   if (exact && exact.length > 0) return exact as ReqEntity[];
 
-  // 2. ILIKE prefix fallback
+  // 2. Alias match: find NEQs where alias_name_normalized matches, then fetch entities
+  const { data: aliasRows } = await sb
+    .from("req_entity_alias")
+    .select("neq")
+    .eq("alias_name_normalized", normalized);
+
+  if (aliasRows && aliasRows.length > 0) {
+    const neqs = [...new Set((aliasRows as Array<{ neq: string }>).map((r) => r.neq))];
+    const { data: aliasEntities } = await sb
+      .from("req_entities")
+      .select("*")
+      .in("neq", neqs);
+
+    if (aliasEntities && aliasEntities.length > 0) {
+      return aliasEntities as ReqEntity[];
+    }
+  }
+
+  // 3. ILIKE prefix fallback on primary name
   const { data: prefix } = await sb
     .from("req_entities")
     .select("*")

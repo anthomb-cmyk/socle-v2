@@ -3,6 +3,8 @@
  *
  * Usage:
  *   npx tsx scripts/ingest-req.ts [--file=<path>]
+ *   npx tsx scripts/ingest-req.ts --names-file=<Nom.csv>
+ *   npx tsx scripts/ingest-req.ts --addresses-file=<Etablissements.csv>
  *
  * If --file is not provided, the script attempts to locate the REQ CSV via:
  *   find ~ -name '*entreprise*.csv' -type f 2>/dev/null | head -5
@@ -53,10 +55,44 @@ export interface ParsedDirector {
   end_date: string | null;
 }
 
+/**
+ * Represents a resolved name from Nom.csv.
+ * `isCurrent` indicates this is the active legal name (DAT_FIN_NOM_ASSUJ is null/empty).
+ */
+export interface ParsedNomRow {
+  neq: string;
+  name: string;
+  aliasType: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  isCurrent: boolean;
+}
+
+/**
+ * Result of processing a set of Nom.csv rows for a single NEQ:
+ * the chosen current name and any aliases.
+ */
+export interface ResolvedEntityName {
+  neq: string;
+  currentName: string;
+  aliases: Array<{
+    name: string;
+    aliasType: string | null;
+    startDate: string | null;
+    endDate: string | null;
+  }>;
+}
+
+/**
+ * Represents a row from Etablissements.csv after filtering to principal establishments.
+ */
+export interface ParsedEtabRow {
+  neq: string;
+  addressRaw: string;
+}
+
 // ---------------------------------------------------------------------------
-// Column mapping
-// The REQ CSV uses French headers; we map them forgivingly (case-insensitive,
-// whitespace-stripped).  Adjust the mapping array if Registraire changes headers.
+// Column mapping — Entreprise.csv
 // ---------------------------------------------------------------------------
 
 const COL_MAP: Array<{ field: keyof ColumnMapping; patterns: string[] }> = [
@@ -135,7 +171,7 @@ function buildAddress(parts: (string | undefined)[]): string | null {
   return s.length > 0 ? s : null;
 }
 
-function parseDateField(raw: string | undefined): string | null {
+export function parseDateField(raw: string | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -231,6 +267,104 @@ export function mapRow(
 }
 
 // ---------------------------------------------------------------------------
+// Nom.csv parsing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a single Nom.csv row into a ParsedNomRow.
+ * Returns null if NEQ or name is missing.
+ *
+ * Nom.csv header: NEQ,NOM_ASSUJ,NOM_ASSUJ_LANG_ETRNG,STAT_NOM,TYP_NOM_ASSUJ,
+ *                 DAT_INIT_NOM_ASSUJ,DAT_FIN_NOM_ASSUJ
+ */
+export function parseNomRow(row: Record<string, string>): ParsedNomRow | null {
+  const neq = row["NEQ"]?.trim();
+  const name = row["NOM_ASSUJ"]?.trim();
+  if (!neq || !name) return null;
+
+  const endDateRaw = row["DAT_FIN_NOM_ASSUJ"]?.trim() ?? "";
+  const isCurrent = endDateRaw === "" || endDateRaw === null;
+
+  return {
+    neq,
+    name,
+    aliasType: row["TYP_NOM_ASSUJ"]?.trim() || null,
+    startDate: parseDateField(row["DAT_INIT_NOM_ASSUJ"]),
+    endDate: parseDateField(row["DAT_FIN_NOM_ASSUJ"]),
+    isCurrent,
+  };
+}
+
+/**
+ * Given a list of ParsedNomRow for a single NEQ, pick the current name
+ * and collect aliases.
+ *
+ * Current name selection priority:
+ *   1. Rows where isCurrent=true (DAT_FIN_NOM_ASSUJ is null/empty)
+ *      — if multiple, pick the one with latest DAT_INIT_NOM_ASSUJ
+ *   2. If none are current, pick the row with latest DAT_INIT_NOM_ASSUJ
+ */
+export function resolveCurrentName(rows: ParsedNomRow[]): ResolvedEntityName | null {
+  if (rows.length === 0) return null;
+
+  const neq = rows[0].neq;
+  const currentRows = rows.filter((r) => r.isCurrent);
+  const candidates = currentRows.length > 0 ? currentRows : rows;
+
+  // Sort by startDate descending (null dates sort last)
+  const sorted = [...candidates].sort((a, b) => {
+    if (!a.startDate && !b.startDate) return 0;
+    if (!a.startDate) return 1;
+    if (!b.startDate) return -1;
+    return b.startDate.localeCompare(a.startDate);
+  });
+
+  const chosen = sorted[0];
+  const aliases = rows
+    .filter((r) => r !== chosen)
+    .map((r) => ({
+      name: r.name,
+      aliasType: r.aliasType,
+      startDate: r.startDate,
+      endDate: r.endDate,
+    }));
+
+  return { neq, currentName: chosen.name, aliases };
+}
+
+// ---------------------------------------------------------------------------
+// Etablissements.csv parsing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a single Etablissements.csv row.
+ * Returns null if not the principal establishment or if NEQ/address is missing.
+ *
+ * Etablissements.csv header:
+ *   NEQ,NO_SUF_ETAB,IND_ETAB_PRINC,IND_SALON_BRONZ,IND_VENTE_TABAC_DETL,IND_DISP,
+ *   LIGN1_ADR,LIGN2_ADR,LIGN3_ADR,LIGN4_ADR,COD_ACT_ECON,DESC_ACT_ECON_ETAB,...,NOM_ETAB
+ */
+export function parseEtabRow(row: Record<string, string>): ParsedEtabRow | null {
+  const neq = row["NEQ"]?.trim();
+  const isPrincipal = row["IND_ETAB_PRINC"]?.trim();
+  if (!neq || isPrincipal !== "1") return null;
+
+  const lines = [
+    row["LIGN1_ADR"]?.trim(),
+    row["LIGN2_ADR"]?.trim(),
+    row["LIGN3_ADR"]?.trim(),
+    row["LIGN4_ADR"]?.trim(),
+  ].filter(Boolean);
+
+  if (lines.length === 0) return null;
+
+  return {
+    neq,
+    addressRaw: lines.join(", "),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // File discovery
 // ---------------------------------------------------------------------------
 
@@ -248,36 +382,15 @@ function findCsvFile(): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Main ingest
+// Main ingest — Entreprise.csv
 // ---------------------------------------------------------------------------
 
 const BATCH_SIZE = 1000;
+const PROGRESS_INTERVAL = 50_000;
 
-async function main() {
-  // Parse --file= argument
-  const fileArg = process.argv
-    .slice(2)
-    .find((a) => a.startsWith("--file="))
-    ?.replace("--file=", "");
-
-  const csvPath = fileArg ?? findCsvFile();
-
-  if (!csvPath) {
-    console.error(
-      "ERROR: No REQ CSV file found. " +
-        "Provide one via --file=<path> or ensure a '*entreprise*.csv' file exists under ~/.",
-    );
-    process.exit(1);
-  }
-
-  if (!fs.existsSync(csvPath)) {
-    console.error(`ERROR: File not found: ${csvPath}`);
-    process.exit(1);
-  }
-
+async function ingestEntrepriseFile(csvPath: string) {
   console.log(`[ingest-req] Using file: ${csvPath}`);
 
-  // Create Supabase admin client
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceRoleKey) {
@@ -293,7 +406,6 @@ async function main() {
     console.warn("[ingest-req] GOOGLE_GEOCODING_API_KEY not set — geocoding will be skipped.");
   }
 
-  // Stream CSV
   const parser = fs.createReadStream(csvPath).pipe(
     parse({ columns: true, skip_empty_lines: true, trim: true, bom: true }),
   );
@@ -303,11 +415,11 @@ async function main() {
   const directorBatch: ParsedDirector[] = [];
   let totalEntities = 0;
   let totalDirectors = 0;
+  let rowsRead = 0;
 
   const flushEntities = async () => {
     if (entityBatch.length === 0) return;
 
-    // Optionally geocode
     const toInsert = await Promise.all(
       entityBatch.map(async (e) => {
         let registered_geocode: string | null = null;
@@ -340,7 +452,9 @@ async function main() {
       console.error("[ingest-req] Entity upsert error:", error.message);
     } else {
       totalEntities += entityBatch.length;
-      console.log(`[ingest-req] Upserted ${totalEntities} entities so far…`);
+      if (totalEntities % PROGRESS_INTERVAL < BATCH_SIZE) {
+        console.log(`[ingest-req] Upserted ${totalEntities} entities so far…`);
+      }
     }
     entityBatch.length = 0;
   };
@@ -361,7 +475,7 @@ async function main() {
   };
 
   for await (const row of parser as AsyncIterable<Record<string, string>>) {
-    // Resolve column mapping from the first row's keys
+    rowsRead++;
     if (!mapping) {
       mapping = resolveColumnMapping(Object.keys(row));
       console.log("[ingest-req] Column mapping resolved:", mapping);
@@ -379,13 +493,15 @@ async function main() {
     if (directorBatch.length >= BATCH_SIZE) {
       await flushDirectors();
     }
+
+    if (rowsRead % PROGRESS_INTERVAL === 0) {
+      console.log(`[ingest-req] Read ${rowsRead} rows…`);
+    }
   }
 
-  // Flush remaining
   await flushEntities();
   await flushDirectors();
 
-  // Write snapshot meta
   const sourceDate = new Date().toISOString().slice(0, 10);
   await sb.from("req_snapshot_meta").insert({
     source_file: path.basename(csvPath),
@@ -397,6 +513,277 @@ async function main() {
   console.log(
     `[ingest-req] Done. Entities: ${totalEntities}, Directors: ${totalDirectors}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Nom.csv ingest
+// ---------------------------------------------------------------------------
+
+async function ingestNamesFile(csvPath: string) {
+  console.log(`[ingest-req] --names-file mode: ${csvPath}`);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.");
+    process.exit(1);
+  }
+  const sb = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const parser = fs.createReadStream(csvPath).pipe(
+    parse({ columns: true, skip_empty_lines: true, trim: true, bom: true }),
+  );
+
+  // Accumulate rows per NEQ in a map; flush when map hits BATCH_SIZE distinct NEQs
+  const neqMap = new Map<string, ParsedNomRow[]>();
+  let totalRowsRead = 0;
+  let totalEntitiesUpdated = 0;
+  let totalAliasesInserted = 0;
+
+  const flushNomBatch = async (batch: Map<string, ParsedNomRow[]>) => {
+    if (batch.size === 0) return;
+
+    const entityUpdates: Array<{ neq: string; legal_name: string; legal_name_normalized: string }> = [];
+    const aliasInserts: Array<{
+      neq: string;
+      alias_name: string;
+      alias_name_normalized: string;
+      alias_type: string | null;
+      start_date: string | null;
+      end_date: string | null;
+    }> = [];
+
+    for (const [, rows] of batch) {
+      const resolved = resolveCurrentName(rows);
+      if (!resolved) continue;
+
+      entityUpdates.push({
+        neq: resolved.neq,
+        legal_name: resolved.currentName,
+        legal_name_normalized: normalizeEntityName(resolved.currentName),
+      });
+
+      for (const alias of resolved.aliases) {
+        aliasInserts.push({
+          neq: resolved.neq,
+          alias_name: alias.name,
+          alias_name_normalized: normalizeEntityName(alias.name),
+          alias_type: alias.aliasType,
+          start_date: alias.startDate,
+          end_date: alias.endDate,
+        });
+      }
+    }
+
+    if (entityUpdates.length > 0) {
+      const { error } = await sb
+        .from("req_entities")
+        .upsert(entityUpdates, { onConflict: "neq" });
+      if (error) {
+        console.error("[ingest-req] Name update error:", error.message);
+      } else {
+        totalEntitiesUpdated += entityUpdates.length;
+      }
+    }
+
+    if (aliasInserts.length > 0) {
+      // Insert aliases in sub-batches to avoid payload limits
+      const SUB_BATCH = 500;
+      for (let i = 0; i < aliasInserts.length; i += SUB_BATCH) {
+        const chunk = aliasInserts.slice(i, i + SUB_BATCH);
+        const { error } = await sb
+          .from("req_entity_alias")
+          .upsert(chunk, { onConflict: "neq,alias_name_normalized", ignoreDuplicates: true });
+        if (error) {
+          // Fall back to insert ignoring duplicates at app level
+          for (const row of chunk) {
+            const { error: e2 } = await sb
+              .from("req_entity_alias")
+              .insert(row);
+            if (e2 && !e2.message.includes("duplicate")) {
+              console.warn("[ingest-req] Alias insert warning:", e2.message);
+            }
+          }
+        } else {
+          totalAliasesInserted += chunk.length;
+        }
+      }
+    }
+  };
+
+  for await (const row of parser as AsyncIterable<Record<string, string>>) {
+    totalRowsRead++;
+    const parsed = parseNomRow(row);
+    if (!parsed) continue;
+
+    const existing = neqMap.get(parsed.neq) ?? [];
+    existing.push(parsed);
+    neqMap.set(parsed.neq, existing);
+
+    // Flush when we have BATCH_SIZE distinct NEQs
+    if (neqMap.size >= BATCH_SIZE) {
+      await flushNomBatch(neqMap);
+      neqMap.clear();
+    }
+
+    if (totalRowsRead % PROGRESS_INTERVAL === 0) {
+      console.log(
+        `[ingest-req] Nom.csv: read ${totalRowsRead} rows, ` +
+        `updated ${totalEntitiesUpdated} entities, ${totalAliasesInserted} aliases so far…`,
+      );
+    }
+  }
+
+  // Flush remainder
+  await flushNomBatch(neqMap);
+  neqMap.clear();
+
+  console.log(
+    `[ingest-req] Nom.csv done. Rows read: ${totalRowsRead}, ` +
+    `entities updated: ${totalEntitiesUpdated}, aliases inserted: ${totalAliasesInserted}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Etablissements.csv ingest
+// ---------------------------------------------------------------------------
+
+async function ingestAddressesFile(csvPath: string) {
+  console.log(`[ingest-req] --addresses-file mode: ${csvPath}`);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.");
+    process.exit(1);
+  }
+  const sb = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const hasGeoKey = Boolean(process.env.GOOGLE_GEOCODING_API_KEY);
+  if (!hasGeoKey) {
+    console.warn("[ingest-req] GOOGLE_GEOCODING_API_KEY not set — geocoding will be skipped.");
+  }
+
+  const parser = fs.createReadStream(csvPath).pipe(
+    parse({ columns: true, skip_empty_lines: true, trim: true, bom: true }),
+  );
+
+  let totalRowsRead = 0;
+  let totalUpdated = 0;
+  const batch: ParsedEtabRow[] = [];
+
+  const flushAddressBatch = async (rows: ParsedEtabRow[]) => {
+    if (rows.length === 0) return;
+
+    const updates = await Promise.all(
+      rows.map(async (r) => {
+        const postal_fsa = extractFsa(r.addressRaw);
+        let registered_geocode: string | null = null;
+
+        if (hasGeoKey) {
+          const g = await geocodeAddress(r.addressRaw, true);
+          if (g) {
+            registered_geocode = `POINT(${g.lng} ${g.lat})`;
+          }
+        }
+
+        return {
+          neq: r.neq,
+          registered_address_raw: r.addressRaw,
+          postal_fsa,
+          registered_geocode,
+        };
+      }),
+    );
+
+    const { error } = await sb
+      .from("req_entities")
+      .upsert(updates, { onConflict: "neq" });
+
+    if (error) {
+      console.error("[ingest-req] Address upsert error:", error.message);
+    } else {
+      totalUpdated += updates.length;
+    }
+  };
+
+  for await (const row of parser as AsyncIterable<Record<string, string>>) {
+    totalRowsRead++;
+    const parsed = parseEtabRow(row);
+    if (!parsed) continue;
+
+    batch.push(parsed);
+
+    if (batch.length >= BATCH_SIZE) {
+      await flushAddressBatch(batch);
+      batch.length = 0;
+    }
+
+    if (totalRowsRead % PROGRESS_INTERVAL === 0) {
+      console.log(
+        `[ingest-req] Etablissements.csv: read ${totalRowsRead} rows, updated ${totalUpdated} entities so far…`,
+      );
+    }
+  }
+
+  await flushAddressBatch(batch);
+  batch.length = 0;
+
+  console.log(
+    `[ingest-req] Etablissements.csv done. Rows read: ${totalRowsRead}, entities updated: ${totalUpdated}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const args = process.argv.slice(2);
+
+  const namesArg = args.find((a) => a.startsWith("--names-file="))?.replace("--names-file=", "");
+  const addressesArg = args.find((a) => a.startsWith("--addresses-file="))?.replace("--addresses-file=", "");
+  const fileArg = args.find((a) => a.startsWith("--file="))?.replace("--file=", "");
+
+  if (namesArg) {
+    if (!fs.existsSync(namesArg)) {
+      console.error(`ERROR: File not found: ${namesArg}`);
+      process.exit(1);
+    }
+    await ingestNamesFile(namesArg);
+    return;
+  }
+
+  if (addressesArg) {
+    if (!fs.existsSync(addressesArg)) {
+      console.error(`ERROR: File not found: ${addressesArg}`);
+      process.exit(1);
+    }
+    await ingestAddressesFile(addressesArg);
+    return;
+  }
+
+  // Default: Entreprise.csv mode
+  const csvPath = fileArg ?? findCsvFile();
+
+  if (!csvPath) {
+    console.error(
+      "ERROR: No REQ CSV file found. " +
+        "Provide one via --file=<path> or ensure a '*entreprise*.csv' file exists under ~/.",
+    );
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(csvPath)) {
+    console.error(`ERROR: File not found: ${csvPath}`);
+    process.exit(1);
+  }
+
+  await ingestEntrepriseFile(csvPath);
 }
 
 // Only run when executed directly (not imported in tests).
