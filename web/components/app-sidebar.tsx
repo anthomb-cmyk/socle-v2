@@ -347,7 +347,7 @@ export default function AppSidebar({
         <button
           className="crm-mobile-hamburger"
           onClick={() => setMobileOpen((o) => !o)}
-          aria-label="Ouvrir le menu"
+          aria-label="Ouvrir le menu / Open menu"
         >
           <span />
           <span />
@@ -357,6 +357,10 @@ export default function AppSidebar({
           <div className="crm-sidebar-logo-mark" style={{ width: 26, height: 26, fontSize: 11, borderRadius: 7 }}>S</div>
           <span style={{ fontWeight: 900, fontSize: 13, letterSpacing: "1.5px", color: "var(--crm-text)" }}>SOCLE</span>
           <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: "1px", color: "var(--crm-gold)" }}>ACQUISITIONS</span>
+        </div>
+        {/* Always-visible language toggle on mobile — avoids the buried-in-sidebar discoverability problem */}
+        <div style={{ marginLeft: "auto" }}>
+          <LocaleToggle />
         </div>
       </div>
 

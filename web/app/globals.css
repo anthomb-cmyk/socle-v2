@@ -368,7 +368,7 @@ html, body { height: 100%; }
 
 .crm-shell {
   display: flex;
-  height: 100vh;
+  height: 100dvh; /* dvh = dynamic viewport height — accounts for mobile Safari URL bar */
   overflow: hidden;
   background: var(--crm-bg);
 }
@@ -377,7 +377,7 @@ html, body { height: 100%; }
 .crm-sidebar {
   width: 260px;
   flex-shrink: 0;
-  height: 100vh;
+  height: 100dvh;
   background: var(--crm-card);
   border-right: 1px solid var(--crm-card-border);
   display: flex;
@@ -624,7 +624,7 @@ html, body { height: 100%; }
 .crm-main-content {
   flex: 1;
   overflow-y: auto;
-  height: 100vh;
+  height: 100dvh;
   background: var(--crm-bg);
   min-width: 0;
 }
@@ -681,7 +681,10 @@ html, body { height: 100%; }
   top: 0;
   left: 0;
   z-index: 100;
-  height: 100vh;
+  height: 100dvh;
+  /* Reserve space at the bottom for iOS home indicator so the user card
+     with the language toggle and sign-out is reachable */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   box-shadow: 6px 0 24px rgba(0,0,0,0.14);
 }
 

@@ -45,7 +45,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 16px", background: "var(--crm-bg, #F3F4F6)" }}>
+    <main style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", background: "var(--crm-bg, #F3F4F6)" }}>
       <div style={{ width: "100%", maxWidth: 360, background: "#fff", borderRadius: 16, boxShadow: "0 1px 8px rgba(0,0,0,0.08)", border: "1px solid #E5E7EB", padding: "32px 28px" }}>
         {/* Logo / Title */}
         <div style={{ marginBottom: 24 }}>

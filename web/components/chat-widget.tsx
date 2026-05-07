@@ -77,23 +77,24 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — pushed above mobile bottom nav + iOS safe-area */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Assistant CRM"
         style={{
           position: "fixed",
-          bottom: 24,
-          right: 24,
+          bottom: "calc(env(safe-area-inset-bottom, 0px) + 80px)",
+          right: 16,
           zIndex: 1000,
-          width: 48,
-          height: 48,
+          width: 52,
+          height: 52,
           borderRadius: "50%",
           background: open ? "#374151" : "var(--crm-gold, #B8860B)",
           color: "#fff",
           border: "none",
           cursor: "pointer",
           fontSize: 20,
+          fontWeight: 700,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -105,18 +106,18 @@ export default function ChatWidget() {
         {open ? "×" : "Chat"}
       </button>
 
-      {/* Chat panel */}
+      {/* Chat panel — full-screen on mobile, anchored bubble on desktop */}
       {open && (
         <div
           style={{
             position: "fixed",
-            bottom: 84,
-            right: 24,
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 144px)",
+            right: 16,
             zIndex: 999,
             width: 360,
-            maxWidth: "calc(100vw - 48px)",
+            maxWidth: "calc(100vw - 32px)",
             height: 500,
-            maxHeight: "calc(100vh - 120px)",
+            maxHeight: "calc(100dvh - 200px)",
             background: "var(--crm-surface, #fff)",
             border: "1px solid var(--crm-border, #E5E7EB)",
             borderRadius: 16,
@@ -147,25 +148,52 @@ export default function ChatWidget() {
                 Posez vos questions sur le CRM
               </div>
             </div>
-            {messages.length > 0 && (
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+              {messages.length > 0 && (
+                <button
+                  onClick={() => { setMessages([]); setError(null); }}
+                  title="Effacer la conversation / Clear conversation"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--crm-text2)",
+                    fontSize: 12,
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    transition: "background 0.1s",
+                  }}
+                >
+                  Effacer
+                </button>
+              )}
               <button
-                onClick={() => { setMessages([]); setError(null); }}
-                title="Effacer la conversation"
+                onClick={() => setOpen(false)}
+                aria-label="Fermer / Close"
+                title="Fermer / Close"
                 style={{
-                  marginLeft: "auto",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "var(--crm-text2)",
-                  fontSize: 12,
-                  padding: "4px 8px",
+                  color: "var(--crm-text)",
+                  fontSize: 22,
+                  lineHeight: 1,
+                  padding: "4px 10px",
                   borderRadius: 6,
                   transition: "background 0.1s",
+                  fontWeight: 400,
+                  minWidth: 36,
+                  minHeight: 36,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--crm-bg, #F3F4F6)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
               >
-                Effacer
+                ×
               </button>
-            )}
+            </div>
           </div>
 
           {/* Messages */}

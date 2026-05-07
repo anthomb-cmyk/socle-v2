@@ -118,7 +118,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <ChatWidget />
             </div>
           ) : (
-            <div style={{ minHeight: "100vh", background: "var(--crm-bg)" }}>
+            <div style={{ minHeight: "100dvh", background: "var(--crm-bg)" }}>
               {children}
             </div>
           )}
