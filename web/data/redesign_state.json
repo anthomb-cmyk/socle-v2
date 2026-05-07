@@ -1,0 +1,16 @@
+{
+  "current_phase": 1,
+  "current_phase_name": "New schema migration",
+  "phases_completed": [
+    0
+  ],
+  "last_phase_completed_at": "2026-05-07T18:12:45.461889Z",
+  "blockers": [],
+  "user_gates_pending": [],
+  "schema_version": "v0",
+  "git_commit_at_phase_start": "cf1bf2d68ef9d87fea4e5fde0323e25ae13fc6a9",
+  "stats": {
+    "leads_total_at_phase_0": 369,
+    "rebuild_started_at": "2026-05-07T00:00:00.000Z"
+  }
+}
