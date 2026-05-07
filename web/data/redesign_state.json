@@ -1,15 +1,16 @@
 {
-  "current_phase": 6,
-  "current_phase_name": "Pipeline B (Individual researcher)",
+  "current_phase": 7,
+  "current_phase_name": "Hypothesis scoring & owner record assembly",
   "phases_completed": [
     0,
     1,
     2,
     3,
     4,
-    5
+    5,
+    6
   ],
-  "last_phase_completed_at": "2026-05-07T18:40:42.687334Z",
+  "last_phase_completed_at": "2026-05-07T18:47:55.877937Z",
   "blockers": [],
   "user_gates_pending": [],
   "schema_version": "v0",

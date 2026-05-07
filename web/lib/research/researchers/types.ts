@@ -9,7 +9,10 @@ export type ResearcherSource =
   | "req_phone"
   | "company_website"
   | "pages_jaunes_business"
-  | "twilio_caller_name";
+  | "twilio_caller_name"
+  | "reverse_address"
+  | "name_postal_directory"
+  | "cross_property";
 
 export interface EvidenceCandidate {
   /** UUID of the inserted evidence row (may be undefined if insert was skipped). */
