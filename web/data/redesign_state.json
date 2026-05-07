@@ -1,10 +1,11 @@
 {
-  "current_phase": 1,
-  "current_phase_name": "New schema migration",
+  "current_phase": 2,
+  "current_phase_name": "REQ snapshot ingest",
   "phases_completed": [
-    0
+    0,
+    1
   ],
-  "last_phase_completed_at": "2026-05-07T18:12:45.461889Z",
+  "last_phase_completed_at": "2026-05-07T18:16:57.077454Z",
   "blockers": [],
   "user_gates_pending": [],
   "schema_version": "v0",
