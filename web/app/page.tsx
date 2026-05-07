@@ -27,8 +27,9 @@ export default async function Home() {
     );
   }
 
-  const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
-  if (role === "caller") redirect("/calls/queue");
+  const role = (user.app_metadata?.role ?? "caller") as string;
+  // All non-admin roles land directly in their call queue
+  if (role !== "admin") redirect("/calls/queue");
 
   const sb = createSupabaseAdminClient();
   const now = new Date();

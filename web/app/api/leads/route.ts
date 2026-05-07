@@ -27,7 +27,10 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (role === "caller") {
+  if (role !== "admin") {
+    // All non-admin roles (caller, cold_caller, manager, viewer, research_assistant)
+    // see only their own assigned leads. Without this filter callers click leads
+    // they didnt own → /calls/[leadId] returns 404 → broken UX.
     query = query.eq("assigned_to", user.id);
   } else if (assignedTo) {
     if (assignedTo === "unassigned") query = query.is("assigned_to", null);

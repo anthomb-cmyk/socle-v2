@@ -57,7 +57,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           .select("lead_id,full_name,company_name,priority,status")
           .order("updated_at", { ascending: false })
           .limit(6);
-        if (userInfo.role === "caller") {
+        if (userInfo.role !== "admin") {
+          // All non-admin roles see only their assigned leads in the sidebar
           q.eq("assigned_to", user.id);
         }
         const { data } = await q;

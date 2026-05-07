@@ -71,7 +71,7 @@ export async function GET(request: Request) {
     .order("next_action_at", { ascending: true, nullsFirst: false })
     .order("last_contacted_at", { ascending: true, nullsFirst: true });
 
-  if (role === "caller") q = q.eq("assigned_to", user.id);
+  if (role !== "admin") q = q.eq("assigned_to", user.id);
   if (after) q = q.neq("lead_id", after);
 
   // Fetch a bigger batch to absorb locked + contact-duplicate removals

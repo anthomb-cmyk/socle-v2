@@ -9,8 +9,8 @@ export default async function ContactDetailPage(
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
-  if (role !== "caller" && role !== "admin") redirect("/login");
+  const role = (user.app_metadata?.role ?? "caller") as string;
+  // Contacts page is admin-only — non-admin roles get redirected to /leads
   if (role !== "admin") redirect("/leads");
 
   const sb = createSupabaseAdminClient();

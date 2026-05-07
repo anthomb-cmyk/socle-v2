@@ -22,9 +22,9 @@ export default async function LeadsPage({
   const params = await searchParams;
   const justEnriched = params["_just_enriched"] === "1";
 
-  // Callers only see stats for their own assigned leads.
+  // Non-admin roles only see stats for their own assigned leads.
   // Admins see system-wide stats.
-  const isCaller = role === "caller";
+  const isCaller = role !== "admin";
 
   const [totalRes, callableRes, unassignedRes, noPhoneRes, readyRes, reviewRes] = await Promise.all([
     isCaller
@@ -86,7 +86,7 @@ export default async function LeadsPage({
         {role === "admin" && (
           <Link href={"/review" as never} className="crm-btn">Revue</Link>
         )}
-        {role === "caller" && (
+        {role !== "admin" && (
           <Link href={"/calls/queue" as never} className="crm-btn crm-btn-dark">File d&rsquo;appels</Link>
         )}
       </PageHeader>

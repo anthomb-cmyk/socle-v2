@@ -302,10 +302,14 @@ export default function AppSidebar({
           <div className="crm-sidebar-section-label" style={{ marginBottom: 4 }}>Leads récents</div>
           {recentLeads.slice(0, 6).map((l) => {
             const dot = priorityDot(l.priority, l.status);
+            // Admin → /leads/[id] (full dossier). Caller → /calls/[id] (workspace).
+            // The /leads/[id] page returns notFound() to non-admins not assigned
+            // to the lead, so this routing prevents a 404 click for caller-tier users.
+            const href = (isAdmin ? `/leads/${l.lead_id}` : `/calls/${l.lead_id}`) as never;
             return (
               <Link
                 key={l.lead_id}
-                href={`/leads/${l.lead_id}` as never}
+                href={href}
                 className="crm-sidebar-recent-item"
                 onClick={() => setMobileOpen(false)}
               >
