@@ -275,7 +275,14 @@ export async function runEnrichmentPipeline(
     try {
       await publishOwnerRecordToCrm(sb, { ownerId });
     } catch (err) {
-      console.warn("[pipeline] publishOwnerRecordToCrm failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[pipeline] publishOwnerRecordToCrm failed:", message);
+      await logEvent(sb, ctx.leadId, "lead_status_updated", {
+        error: message,
+        source: "new_pipeline_publish",
+      });
+      await setLeadStatus(sb, ctx.leadId, "unresolved_after_all_sources");
+      return UNRESOLVED;
     }
 
     return {
