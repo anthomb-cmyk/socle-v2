@@ -427,6 +427,11 @@ describe("parseEtabRow", () => {
     const row = { ...ETAB_PRINCIPAL, NEQ: "" };
     expect(parseEtabRow(row)).toBeNull();
   });
+
+  it("accepts IND_ETAB_PRINC='O' (oui) as principal", () => {
+    const row = { ...ETAB_PRINCIPAL, IND_ETAB_PRINC: "O" };
+    expect(parseEtabRow(row)).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -348,8 +348,8 @@ export function resolveCurrentName(rows: ParsedNomRow[]): ResolvedEntityName | n
  */
 export function parseEtabRow(row: Record<string, string>): ParsedEtabRow | null {
   const neq = row["NEQ"]?.trim();
-  const isPrincipal = row["IND_ETAB_PRINC"]?.trim();
-  if (!neq || isPrincipal !== "1") return null;
+  const isPrincipal = row["IND_ETAB_PRINC"]?.trim().toUpperCase();
+  if (!neq || (isPrincipal !== "O" && isPrincipal !== "1")) return null;
 
   const lines = [
     row["LIGN1_ADR"]?.trim(),
