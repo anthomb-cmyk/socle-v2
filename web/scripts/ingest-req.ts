@@ -655,22 +655,22 @@ async function ingestAddressesFile(csvPath: string) {
   const flushAddressBatch = async (rows: ParsedEtabRow[]) => {
     if (rows.length === 0) return;
 
-    // registered_geocode is left null — filled lazily on first use.
+    // UPDATE-only via RPC; some Etablissements NEQs aren't in req_entities,
+    // and plain upsert would fail the legal_name NOT NULL constraint.
     const updates = rows.map((r) => ({
       neq: r.neq,
-      registered_address_raw: r.addressRaw,
-      postal_fsa: extractFsa(r.addressRaw),
-      registered_geocode: null,
+      addr: r.addressRaw,
+      fsa: extractFsa(r.addressRaw),
     }));
 
-    const { error } = await sb
-      .from("req_entities")
-      .upsert(updates, { onConflict: "neq" });
+    const { data, error } = await sb.rpc("bulk_update_req_entity_addresses", {
+      updates,
+    });
 
     if (error) {
-      console.error("[ingest-req] Address upsert error:", error.message);
+      console.error("[ingest-req] Address update error:", error.message);
     } else {
-      totalUpdated += updates.length;
+      totalUpdated += typeof data === "number" ? data : 0;
     }
   };
 
