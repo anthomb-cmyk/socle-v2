@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import TwilioCallStatePanel, { type CallState } from "@/app/calls/[leadId]/components/TwilioCallStatePanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CheckItem = { id: string; label: string; done: boolean };
@@ -364,6 +365,64 @@ export default function DealWorkspaceClient({
   const [saving, setSaving] = useState(false);
   const router              = useRouter();
 
+  // ── Twilio call state (mirrors CallWorkspace.tsx pattern) ────────────────
+  const [callState, setCallState]   = useState<CallState>("idle");
+  const [callError, setCallError]   = useState<string | null>(null);
+  const [durationSec, setDurationSec] = useState<number>(0);
+  const activeCallLogId             = useRef<string | null>(null);
+  const pollRef                     = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  function startPolling(callLogId: string) {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/calls/status?callLogId=${callLogId}`);
+        const j = await r.json();
+        if (!j.ok) return;
+        const events = (j.data?.statusEvents ?? []) as { status: string }[];
+        const last = events[events.length - 1]?.status ?? "";
+        if (last === "in-progress") setCallState("answered");
+        if (typeof j.data?.durationSec === "number") setDurationSec(j.data.durationSec);
+        if (last === "completed" || j.data?.durationSec != null) {
+          setCallState("completed"); stopPolling();
+        }
+      } catch { /* non-fatal */ }
+    }, 3000);
+  }
+
+  useEffect(() => () => stopPolling(), []);
+
+  async function startDealCall() {
+    const phone = deal.contact_phone?.trim();
+    if (!phone) { setCallError("Aucun numéro de téléphone renseigné pour ce contact."); return; }
+    setCallState("initiating");
+    setCallError(null);
+    setDurationSec(0);
+    try {
+      const r = await fetch(`/api/deals/${deal.id}/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_e164: phone }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setCallState("failed");
+        setCallError(j.error ?? "Échec du lancement de l'appel.");
+        return;
+      }
+      activeCallLogId.current = j.data.callLogId;
+      setCallState("ringing");
+      startPolling(j.data.callLogId);
+    } catch {
+      setCallState("failed");
+      setCallError("Erreur réseau. Réessaie.");
+    }
+  }
+
   const patch = useCallback(async (fields: Record<string, unknown>, optimistic?: Partial<Deal>) => {
     if (optimistic) setDeal(d => ({ ...d, ...optimistic }));
     setSaving(true);
@@ -570,13 +629,67 @@ export default function DealWorkspaceClient({
               <EditableField label="Courriel" value={deal.contact_email} onSave={v => patch({ contact_email: v }, { contact_email: v })} />
             </div>
             {deal.contact_phone && (
-              <a href={`tel:${deal.contact_phone}`} style={{
-                display: "block", marginTop: 12, textAlign: "center",
-                padding: "9px", background: "var(--crm-gold, #C9A84C)",
-                color: "#fff", borderRadius: 10, fontSize: 13, fontWeight: 700, textDecoration: "none",
-              }}>
-                Appeler
-              </a>
+              <div style={{ marginTop: 12 }}>
+                {/* Primary Twilio CTA — same bridge flow as /calls/[leadId] */}
+                {callState === "idle" || callState === "failed" || callState === "completed" ? (
+                  <button
+                    type="button"
+                    onClick={startDealCall}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      width: "100%", padding: "9px",
+                      background: "var(--crm-gold, #C9A84C)",
+                      color: "#fff", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                      border: "none", cursor: "pointer",
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
+                        stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+                    </svg>
+                    Appeler
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      width: "100%", padding: "9px",
+                      background: "#F3F4F6", color: "#6B7280",
+                      borderRadius: 10, fontSize: 13, fontWeight: 700,
+                      border: "none", cursor: "not-allowed",
+                    }}
+                  >
+                    {callState === "initiating" ? "Connexion…"
+                     : callState === "ringing"   ? "Sonnerie…"
+                     : callState === "answered"  ? "En cours…"
+                     : "Appel…"}
+                  </button>
+                )}
+
+                {/* Fallback tel: link so Anthony can still tap-to-call from mobile */}
+                <a
+                  href={`tel:${deal.contact_phone}`}
+                  style={{
+                    display: "block", marginTop: 6, textAlign: "center",
+                    padding: "6px", fontSize: 12, color: "#6B7280", textDecoration: "none",
+                  }}
+                >
+                  Composer manuellement
+                </a>
+
+                {/* Live call status strip */}
+                {(callState === "initiating" || callState === "ringing" || callState === "answered" || callState === "completed") && (
+                  <div style={{ marginTop: 10 }}>
+                    <TwilioCallStatePanel callState={callState} durationSec={durationSec} />
+                  </div>
+                )}
+
+                {callError && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#EF4444" }}>{callError}</div>
+                )}
+              </div>
             )}
           </div>
 
