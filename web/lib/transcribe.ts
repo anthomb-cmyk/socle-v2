@@ -40,6 +40,12 @@ const HALLUCINATION_PATTERNS: RegExp[] = [
   /abonnez[-\s]vous\s+(?:[aà]\s+(?:ma|notre)\s+cha[iî]ne)?/gi,
   // Music / silence markers
   /\[?\s*(?:music|musique|applause|applaudissements|silence|background\s+noise)\s*\]?/gi,
+  // Whisper prompt-regurgitation: when audio is unclear, Whisper sometimes
+  // echoes the context prompt back as the transcription instead of empty.
+  // Strip the prompt phrases we feed Whisper so they never leak through.
+  /transcrire\s+chaque\s+mot\s+dans\s+sa\s+langue\s+d['']origine\.?/gi,
+  /conversation\s+t[eé]l[eé]phonique\s+bilingue.*?propri[eé]taire\.?/gi,
+  /termes?\s+fr[eé]quents?\s*:.*$/gim,
 ];
 
 export function stripWhisperHallucinations(rawText: string): string {
@@ -97,16 +103,17 @@ export async function transcribeTwilioRecording(
   });
 
   // No hard language hint — Quebec calls code-switch FR↔EN within sentences.
-  // Forcing "fr" garbled English words. We bias Whisper via a context prompt
-  // instead (bilingual Québécois real-estate vocabulary).
+  // Forcing "fr" garbles English words. We bias Whisper via a vocabulary-only
+  // prompt (no instructions like "transcribe each word..." — Whisper tends to
+  // echo such instructions back as the transcription when audio is unclear).
   const transcription = await openai.audio.transcriptions.create({
     file,
     model: TRANSCRIPTION_MODEL,
     prompt:
-      "Conversation téléphonique bilingue (français québécois et anglais) entre un acquéreur immobilier et un propriétaire. " +
-      "Transcrire chaque mot dans sa langue d'origine. " +
-      "Termes fréquents: SOCLE Acquisitions, Longueuil, Montréal, Laval, triplex, plex, condo, cap rate, deal, closing, " +
-      "walk-through, offre d'achat, promesse d'achat, hypothèque, bail, chauffage, rénovation.",
+      "SOCLE Acquisitions Longueuil Montréal Laval Saint-Hyacinthe Victoriaville Waterloo " +
+      "triplex quadruplex plex condo immeuble logement loyer locataire propriétaire " +
+      "cap rate deal closing walk-through offre d'achat promesse d'achat hypothèque bail " +
+      "chauffage rénovation toit fenêtres balcon évaluation municipale matricule",
   });
 
   return stripWhisperHallucinations(transcription.text ?? "");
