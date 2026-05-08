@@ -12,14 +12,12 @@
     7,
     8,
     9,
-    10
+    10,
+    11
   ],
-  "last_phase_completed_at": "2026-05-07T19:17:22.799973Z",
+  "last_phase_completed_at": "2026-05-08T01:45:00.000000Z",
   "blockers": [],
-  "user_gates_pending": [
-    "phase_10_review_required",
-    "phase_11_cutover_pending"
-  ],
+  "user_gates_pending": [],
   "schema_version": "v0",
   "git_commit_at_phase_start": "cf1bf2d68ef9d87fea4e5fde0323e25ae13fc6a9",
   "stats": {

@@ -34,6 +34,24 @@ async function braveSearch(query: string): Promise<BraveWebResult[]> {
   const apiKey = process.env.BRAVE_API_KEY;
   if (!apiKey) throw new Error("BRAVE_API_KEY not configured");
 
+  // Daily cap (cost control during cutover).  Lazily import the admin client
+  // so test files that mock fetch don't need to set SUPABASE_SERVICE_ROLE_KEY.
+  try {
+    const { createSupabaseAdminClient } = await import("@/lib/supabase-server");
+    const { checkAndIncrementDailyCap, getBraveDailyCap } = await import(
+      "@/lib/research/rate-limits"
+    );
+    const sb = createSupabaseAdminClient();
+    const cap = await checkAndIncrementDailyCap(sb, "brave_queries", getBraveDailyCap());
+    if (!cap.allowed) {
+      console.warn(`[brave-search] daily cap reached (${cap.used}); skipping query`);
+      return [];
+    }
+  } catch (err) {
+    // Fail open — caps are best-effort.
+    console.warn("[brave-search] cap check skipped:", err);
+  }
+
   const url = `${BRAVE_SEARCH_URL}?q=${encodeURIComponent(query)}&count=10&country=CA&search_lang=fr`;
   const res = await fetch(url, {
     headers: {

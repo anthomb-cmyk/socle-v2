@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "../twilio";
+import { checkAndIncrementDailyCap, getTwilioDailyCap } from "../research/rate-limits";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any>;
@@ -157,6 +158,18 @@ export async function lookupCallerName(
   } catch (err) {
     console.error("[twilio/lookup] cache read error:", err);
     // Fall through to live call
+  }
+
+  // Daily cap check (cost control during cutover)
+  const cap = await checkAndIncrementDailyCap(sb, "twilio_lookups", getTwilioDailyCap());
+  if (!cap.allowed) {
+    return {
+      caller_name: null,
+      caller_type: null,
+      line_type: null,
+      cached: false,
+      error: `Twilio lookup skipped: daily cap reached (${cap.used} used)`,
+    };
   }
 
   // Live Twilio call

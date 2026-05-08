@@ -45,6 +45,22 @@ export async function braveSearch(
     throw new Error("BRAVE_API_KEY not set");
   }
 
+  // Daily cap (cost control during cutover).
+  try {
+    const { createSupabaseAdminClient } = await import("./supabase-server");
+    const { checkAndIncrementDailyCap, getBraveDailyCap } = await import(
+      "./research/rate-limits"
+    );
+    const sb = createSupabaseAdminClient();
+    const cap = await checkAndIncrementDailyCap(sb, "brave_queries", getBraveDailyCap());
+    if (!cap.allowed) {
+      console.warn(`[brave] daily cap reached (${cap.used}); skipping query`);
+      return [];
+    }
+  } catch (err) {
+    console.warn("[brave] cap check skipped:", err);
+  }
+
   const url =
     `${BRAVE_SEARCH_URL}?q=${encodeURIComponent(query)}` +
     `&count=${count}&country=CA&search_lang=fr`;
