@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import TwilioCallStatePanel, { type CallState } from "@/app/calls/[leadId]/components/TwilioCallStatePanel";
+import CallHistoryPanel from "@/app/calls/[leadId]/CallHistoryPanel";
+import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntry";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CheckItem = { id: string; label: string; done: boolean };
@@ -357,9 +359,11 @@ function ActivityLog({ activities, onAdd }: { activities: Activity[]; onAdd: (te
 export default function DealWorkspaceClient({
   deal: initialDeal,
   documents,
+  callHistory,
 }: {
   deal: Deal;
   documents: DealDocument[];
+  callHistory: HistoryRow[];
 }) {
   const [deal, setDeal]     = useState<Deal>(initialDeal);
   const [saving, setSaving] = useState(false);
@@ -556,6 +560,16 @@ export default function DealWorkspaceClient({
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
             <ActivityLog activities={deal.activities ?? []} onAdd={handleActivityAdd} />
           </div>
+
+          {/* Historique d'appels */}
+          {callHistory.length > 0 && (
+            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>
+                Historique d&apos;appels
+              </div>
+              <CallHistoryPanel history={callHistory} />
+            </div>
+          )}
 
           {/* Documents */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
