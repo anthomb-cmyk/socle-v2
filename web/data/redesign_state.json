@@ -1,0 +1,27 @@
+{
+  "current_phase": 11,
+  "current_phase_name": "Cutover (USER GATE)",
+  "phases_completed": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "last_phase_completed_at": "2026-05-08T01:45:00.000000Z",
+  "blockers": [],
+  "user_gates_pending": [],
+  "schema_version": "v0",
+  "git_commit_at_phase_start": "cf1bf2d68ef9d87fea4e5fde0323e25ae13fc6a9",
+  "stats": {
+    "leads_total_at_phase_0": 369,
+    "rebuild_started_at": "2026-05-07T00:00:00.000Z"
+  }
+}

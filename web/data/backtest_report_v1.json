@@ -1,0 +1,2996 @@
+{
+  "run_at": "2026-05-07T20:10:00.000Z",
+  "leads_evaluated": 369,
+  "released_count": 0,
+  "held_count": 0,
+  "unresolved_count": 369,
+  "released_correct": 0,
+  "released_wrong": 0,
+  "released_unverifiable": 0,
+  "held_correctly": 0,
+  "held_when_should_release": 8,
+  "precision": null,
+  "canonical_owner_match_count": 264,
+  "canonical_owner_no_match_count": 105,
+  "canonical_owner_match_rate": 0.7154,
+  "sql_fallback": true,
+  "smoke_test": true,
+  "dry_run": true,
+  "by_pipeline": {
+    "A": {
+      "evaluated": 0,
+      "released": 0,
+      "held": 0,
+      "unresolved": 0
+    },
+    "B": {
+      "evaluated": 0,
+      "released": 0,
+      "held": 0,
+      "unresolved": 0
+    },
+    "unspecified": {
+      "evaluated": 369,
+      "released": 0,
+      "held": 0,
+      "unresolved": 369
+    }
+  },
+  "details": [
+    {
+      "lead_id": "9fb38da7-2827-4571-a379-712e6e6354dd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e9cdd907-966d-48c5-bdc3-a59e46344203",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "305f8a9b-3f9f-413c-81fe-50846b14c8c3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "26d12ace-2181-4beb-97bc-e30f4acbba4d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+15144753302",
+      "correct": null
+    },
+    {
+      "lead_id": "1d205d7d-76c6-4194-b63d-d2d48ef44428",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+15144753302",
+      "correct": null
+    },
+    {
+      "lead_id": "2d182fc4-a8d3-4790-b1a3-e68f4742a443",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3c5360bc-ca53-4646-8671-7b0bc1df8f2d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "fff4694c-da7a-4cb4-8e08-9917d1b8a1f8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d061aa2f-510a-4ae2-878e-17d41b85afea",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "24288485-d908-45cc-84e0-0201fae1cb44",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+14504652600",
+      "correct": null
+    },
+    {
+      "lead_id": "3c5377be-0fb1-4dd8-bf5c-f18ae2a8d60b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "62c57e8c-9a15-4d52-92d2-d8718af63810",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "581b9f7e-93f5-452d-b4c8-5d61714fce03",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "44e932a3-2812-475f-bce3-496a120f9691",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d2f2fee3-bff1-4025-bfcb-acbe3544a1e8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0aa4adf0-5306-4862-97d9-70bcee85057a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+15146797702",
+      "correct": null
+    },
+    {
+      "lead_id": "a66bb182-1558-4892-9f30-70aa590c4ae7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "10aec8de-91ef-4044-a6fa-63f2214ba5df",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "06139b49-6855-4983-9c8a-1cd63c9c128f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a0831c06-cb0c-4bda-85fb-24813bc96bf9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+14506591927",
+      "correct": null
+    },
+    {
+      "lead_id": "6de8d48b-ac42-4425-8b06-f92b2dee598e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+14506591927",
+      "correct": null
+    },
+    {
+      "lead_id": "f49d245d-98d1-40b1-b511-09de64555d92",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+14506591927",
+      "correct": null
+    },
+    {
+      "lead_id": "090c345c-a012-4a36-b1bc-c135c12b2d37",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3e40fee4-4e4a-4ff4-941d-8dbbec747a6f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "589dc193-ebba-4f21-ac63-e0e461ea121d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "25b1c6e6-672f-4c54-92aa-541610da49a7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2e185995-0747-4973-81df-43af543841bb",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0507c577-fa9e-4d01-9a8e-0196e7a69e6d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "03436f18-7846-4db9-9b73-61a7de92c148",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5b3268b0-1d11-42a7-bf2a-50daad54dcbb",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "04ff77c1-1492-4892-8c92-e8c405904e33",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "86614df4-a55c-44a6-be91-107f4f042d8d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "cd5179ea-af18-4832-8719-750dc2e4ff53",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "34be96f4-6ce0-468e-91eb-429d98145db8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5a030101-92a9-4b16-98f1-87cbbfcafa05",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "36230b7a-70ef-44e2-9719-de3ff492b907",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f2b28c44-bbb9-427b-b687-67f7920d026c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "26c8bbd5-51f9-4898-8780-dae9d2fc744c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3fa61f50-841d-4ac4-8126-668d3e3fa4d3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9552bdec-b715-4ced-8bf6-e4b104c84b35",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "78b04d89-ad8d-48ef-bb78-31a8276b4b30",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ea1fa45a-ffc7-4554-84a9-8440bbde2d97",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b7b2d4d7-864b-45d6-b48e-006d9960d294",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "54e7e0bc-e0c0-47c8-ad08-a20bf3298b1e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "05a941e3-3891-4082-ad2a-3ab2ccc6b09c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d99b5617-88d8-4e1d-8e91-36b8c188e674",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3c8853ae-8435-4e2f-af0b-035f9615c4c3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5f46abf9-85ab-4b03-ae61-35ef5edb98d2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "aa65b604-bcbc-4ea9-9518-fef889460d45",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "67ed667f-58d1-472a-8f2d-7d70841f6cd5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5f746d48-d689-49e7-aebf-ff8e26ad6a24",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5fb09322-b894-421e-abcb-c108de15d5d7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "bd96a48a-03e4-4a99-b46c-49cefe2620b8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6583968b-85f2-490c-872a-47cab7acaed0",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8089e504-4e9c-4655-9e7d-37ab059e9f0c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5a7fdd40-065a-42d9-86a8-189e2dd89bbf",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "cdfe8b6e-9781-4afd-b3cd-42473c5a9ed4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a0f8c2fc-7a51-48c3-8271-f1543335a2ed",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8df01e62-1e8f-4f09-8821-2e3b3d335800",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1eaa62f3-db7b-441f-a015-ad36a8471af8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9ca49541-668c-4ea7-b677-1978a096d3f7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ca7bfe3e-dd08-4844-a357-a5835edd67a4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3dcdbec4-2b42-4786-ab88-fa09dab1bcc4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e7e61758-091f-44f4-8daf-e5a2a9fcc6c6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6ba146b4-2c12-4036-b1f7-c60b947b5687",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "27c1c959-db56-49f5-82a1-32e1eb254eff",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "01ffca3b-fc96-4709-9413-9e06b5a38a27",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "39624a11-de3b-487e-b27e-5aadd1c758aa",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": "+15147617105",
+      "correct": null
+    },
+    {
+      "lead_id": "b965cff5-656f-4dfe-9525-92a0761f78d4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6e1444a3-cf5f-4a59-b3bd-8049e07e4261",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "71594f89-20b2-4411-9523-48e66d58bbb7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "22a1881b-2758-4abd-a8b1-ec5cdbc1262a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7e259896-b676-4bbb-ab79-42672c813ef6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0346d20a-f558-4582-b454-caf1bd47f542",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a112ff98-fe93-4cf9-b177-5da1f1207666",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c05136f8-1716-4bfb-b588-743b355c626b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "99b4dace-cee2-4cf8-9bfb-fb6b4f85f1b5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "68f2a5df-8b81-4043-9962-d4e384b3c2af",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "16ca058d-744f-46b8-b5df-60979c7bec4e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "54944c2a-1e98-4793-b0ab-8506f0eb4109",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "447e70c8-25d5-4f03-aaff-d043fe339146",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "87ff36b6-4d79-4d57-9729-7a8776deeb8b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "03a3f898-3ca7-4677-83cb-b355c33e2721",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "cbc4e1a9-18f8-419f-b7d7-e22bbc2956c7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "403b8c7a-b70c-4825-9fe1-1d87ff9b702c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "76ac5e3f-f04b-4da7-861d-8b0f9e401ae0",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b4cb58ed-2788-42e4-8698-5a5cbff58096",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "27fe8860-dcdd-41cb-b64e-c5e6fe032f90",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7181b2e5-c00d-4ccf-ba57-7bac260b0a29",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "823b210d-0622-4dfa-bcce-cf5898cc854f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1dbaa60f-e2bb-41f4-ba7c-674013b1e455",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "fb4c9b18-f297-4c3e-a2b0-f08b2f0991c5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1bf182c0-3be4-4d03-b147-92cb8901102b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "56b84ad3-d1ea-4572-afec-3ee39f81d7a1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e8371db0-1f58-461f-9116-2b28ed29a6d8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c2920ad5-53fa-410f-aa18-d74c4f8eba6e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "605c9f5c-9d2c-4fd1-b84e-5ef177b12e0d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "58d73973-c454-46e6-b788-8243b4f3748e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f268985c-16eb-4bd0-b43e-b33b4a4b2e38",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5605a625-a5c9-43c8-86ec-48762bed931f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7449c8eb-1eb1-4557-af07-6c305e1674c9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b1aa65ff-c967-4ff9-b486-98a4505c8d62",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f5220b74-9548-4f33-b08c-87299fe0bac9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "87f01d66-6988-4388-aa03-fe6cc3e84054",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ed8f0449-23ef-44f1-9960-25b849ae00b2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4ff37296-eadb-4ef7-8b49-d77eaa34a7fd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0d068dea-eb26-4e09-addd-6ab9f04981f7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a41ce9ba-284f-41b1-875d-5723fdc8667d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a007fa25-50e2-4631-995e-d4f67f82e0c7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b7d77216-b2af-4aef-979c-6c8e01ba12fa",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "af63eb85-7b9e-453a-bde6-5608c83f5c50",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8a1c8325-c723-4641-bbd7-c154fee4bf09",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7c0ce5fd-d4b9-4748-a65d-e89db923f984",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3a0a5a7a-3b99-496c-a320-3e93cecdacc1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ad7d4664-6c54-4b5c-baf8-fde938464c03",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6b3fd159-f12e-4154-a250-6b2d1dbd1098",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1c8b5162-fc2b-4114-8448-b0cc5eef0455",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9c38cc30-1a52-45ba-bd67-21951bc7db3c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6c0edcbd-fa9c-4e6e-bf44-683ab05787dd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d932b0ad-c3ea-4cf5-8143-d58846d034ae",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3c809173-f333-4744-bce9-5ef53aed8d38",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "24a7b33c-f19f-43b6-95a2-2f0d2ff960a6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "958d8a11-d47a-4233-b108-3e2053797b6d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4c425384-e88e-40d9-951a-67e9b83afc96",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4415ee19-49df-4aec-ad6f-295c787e8401",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2e7dcb39-72cd-4d57-8f60-e71cdd39a258",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "576e4565-f3a6-49c1-8217-c49cd94f8958",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "aa2b6534-1602-45e8-8943-47ddc66f242d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "76c27d21-d15c-4a8f-911a-495cc0c5cfa0",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "35e441ef-8dad-4190-86a6-0a41e01210d3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ea112f0c-909c-4196-aa59-7fd230d23575",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d696cd6b-c64e-4854-9f0e-a8e1449bd01c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6c783fc6-9db9-44f0-b5ed-d3985c1f4c35",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ef2c251a-37da-4212-838f-3b340de7fb2c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "81a378bb-17fa-4711-95d8-62afe371d2c3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c11c5e87-4ad2-4546-908c-a1f92dc907be",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "72994052-59da-4042-ba30-304d1a21afeb",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7948486d-d205-45e2-ab92-cd0bd1ca3ee8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "869d72db-5c02-434d-8c47-0d2bbe94f39d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "aa0a23ae-6728-4fec-8856-277f220d1f0f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a856737b-92d3-44be-8cdb-5b7b886351f8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0274a78a-1cb6-470d-a03d-7f59973c27d1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "078fe842-ee6e-41c9-8206-fe852b3fc41a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8ddc92a8-e7b8-4519-8f66-545878de163d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "582217d6-3b55-4888-a782-a827fb0b54ab",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "96d88ed6-d166-418e-89d0-fdc2354549a5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "30c56d44-d68c-4557-bca8-08cedfff359f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "67345194-3e40-4282-8cda-cfd8c0bfc440",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "557352f4-f522-4067-ab7f-166c1a743b82",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "745ccc97-d8be-4231-9786-c59054a5444e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1129a296-c08d-4017-8f69-4182bde3cfbb",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c6353fb0-f6a2-45b5-a79e-6328e519abd9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c0298915-a18c-436c-ac7e-2f11e5c5e858",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a84bf3f8-fb33-4fc9-8813-307974776bf2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9ac319e1-eafa-4dec-9b4f-07ee367d4115",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4e4c4e3c-85ce-4607-9a90-c5b9bb8932e7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0ecc8860-c396-4991-b1d9-e435289b91c4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0ebadcdb-3748-452a-abc3-298904e4b93c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b532963f-55f4-4ec4-a39f-7a59f85a8cc1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f3a1b02d-18fb-4c7b-a0a7-af8fe698dd78",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "34c87788-2986-4de8-a18b-54e445311a41",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "239f1392-dd54-4a1d-8467-7dd21ee67411",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ed9e8690-01ef-4206-8ae6-7e0e73842cd5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "547ff61f-0e72-44f3-ad3a-d4df8f352c27",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "cb2ecced-875b-408d-9c52-417768792a26",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "79d3663d-4a15-4656-9824-620f8ac63a6b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "539c9543-e71c-45fd-b45e-a27230bae681",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "50787887-6319-43ee-8355-889c05fb7a7f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "71ec5657-575c-42a8-a581-2831f0f58db7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "24fb33aa-4733-4be7-9552-6dabdf330f1e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "26834ab9-b510-49df-9425-3de423a7d8bd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "29f9f0a2-0be3-4188-9690-22db32afd982",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "dcc66b5e-6bba-4a39-9d81-a64e367db457",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8839f7ae-dfd4-4287-bbe7-62b6d6c5e65a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "fd8795f7-1f43-4615-8cfe-2bde46cf4c92",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8c2085cd-9771-4f23-98a9-1f5ed8141490",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "53927846-e48c-4e50-a1bc-26a441d0331b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b7e8c65d-bb97-4f1b-863e-12b907b40f52",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "847395ac-71ef-4288-9c64-29f90975b84f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b631324c-0b49-4679-a3ab-88b19681a81d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f036f5c5-1836-42d6-ab72-8a9071223641",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6565cee6-09f3-4f63-b9ae-7b8c4ae0a8ae",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9ebd00bd-c458-4259-917e-7f4de0df8998",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ae9ad20b-252a-47da-917b-c376307f5662",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ea9af35d-228f-43fc-ad68-a1a52d35e9ce",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3897399e-c031-4c56-81e0-d736670e9108",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "be32d272-0a0e-4a30-a315-714fe1e571e9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "84c1cbb3-e5cf-4116-893c-7837abf9a850",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3c0f863f-8a43-4331-a3d6-3ece3e1a4b18",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8d695ba5-188a-41af-9dcb-5d8d5a627e07",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1ef06b61-b86c-4bb3-8cfe-70795e4852ec",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7872e2c1-72b2-490a-a94d-49e086e9488d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d85451a7-522e-49d5-a18b-9a314c03c459",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8e6a5627-f420-4853-8f20-0b81e144d8fd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "fe591970-127f-4c73-b8d2-ac59d40fe074",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "cac25059-d9bd-48ae-b4c4-e5d6236bfe1e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ffd9b02b-e8d8-4433-b7e4-9444c5a4ffa8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2cf006ae-76f6-4c0d-b5bb-4f542a9ccd64",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "87db456d-a639-414a-acff-48728c68b1d8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "cbb0f5bf-a86c-45bf-98cf-92cc68cf14a0",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c9dc1280-864b-4ccd-9837-96242dcd5a7e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "25c6afc6-4d20-48aa-87b2-d88be6697099",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7fdfabc7-0c32-4fce-876f-8444b181b1ac",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d42e0ac1-7d92-460b-a64a-f6fdd5cf559c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "02a752cf-57b0-4cff-a4f1-c068c01d4fdd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0d18e2aa-6774-427e-b09f-54ac2cd10808",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e063ad58-c786-4c56-ad47-ed550d7aa07a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1e25c767-60b9-42f0-bafc-87890354c71d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9a7aa765-d4ae-497a-9e65-6d940f8b287a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7df6fb05-5bc0-404c-aae2-11e82fcd20d6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9d4b1368-2af0-43c8-90ab-c0905e7b0108",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d2b74e5a-a352-4217-a2d1-c0ca50944092",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2ccb983e-533f-4555-8d28-b7251d2daaad",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "03d75480-6508-4958-a20f-14a99f32155e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "71d0f9d1-b1f5-4244-b7c7-35357eaf6f62",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f7b17ff6-a39f-4aec-903e-64b5ea9694c5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1c324d00-61da-4ad8-b927-e01ec587d7b3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9d14d167-d6a4-43ec-a66e-6eb64aba70e9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8214bfb3-ddc4-4efc-88c4-f4de27dfb007",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f794af38-6ca3-4fda-ad38-993fc719be16",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0f7f35e0-d504-402a-96a1-af59b22dbfdd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8a4fe644-e731-4fe2-bf39-ebadcde6b93a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "32e98ba7-5a93-47f8-ac1e-a6b88ffb0c41",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9953c0ee-6807-4adf-b875-ef37e7a06729",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "12680843-0bc7-424e-b2d4-5885be8d1dbc",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "dda629db-f24f-4767-a1f1-431433222abc",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "123e7cb0-cc08-4470-b537-1a3e5066d51e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a87a10aa-f0ef-4ba5-8309-5c9aeb1d76c2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3a4efcb1-48b7-4294-9135-c108d237c8a6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f071c66d-3e20-4f55-807c-085c08b384e8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f93326ea-29ee-4c5e-89cf-df0f2a722e56",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "bf02d8c7-68ad-4c8a-af88-74aa1b58c0c0",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "86c33506-9b4b-4f5b-a415-3614c5226459",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "454683fd-1876-4fee-b0a0-117c7f03bacf",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6044f8c9-0272-4ec3-8fcb-8f694c399752",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d9e23ab4-c3c6-44f2-bccc-26e956643907",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5e101815-dd88-4a7b-94ae-5d62735df5ad",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "38fb75fa-f8f3-4acb-9a78-6bb052f3658f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6350ef5f-7faa-4c10-94e8-83643dd30b7c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c6594cf8-7c3a-47b1-8526-fbdbc6d322fc",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ad127816-ba3f-430d-8db2-f99116a4b93b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "321e5fe7-c9d7-4924-b71b-8238759b9461",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5c74527c-a032-4370-9e4e-4820395aca99",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ff0502d9-77d9-4a1e-ad85-12b300a1c5b8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3622c66c-86af-4128-a72c-6aff670be013",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2389be44-7459-4c9e-bb92-89060c6897a1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e993c5db-42cd-4aba-95e3-3ff0cde867a4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "78c0e556-732a-4a86-9165-33a3251c6a00",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "90ae26f8-a8cc-43b0-bf7a-6515879551fd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a2e069a5-ca9e-4034-97e2-02d69f69f095",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "caa801e5-6fec-4d11-81ad-b23cdbdf54a1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1f275164-f1f8-4f0b-adbc-8ad3a2daff4f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "edacd010-7e15-4afd-8097-d255d9221aca",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a53df760-19e7-49c8-8014-395f6c8c6364",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "695c88fa-26bf-4966-a3e6-7f3414ae45d2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5194c3d5-849b-4dcc-9226-dd3181d48f9f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "49e55d64-1ca1-4b7b-8051-68ce24574712",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7a7dbf00-4b14-4de9-9769-d5e16f93b7f3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a3f238a2-cdc3-42a3-acb2-f95c23d2a0d2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "eeb11b5e-d234-4277-934d-570791c0c27b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a013ca0a-f1fd-4ec7-a16a-815ce8f4bcfd",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "252283c6-3920-4725-be5d-9512eb9973fc",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f8b04e3a-ea1c-4c43-9e1f-2caba80a0a1b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7dd7a8e5-c60e-4cca-a3f5-316b04298f35",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c4e65e88-c482-478b-bfd9-fffb6e1f7040",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2c884935-df5e-4fa2-ada4-562afc898a5f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ae67d6b7-696e-4c4e-8c34-ed9d287bd8f5",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "19747573-cdfe-4239-ac83-ca68f029233c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d2a6ee8a-2c9c-4abd-a2f3-4f3d3056b00f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "42f771b5-9260-4e18-864d-251e09efa827",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "53d8f3ca-f233-470c-9f01-057cf3be1ba7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "834f7e75-29b6-4f2a-985a-31fc4d55f0e2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "11491073-9147-4104-a367-2ff2f67686dc",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "58103290-1011-4d79-9a74-528d79c3249a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "696f5eaa-2d42-4540-b07b-6f541087b12e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ffde5d48-9166-4d20-9aa0-98750394c4e9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "71d99691-4cd5-4f99-94ec-06686febeaac",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "42b1c7df-ad9e-48f5-811e-e81d553a122c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "baa332ec-c49d-4ef0-b4be-18cf43840336",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "61426864-ce0a-4ca4-8697-30d2bfed5ba0",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "10824e8f-06ea-4f4a-ac58-646a491c8485",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "dd7dfe2b-952c-4a73-be96-76868d23853d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "19684135-a540-4995-a5ca-b5cd01ff857d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2b770328-3dbc-40a7-953b-0c8ce93761df",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3ca9b971-8370-4af9-aaa2-d7a5fbf59b52",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "22cb0ec3-fa2b-447b-859d-429304f90eec",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5f4be704-b462-457f-9ff4-6dd34af587ff",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5862bd98-67a2-4c28-8c7e-c4686754d6f6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "22edb941-98a8-4f8d-b8bd-75ea27a12bb6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e5557474-a367-4df8-b4df-431886a8f455",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8fe82c79-6068-49ed-9632-2499298f09d1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7f371d13-68af-4136-b368-1e68a590f0ea",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "df5dac3c-f406-4c82-93c7-98335aa06e68",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b166f27d-f6c1-43c3-8a56-125ea829b983",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "24c294ed-db08-4a82-93ff-b6978b0c27da",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ef9ee57b-6972-4d91-9f12-de25daf83688",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "44a6cbc6-2ca1-4943-897c-f6e45e25ece7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "227395b9-7862-4ce0-a362-f7c6fa77c871",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a1a40d4a-a410-48a6-9fd1-f8e957c4c113",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "17e4bc01-7aee-41a3-9fd7-e5ca84418f2e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0e46c329-a2e8-4ea8-8fe3-afb6cfab326b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0ed022ed-37be-4bdb-8d53-a3fc92cc573e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4df4fcf7-bb84-4a91-afb2-3006672e596d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "062d2c60-576e-4353-b6bd-5e3f9a43a652",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c6d05ecf-1f9e-4346-8015-bddb13332b2f",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5e7fb27d-d5c5-4d93-a873-0ae8564b82d6",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "922ce978-ecf9-429d-a1f3-318403b391fb",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "da13df96-c617-4454-85a1-0e5ece505cfe",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "14161a35-fa64-4f00-829c-ae9051b483e2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "002fb49c-ad67-4ca1-b70f-bddcacc046c4",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "79db81fa-6224-4555-8bd9-83ff071316ba",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "33762a33-70ae-4e35-831f-450d2e00e090",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1f5c132f-08ee-46e1-a8a2-301f27f29969",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d08dab95-7640-4f77-ad20-0ca4c9eb3c0c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7eeeb59a-bbdc-4892-8409-a8e4d92234ed",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "dd2c1c92-4db4-46cc-902e-0d2bd5627056",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7d28f991-3ca6-4476-a357-521d5d243af9",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "791fee41-f79e-40f2-94d7-32bebd4a2daa",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "96df57cb-c5b0-4bdf-8548-d866457053fe",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4b564194-ff22-48d1-8913-a3f74b40a9ee",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6538e11f-1c41-41c3-a535-b6199687e9b8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0bae6ab7-9915-4259-bbe6-612259cf0520",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f6da5e8b-dbdb-4bf7-8c90-e404aaeabc55",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d947830f-a3cd-499c-98cd-5313222bbcf8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f80ba815-1629-44be-bdc4-25e2fef3588d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "18f04bf1-92d2-405e-9022-8b27d84ff7b2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a2e0abfc-3546-49fc-ae0c-1f9045e465ea",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b2075a15-ed7e-4bbc-ac22-71369d783f6d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7b2ee4f2-ee89-435b-a369-87b6e237d1f1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c704ae92-bfd3-47b0-91cb-8d3d30a8fca2",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "47c67531-91d6-432a-adcf-95bffc3ed10c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "7a7e3060-16a8-4aa6-9792-a32c6ccde9b8",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2c5e59ed-71e8-4c6e-be5b-7de689822a1c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0e6bdecf-4eed-43bf-bac3-a84b3d5800eb",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "54593641-98ab-4b14-bc09-31a04179db6b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ed6e6928-bbfe-4119-bfce-3c7d5a535d39",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "60b89767-2c2f-4263-ac00-1e770844db05",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e6c0b831-7985-4a20-b4a0-759103b45381",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f7c61623-990a-4218-8e19-2e08093f167c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3a98e085-9e93-4366-bf2c-543b8ea54432",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "53bceb27-3fb8-4f2c-902f-8577aa1c10a3",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "fd7e5c04-4bfb-4ea3-a07c-591cd529c89e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "0a067d49-5d04-4b03-b1bc-b1b6f238050b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "a2592b4d-369d-484b-85fc-d48b47ed1ea1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "4c5eb576-c462-4ef7-b545-371a09ce2a9e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "6373ebba-070e-4771-8ed3-c6220ffb5503",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "3cffc56c-f51d-4923-bdbf-25788b3d0795",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "ebdfd295-1b24-46f6-9c8f-2b1d67dc0e0a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "f692e339-0bbe-4f0b-9b48-3311d557eb4a",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2149655d-8e11-4c8b-9842-d604ecd94e85",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "45e123c1-4016-4783-bc4d-b04e3cc6a1de",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5f03ec21-5414-4311-bf7f-91f18dc36120",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2eb45bc9-5420-40ad-9b9e-af09f08a05bf",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "c45ff559-434d-459a-8343-46116891d64e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d9c4daa5-8cec-4243-969a-8ac66352bc91",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "fd7f6174-5e88-4ec5-979d-eed30f64f7ba",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "910fd9ab-e9a9-46a0-80dd-0fcb9cc554c1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "d6ef2632-607b-4ae3-844e-dce88b26007d",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1cc7d71f-0d2b-460f-925d-3b206defa509",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "5b42eb30-08cc-45c7-abbb-756157ab8793",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "b5e81ae1-7e7f-457a-bc52-b2f9f3ca50a1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "40d6e881-dd3c-4cc6-8212-10909614e35b",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "8ca61d33-e1c2-40a1-809f-c842a7d3272c",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "e7dad850-a63f-478c-8805-905c68331232",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "1d455ad1-2e92-4f95-991a-0f82b4988949",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "17bc769a-625c-44ca-89e3-cef51761a3a1",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "9ec3a440-83f6-4d5b-b513-911392a947d7",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "2a9fae50-8f64-4883-aad3-11c6bff50325",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    },
+    {
+      "lead_id": "878c08b2-7f7d-43a3-8aef-30afde71429e",
+      "outcome": "unresolved",
+      "phone_e164": null,
+      "tier": null,
+      "snapshot_phone": null,
+      "correct": null
+    }
+  ],
+  "smoke_test": true,
+  "dry_run": true,
+  "snapshot_path": "/home/user/socle-v2/web/data/ground_truth_v0.json"
+}

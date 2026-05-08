@@ -1,0 +1,14 @@
+{
+  "independent_pairs": [
+    ["req_phone", "twilio_caller_name"],
+    ["req_phone", "company_website"],
+    ["req_phone", "pages_jaunes_business"],
+    ["company_website", "twilio_caller_name"],
+    ["pages_jaunes_business", "twilio_caller_name"],
+    ["canada411_personal", "pages_jaunes_personal"],
+    ["canada411_personal", "twilio_caller_name"]
+  ],
+  "sibling_groups": [
+    ["pagesjaunes.ca", "411.ca", "canada411.ca"]
+  ]
+}

@@ -1,8 +1,14 @@
 // Briefing module — generates a per-lead AI context card for the calling team.
 //
-// The generated text is a 2–3 sentence French briefing in Quebec real-estate
-// prospecting tone, summarising the owner profile, property, and suggested
-// opening question for the caller.
+// Phase 8 redesign adds structured template rendering (Pipeline A / B) with an
+// optional Haiku phrasing pass.  The legacy `generateBriefing` function that
+// powers the existing API route and queue worker is preserved unchanged so no
+// callers need to be updated.
+//
+// New public API (Phase 8):
+//   renderBriefingTemplate(input)  — pure, no LLM
+//   renderBriefingPhrased(input)   — with Haiku pass; soft-falls-back to template
+//   detectLanguage(canonicalName)  — Francophone heuristic
 //
 // All Anthropic calls go through lib/llm/anthropic-client.ts so cost is
 // automatically tracked in llm_usage_log.
@@ -11,7 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { callAnthropic } from "@/lib/llm/anthropic-client";
 import { getPortfolioInfo } from "@/lib/portfolio/detector";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Legacy types (unchanged) ─────────────────────────────────────────────────
 
 type LeadRow = {
   id: string;
@@ -55,7 +61,433 @@ type NoteRow = {
   created_at: string;
 };
 
-// ── Public export ────────────────────────────────────────────────────────────
+// ── Phase 8 Types ─────────────────────────────────────────────────────────────
+
+export type BriefingInput = {
+  pipeline: "A" | "B";
+  owner: {
+    canonicalName: string;
+    ownerType: "individual" | "numbered_co" | "named_co" | "trust" | "government";
+    neq?: string | null;
+    mailingAddress?: string | null;
+    mailingIsProperty?: boolean;
+  };
+  reqDirector?: { name: string; year?: number } | null;
+  directorOfOther?: { name: string }[] | null;
+  properties: Array<{
+    matricule: string;
+    address: string;
+    city?: string | null;
+    nUnits?: number | null;
+    assessmentTotal?: number | null;
+    yearBuilt?: number | null;
+  }>;
+  primaryPhone: { e164: string; tier: string; label: string; isDirect: boolean };
+  primarySource: string;
+  secondarySource?: string | null;
+  whatsInteresting?: string | null;
+  language?: "auto" | "fr" | "en";
+};
+
+// ── detectLanguage ────────────────────────────────────────────────────────────
+
+/**
+ * Heuristic: return "fr" if the canonical name appears Francophone.
+ *
+ * Checks (in order, any match → "fr"):
+ *  1. Any token contains a common French diacritic character:
+ *     à â é è ê ë î ï ô û ç (case-insensitive)
+ *  2. Any token exactly matches a small list of common French given names
+ *     (case-insensitive).  The list is intentionally small; false negatives are
+ *     acceptable — a "fr" miss simply means the template text is in English.
+ *  3. Any token ends in a common French surname suffix:
+ *     -eau, -aux, -ier, -ière, -oux, -elle
+ *
+ * Everything else → "en".
+ */
+export function detectLanguage(canonicalName: string): "fr" | "en" {
+  // French given-name list (small, documented).
+  const FRENCH_GIVEN_NAMES = new Set([
+    "pierre", "jean", "marc", "anne", "michel", "andré", "andre",
+    "claude", "gilles", "nicole", "sylvie", "louise", "luc", "paul",
+    "richard", "martin", "chantal", "yves", "gilles", "francois",
+    "françoise", "francoise", "alain", "nathalie", "guy", "régis",
+    "regis", "benoit", "benoît", "gaston", "gérard", "gerard",
+    "raymond", "normand", "serge", "suzanne", "monique", "réal", "real",
+    "roger", "armand", "fernand", "lucien", "laure", "mireille",
+    "ghislaine", "colette", "yvon", "yvonne",
+  ]);
+
+  // French diacritics (covers most common ones in Québec French names)
+  const FRENCH_DIACRITICS = /[àâéèêëîïôûç]/i;
+
+  // French surname suffix pattern
+  const FRENCH_SUFFIX = /(eau|aux|ier|ière|iere|oux|elle)$/i;
+
+  // Tokenise: split on whitespace, commas, hyphens, dots
+  const tokens = canonicalName.split(/[\s,.\-]+/).filter(Boolean);
+
+  for (const token of tokens) {
+    if (FRENCH_DIACRITICS.test(token)) return "fr";
+    if (FRENCH_GIVEN_NAMES.has(token.toLowerCase())) return "fr";
+    if (FRENCH_SUFFIX.test(token)) return "fr";
+  }
+
+  return "en";
+}
+
+// ── Currency formatter ────────────────────────────────────────────────────────
+
+function formatCurrency(amount: number, locale: "en" | "fr"): string {
+  return new Intl.NumberFormat(locale === "fr" ? "fr-CA" : "en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatPhone(e164: string): string {
+  // Format +1XXXXXXXXXX → (XXX) XXX-XXXX
+  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  if (m) return `(${m[1]}) ${m[2]}-${m[3]}`;
+  return e164;
+}
+
+// ── renderBriefingTemplate ────────────────────────────────────────────────────
+
+/**
+ * Pure (no LLM) template renderer for Pipeline A and Pipeline B briefings.
+ * Language is determined by `input.language`:
+ *   "fr"   → French text
+ *   "en"   → English text
+ *   "auto" (default) → French if detectLanguage(canonicalName) === "fr"
+ */
+export function renderBriefingTemplate(input: BriefingInput): string {
+  const {
+    pipeline,
+    owner,
+    reqDirector,
+    directorOfOther,
+    properties,
+    primaryPhone,
+    primarySource,
+    secondarySource,
+    whatsInteresting,
+    language = "auto",
+  } = input;
+
+  // Resolve language
+  const lang: "fr" | "en" =
+    language === "fr" ? "fr" :
+    language === "en" ? "en" :
+    detectLanguage(owner.canonicalName);
+
+  // Aggregate stats
+  const totalUnits = properties.reduce((s, p) => s + (p.nUnits ?? 0), 0);
+  const totalAssessment = properties.reduce((s, p) => s + (p.assessmentTotal ?? 0), 0);
+  const cities = [...new Set(properties.map(p => p.city).filter(Boolean))] as string[];
+  const cityList = cities.length > 0 ? cities.join(", ") : (lang === "fr" ? "ville inconnue" : "unknown city");
+  const nBuildings = properties.length;
+
+  // Largest property by units (then assessment as tiebreaker)
+  const largest = [...properties].sort((a, b) => {
+    const ua = a.nUnits ?? 0;
+    const ub = b.nUnits ?? 0;
+    if (ub !== ua) return ub - ua;
+    return (b.assessmentTotal ?? 0) - (a.assessmentTotal ?? 0);
+  })[0] ?? properties[0];
+
+  const phone = formatPhone(primaryPhone.e164);
+  const label = primaryPhone.label;
+
+  const ownerName = owner.canonicalName;
+  const entityName = owner.ownerType === "individual" ? ownerName : ownerName;
+
+  if (pipeline === "A") {
+    return renderPipelineA({
+      lang, ownerName, entityName, neq: owner.neq,
+      reqDirector, mailingAddress: owner.mailingAddress,
+      mailingIsProperty: owner.mailingIsProperty ?? false,
+      nBuildings, totalUnits, cityList, totalAssessment, largest,
+      primaryPhone, phone, primarySource, secondarySource, label,
+      whatsInteresting,
+    });
+  } else {
+    return renderPipelineB({
+      lang, ownerName, directorOfOther,
+      nBuildings, totalUnits, cityList, totalAssessment,
+      phone, primarySource, secondarySource, label,
+      whatsInteresting,
+    });
+  }
+}
+
+// ── Pipeline A renderer ───────────────────────────────────────────────────────
+
+interface PipelineAVars {
+  lang: "fr" | "en";
+  ownerName: string;
+  entityName: string;
+  neq?: string | null;
+  reqDirector?: { name: string; year?: number } | null;
+  mailingAddress?: string | null;
+  mailingIsProperty: boolean;
+  nBuildings: number;
+  totalUnits: number;
+  cityList: string;
+  totalAssessment: number;
+  largest: BriefingInput["properties"][number];
+  primaryPhone: BriefingInput["primaryPhone"];
+  phone: string;
+  primarySource: string;
+  secondarySource?: string | null;
+  label: string;
+  whatsInteresting?: string | null;
+}
+
+function renderPipelineA(v: PipelineAVars): string {
+  const { lang } = v;
+  const fr = lang === "fr";
+  const lines: string[] = [];
+
+  // Line 1: Owner identity
+  const neqSuffix = v.neq ? (fr ? ` (NEQ ${v.neq})` : ` (NEQ ${v.neq})`) : "";
+  lines.push(
+    fr
+      ? `Propriétaire : ${v.ownerName}${neqSuffix}.`
+      : `Owner: ${v.ownerName}${neqSuffix}.`,
+  );
+
+  // Line 2 (optional): REQ director
+  if (v.reqDirector) {
+    const yearPart = v.reqDirector.year != null
+      ? (fr ? `, enregistré en ${v.reqDirector.year}` : `, registered ${v.reqDirector.year}`)
+      : "";
+    lines.push(
+      fr
+        ? `Dirigeant au REQ : ${v.reqDirector.name}${yearPart}.`
+        : `Director per REQ: ${v.reqDirector.name}${yearPart}.`,
+    );
+  }
+
+  // Line 3: Portfolio summary
+  const totalFmt = v.totalAssessment > 0 ? formatCurrency(v.totalAssessment, lang) : null;
+  const buildingsWord = fr
+    ? (v.nBuildings > 1 ? "immeubles" : "immeuble")
+    : (v.nBuildings > 1 ? "buildings" : "building");
+  const unitsWord = fr
+    ? (v.totalUnits !== 1 ? "logements" : "logement")
+    : (v.totalUnits !== 1 ? "units" : "unit");
+
+  if (fr) {
+    lines.push(
+      `Détient ${v.nBuildings} ${buildingsWord} totalisant ${v.totalUnits} ${unitsWord} à ${v.cityList}${totalFmt ? `, évalués à ${totalFmt}` : ""}.`,
+    );
+  } else {
+    lines.push(
+      `Holds ${v.nBuildings} ${buildingsWord} totaling ${v.totalUnits} ${unitsWord} in ${v.cityList}${totalFmt ? `, assessed at ${totalFmt}` : ""}.`,
+    );
+  }
+
+  // Line 4: Largest property
+  if (v.largest) {
+    const lu = v.largest.nUnits;
+    const la = v.largest.assessmentTotal;
+    const ly = v.largest.yearBuilt;
+    const laFmt = la != null ? formatCurrency(la, lang) : null;
+    const parts: string[] = [];
+    if (lu != null) parts.push(fr ? `${lu} logements` : `${lu}-unit`);
+    parts.push(fr ? `au ${v.largest.address}` : `at ${v.largest.address}`);
+    if (laFmt) parts.push(fr ? `évalué ${laFmt}` : `assessed ${laFmt}`);
+    if (ly) parts.push(fr ? `construit en ${ly}` : `built ${ly}`);
+    lines.push(
+      fr
+        ? `Plus grand : ${parts.join(", ")}.`
+        : `Largest: ${parts.join(", ")}.`,
+    );
+  }
+
+  // Line 5 (optional): Mailing = property
+  if (v.mailingIsProperty && v.mailingAddress) {
+    // Find units at mailing address (best effort — match by address substring)
+    const mailingProp = [
+      ...([] as BriefingInput["properties"]),
+    ]; // We don't have the full list here; use largest proxy
+    void mailingProp; // unused
+    lines.push(
+      fr
+        ? `Adresse postale : ${v.mailingAddress}, aussi une propriété leur appartenant — opère vraisemblablement à domicile.`
+        : `Mailing address is ${v.mailingAddress}, also a property owned by them — operates from home.`,
+    );
+  }
+
+  // Line 6: Phone
+  if (!v.primaryPhone.isDirect) {
+    lines.push(
+      fr
+        ? `Téléphone : ${v.phone} (sonne au bureau de ${v.entityName}). Demander ${v.ownerName} ; si inconnu, marquer wrong_number.`
+        : `Phone: ${v.phone} (rings at ${v.entityName}'s office). Ask for ${v.ownerName}; if unfamiliar, mark wrong_number.`,
+    );
+  } else {
+    const corrobPart = v.secondarySource
+      ? (fr ? ` et corroboré par ${v.secondarySource}` : ` and corroborated by ${v.secondarySource}`)
+      : "";
+    lines.push(
+      fr
+        ? `Téléphone : ${v.phone}, source ${v.primarySource}${corrobPart}.`
+        : `Phone: ${v.phone}, sourced from ${v.primarySource}${corrobPart}.`,
+    );
+  }
+
+  // Line 7: Confidence
+  lines.push(fr ? `Confiance : ${v.label}.` : `Confidence: ${v.label}.`);
+
+  // Line 8 (optional): What's interesting
+  if (v.whatsInteresting) {
+    lines.push(v.whatsInteresting);
+  }
+
+  return lines.join("\n");
+}
+
+// ── Pipeline B renderer ───────────────────────────────────────────────────────
+
+interface PipelineBVars {
+  lang: "fr" | "en";
+  ownerName: string;
+  directorOfOther?: { name: string }[] | null;
+  nBuildings: number;
+  totalUnits: number;
+  cityList: string;
+  totalAssessment: number;
+  phone: string;
+  primarySource: string;
+  secondarySource?: string | null;
+  label: string;
+  whatsInteresting?: string | null;
+}
+
+function renderPipelineB(v: PipelineBVars): string {
+  const { lang } = v;
+  const fr = lang === "fr";
+  const lines: string[] = [];
+
+  // Line 1: Owner identity (individual in Pipeline B)
+  lines.push(
+    fr
+      ? `Propriétaire : ${v.ownerName}, individu.`
+      : `Owner: ${v.ownerName}, individual.`,
+  );
+
+  // Line 2 (optional): Director of another entity
+  if (v.directorOfOther && v.directorOfOther.length > 0) {
+    const names = v.directorOfOther.map(d => d.name).join(", ");
+    lines.push(
+      fr
+        ? `Inscrit comme dirigeant de ${names} (entité distincte, point de départ de conversation).`
+        : `Listed as director of ${names} (separate entity, conversation starter).`,
+    );
+  }
+
+  // Line 3: Portfolio summary
+  const totalFmt = v.totalAssessment > 0 ? formatCurrency(v.totalAssessment, lang) : null;
+  const buildingsWord = fr
+    ? (v.nBuildings > 1 ? "immeubles" : "immeuble")
+    : (v.nBuildings > 1 ? "buildings" : "building");
+  const unitsWord = fr
+    ? (v.totalUnits !== 1 ? "logements" : "logement")
+    : (v.totalUnits !== 1 ? "units" : "unit");
+
+  if (fr) {
+    lines.push(
+      `Détient ${v.nBuildings} ${buildingsWord} totalisant ${v.totalUnits} ${unitsWord} à ${v.cityList}${totalFmt ? `, évalués à ${totalFmt}` : ""}.`,
+    );
+  } else {
+    lines.push(
+      `Holds ${v.nBuildings} ${buildingsWord} totaling ${v.totalUnits} ${unitsWord} in ${v.cityList}${totalFmt ? `, assessed at ${totalFmt}` : ""}.`,
+    );
+  }
+
+  // Line 4: Phone (direct line)
+  const corrobPart = v.secondarySource
+    ? (fr ? ` + ${v.secondarySource}` : ` + ${v.secondarySource}`)
+    : "";
+  lines.push(
+    fr
+      ? `Téléphone : ${v.phone} (ligne directe via ${v.primarySource}${corrobPart}).`
+      : `Phone: ${v.phone} (direct line per ${v.primarySource}${corrobPart}).`,
+  );
+
+  // Line 5: Verify before mentioning real estate
+  lines.push(
+    fr
+      ? `Appelant : vérifier l'identité avant de mentionner l'immobilier.`
+      : `Caller: verify it's them before mentioning real estate.`,
+  );
+
+  // Line 6: Confidence
+  lines.push(fr ? `Confiance : ${v.label}.` : `Confidence: ${v.label}.`);
+
+  // Line 7 (optional): What's interesting
+  if (v.whatsInteresting) {
+    lines.push(v.whatsInteresting);
+  }
+
+  return lines.join("\n");
+}
+
+// ── renderBriefingPhrased ─────────────────────────────────────────────────────
+
+/**
+ * Render the briefing template then optionally pass it through a Haiku phrasing
+ * pass for more natural language.
+ *
+ * If ANTHROPIC_API_KEY is not set, or if the API call fails, falls back to the
+ * raw template text silently (logs a warning).
+ */
+export async function renderBriefingPhrased(input: BriefingInput): Promise<string> {
+  const templateText = renderBriefingTemplate(input);
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return templateText;
+  }
+
+  // Resolve language for the system prompt
+  const lang: "fr" | "en" =
+    input.language === "fr" ? "fr" :
+    input.language === "en" ? "en" :
+    detectLanguage(input.owner.canonicalName);
+
+  const langLabel = lang === "fr" ? "French (Quebec)" : "English (Canadian)";
+
+  const systemPrompt =
+    `Make this flow naturally in ${langLabel}. DO NOT add any facts not in the input. ` +
+    `DO NOT omit any fact. Preserve numbers, names, addresses, NEQ, phones EXACTLY. ` +
+    `Output only the briefing text, no preamble.`;
+
+  try {
+    const result = await callAnthropic({
+      feature: "briefing",
+      model: "claude-haiku-4-5-20251001",
+      maxTokens: 2000,
+      prompt: templateText,
+      system: systemPrompt,
+    });
+
+    if (!result.ok || !result.text) {
+      console.warn("[briefing] Haiku phrasing pass failed:", result.error ?? "empty response");
+      return templateText;
+    }
+
+    return result.text.trim() || templateText;
+  } catch (err) {
+    console.warn("[briefing] Haiku phrasing pass threw:", err);
+    return templateText;
+  }
+}
+
+// ── Legacy public export (unchanged — callers: API route, queue worker) ───────
 
 export async function generateBriefing(
   leadId: string,
