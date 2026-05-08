@@ -86,6 +86,6 @@ export function normalizePersonName(s: string | null | undefined): string {
  */
 export function extractFsa(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const match = raw.match(/\b([A-Za-z]\d[A-Za-z])\b/);
+  const match = raw.match(/\b([A-Za-z]\d[A-Za-z])(?:[ -]?\d[A-Za-z]\d)?\b/);
   return match ? match[1].toUpperCase() : null;
 }
