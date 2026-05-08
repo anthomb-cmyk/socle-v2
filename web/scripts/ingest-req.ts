@@ -388,6 +388,8 @@ function findCsvFile(): string | null {
 // ---------------------------------------------------------------------------
 
 const BATCH_SIZE = 1000;
+const NAMES_BATCH_SIZE = 10000;
+const ALIAS_SUB_BATCH = 2000;
 const PROGRESS_INTERVAL = 50_000;
 
 async function ingestEntrepriseFile(csvPath: string) {
@@ -570,9 +572,8 @@ async function ingestNamesFile(csvPath: string) {
 
     if (aliasInserts.length > 0) {
       // Insert aliases in sub-batches to avoid payload limits
-      const SUB_BATCH = 500;
-      for (let i = 0; i < aliasInserts.length; i += SUB_BATCH) {
-        const chunk = aliasInserts.slice(i, i + SUB_BATCH);
+      for (let i = 0; i < aliasInserts.length; i += ALIAS_SUB_BATCH) {
+        const chunk = aliasInserts.slice(i, i + ALIAS_SUB_BATCH);
         const { error } = await sb
           .from("req_entity_alias")
           .upsert(chunk, { onConflict: "neq,alias_name_normalized", ignoreDuplicates: true });
@@ -603,7 +604,7 @@ async function ingestNamesFile(csvPath: string) {
     neqMap.set(parsed.neq, existing);
 
     // Flush when we have BATCH_SIZE distinct NEQs
-    if (neqMap.size >= BATCH_SIZE) {
+    if (neqMap.size >= NAMES_BATCH_SIZE) {
       await flushNomBatch(neqMap);
       neqMap.clear();
     }
