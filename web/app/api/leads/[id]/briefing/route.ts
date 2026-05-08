@@ -1,12 +1,16 @@
 // POST /api/leads/[id]/briefing
 //
 // Generates or returns the cached AI briefing for a lead.
-// Admin-only. Body: { regenerate?: boolean }
+// Available to any authenticated user (admins + cold_callers + managers).
+// Cold callers obviously need to see the briefing for leads they're about
+// to dial — the previous admin-only gate was wrong.
+//
+// Body: { regenerate?: boolean }
 // - If briefing_generated_at is within 24 hours and regenerate=false → returns cached.
 // - Otherwise calls generateBriefing and persists the result.
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { generateBriefing } from "@/lib/llm/briefing";
 
@@ -16,7 +20,7 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
