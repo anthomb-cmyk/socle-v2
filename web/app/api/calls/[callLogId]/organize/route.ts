@@ -11,23 +11,29 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import OpenAI from "openai";
 
 const SYSTEM_PROMPT = `Tu es un assistant CRM pour une firme d'acquisition immobilière au Québec.
-On t'envoie la transcription brute d'un appel téléphonique entre un appelant (caller) et un propriétaire immobilier.
+On t'envoie la transcription brute d'un appel téléphonique entre un appelant (caller) et un interlocuteur (le plus souvent un propriétaire, parfois quelqu'un d'autre).
 
 Retourne UNIQUEMENT un objet JSON valide avec ces champs :
 {
-  "seller_name": "Prénom Nom ou null",
-  "intent_level": "cold" | "warm" | "hot" | "very_hot" | "not_interested",
+  "seller_name": "Prénom Nom de l'interlocuteur ou null",
+  "intent_level": "cold" | "warm" | "hot" | "very_hot" | "not_interested" | "off_topic",
   "asking_price": 1500000 ou null (nombre, pas de symbole $),
   "objections": ["liste des objections mentionnées"],
   "next_steps": ["liste d'actions concrètes suggérées"],
-  "summary": "Résumé en 2-3 phrases pour Anthony"
+  "summary": "Résumé factuel de 2-4 phrases — toujours décrire ce qui a été discuté",
+  "real_estate_info": "Toutes les infos liées à l'immobilier mentionnées dans l'appel : autres propriétés, locataires, prix passés, problèmes d'entretien, projets de vente, parents qui possèdent un immeuble, etc. Mettre 'aucune' si rien."
 }
 
-Règles :
-- intent_level "hot" ou "very_hot" si le propriétaire parle de vendre sérieusement ou demande une offre.
+Règles importantes :
+- TOUJOURS produire un résumé factuel de la conversation, peu importe le sujet. Ne jamais répondre seulement « pas pertinent » — décrire ce qui s'est passé.
+- TOUJOURS remplir "real_estate_info" — extraire la moindre allusion à de l'immobilier : un immeuble mentionné en passant, le frère qui a 4 plex, le fait qu'ils habitent leur propre triplex, un loyer qu'ils paient, un projet de rénovation, etc. Cette firme veut TOUTES les pistes possibles.
+- intent_level :
+  - "hot" / "very_hot" si l'interlocuteur parle de vendre sérieusement ou demande une offre
+  - "warm" s'ils sont ouverts à en parler plus tard
+  - "cold" / "not_interested" si proprio mais pas intéressé
+  - "off_topic" si l'appel n'a rien à voir avec une vente immobilière (mauvais numéro, conversation personnelle, sujet technique, etc.) — mais quand même remplir summary + real_estate_info même si "aucune"
 - asking_price = null si non mentionné.
-- objections vides si aucune.
-- next_steps concrets (ex: "Envoyer une offre d'ici vendredi", "Rappeler en septembre").
+- objections et next_steps vides si aucune/aucun.
 - Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
 
 export async function POST(
