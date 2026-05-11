@@ -14,7 +14,7 @@ export default async function LeadDetailPage(
   const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
 
   const sb = createSupabaseAdminClient();
-  const { data: leadRaw } = await sb.from("leads_view").select("*").eq("lead_id", id).single();
+  const { data: leadRaw } = await sb.from("leads_view").select("lead_id,status,priority,assigned_to,campaign_name,campaign_id,address,city,num_units,evaluation_total,contact_kind,full_name,company_name,best_phone,property_id,contact_id,last_contacted_at,next_action_at,fit_score").eq("lead_id", id).single();
   if (!leadRaw) return notFound();
   const lead = leadRaw as {
     lead_id: string; status: string; priority: number; assigned_to: string | null;
@@ -63,8 +63,8 @@ export default async function LeadDetailPage(
       .eq("lead_id", id).order("created_at", { ascending: false }),
     sb.from("automation_events").select("id, source, event_type, status, error_message, occurred_at")
       .eq("related_lead_id", id).order("occurred_at", { ascending: false }).limit(20),
-    sb.from("properties").select("*").eq("id", lead.property_id).single(),
-    sb.from("contacts").select("*").eq("id", lead.contact_id).single(),
+    sb.from("properties").select("id,address,city,matricule,year_built,num_units,evaluation_total").eq("id", lead.property_id).single(),
+    sb.from("contacts").select("id,kind,full_name,company_name,primary_email,mailing_address,mailing_city,mailing_postal").eq("id", lead.contact_id).single(),
     sb.from("leads").select("notes").eq("id", id).single(),
     sb.from("users_meta").select("user_id, display_name, role"),
     sb.from("enrichment_jobs").select("id, job_type, status, started_at, completed_at, error_message, created_at")

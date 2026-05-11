@@ -13,8 +13,8 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
   const sb = createSupabaseAdminClient();
 
   const [{ data: deal }, { data: docs }, { data: callLogs }] = await Promise.all([
-    sb.from("deals").select("*").eq("id", id).single(),
-    sb.from("deal_documents").select("*").eq("deal_id", id).order("created_at", { ascending: false }),
+    sb.from("deals").select("id,title,stage,address,units,asking_price,offer_price,temperature,priority,contact_name,contact_phone,contact_email,notes_deal,notes_vendeur,ai_analysis,next_action,checklists,activities,lat,lng,created_at,updated_at").eq("id", id).single(),
+    sb.from("deal_documents").select("id,name,size,mime_type,created_at").eq("deal_id", id).order("created_at", { ascending: false }),
     sb.from("call_logs")
       .select("id, outcome, notes, recorded_at, duration_sec, recording_url, transcript_status, transcript")
       .filter("raw->>deal_id", "eq", id)

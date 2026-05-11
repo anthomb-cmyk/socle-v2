@@ -98,16 +98,17 @@ export default async function CallQueuePage({
   const hotSellers = hotSellersRes.count ?? 0;
   const myLockedByOthersCount = allMyLeads.length - leads.length;
 
-  // Per-lead call counts (separate query to avoid heavy view join)
+  // Per-lead call counts — use a DB aggregate to avoid fetching every call_log row.
+  // Falls back to empty object on any error (non-critical UI counter).
   const leadIds = leads.map((l) => l.lead_id);
   const callCounts: Record<string, number> = {};
   if (leadIds.length > 0) {
-    const { data: counts } = await sb
-      .from("call_logs")
-      .select("lead_id")
-      .in("lead_id", leadIds);
-    (counts ?? []).forEach((row: { lead_id: string | null }) => {
-      if (row.lead_id) callCounts[row.lead_id] = (callCounts[row.lead_id] ?? 0) + 1;
+    const { data: countRows } = await sb.rpc(
+      "get_call_counts_for_leads",
+      { lead_ids: leadIds },
+    ) as { data: Array<{ lead_id: string; call_count: number }> | null };
+    (countRows ?? []).forEach((row) => {
+      callCounts[row.lead_id] = Number(row.call_count);
     });
   }
 
