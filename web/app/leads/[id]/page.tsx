@@ -14,7 +14,7 @@ export default async function LeadDetailPage(
   const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
 
   const sb = createSupabaseAdminClient();
-  const { data: leadRaw } = await sb.from("leads_view").select("lead_id,status,priority,assigned_to,campaign_name,campaign_id,address,city,num_units,evaluation_total,contact_kind,full_name,company_name,best_phone,property_id,contact_id,last_contacted_at,next_action_at,fit_score").eq("lead_id", id).single();
+  const { data: leadRaw } = await sb.from("leads_view").select("lead_id,status,priority,assigned_to,campaign_name,campaign_id,address,city,num_units,evaluation_total,contact_kind,full_name,company_name,best_phone,property_id,contact_id,last_contacted_at,next_action_at").eq("lead_id", id).single();
   if (!leadRaw) return notFound();
   const lead = leadRaw as {
     lead_id: string; status: string; priority: number; assigned_to: string | null;
