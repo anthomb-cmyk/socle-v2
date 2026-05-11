@@ -21,7 +21,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { routeOwner } from "./classifier";
+import { routeOwner, type RoutingDecision } from "./classifier";
 import { insertEvidence, insertHypothesis } from "./db";
 import type { HypothesisTier, HypothesisConfidenceLabel } from "./db";
 import { reverseAddressResearcher } from "./researchers/reverse-address";
@@ -55,6 +55,20 @@ export interface PipelineBOptions {
   skipBrave?: boolean;
   /** Skip the Twilio caller-name lookup. */
   skipTwilio?: boolean;
+  /**
+   * Pre-computed routing decision from the caller (e.g. pipeline.ts or the
+   * backtest runner already called routeOwner before invoking runPipelineB).
+   *
+   * When provided, the internal routeOwner call is skipped entirely so the
+   * researchers always run under the same routing context that was used to
+   * select Pipeline B — even when mailing_geocode was null at routing time.
+   * Without this, a lazy-geocode write that occurs inside the first routeOwner
+   * call could theoretically produce a different result on the second call,
+   * causing an unexpected throw from the routing guard.
+   *
+   * Callers MUST only pass a routing with pipeline === "B" here.
+   */
+  precomputedRouting?: RoutingDecision;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,9 +135,21 @@ export async function runPipelineB(
   ownerId: string,
   _options: PipelineBOptions = {},
 ): Promise<PipelineBResult> {
-  const { skipBrave = false, skipTwilio = false } = _options;
+  const { skipBrave = false, skipTwilio = false, precomputedRouting } = _options;
+
   // 1. Route check
-  const routing = await routeOwner(sb, ownerId);
+  //
+  // Use the pre-computed routing when the caller already ran routeOwner (e.g.
+  // pipeline.ts or the backtest runner).  Skipping the second call prevents a
+  // race where a lazy-geocode write that happened inside the first routeOwner
+  // call produces a different — and potentially A-pipeline — result here,
+  // which would throw and silently return UNRESOLVED for the lead.
+  //
+  // When precomputedRouting is absent (standalone invocations, tests) we fall
+  // back to calling routeOwner as before.
+  const routing: RoutingDecision =
+    precomputedRouting ?? (await routeOwner(sb, ownerId));
+
   if (routing.pipeline !== "B") {
     throw new Error(
       `runPipelineB: owner ${ownerId} is routed to Pipeline ${routing.pipeline}, not B`,

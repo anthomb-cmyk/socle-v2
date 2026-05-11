@@ -220,10 +220,17 @@ export async function runEnrichmentPipeline(
     const routing = await routeOwner(sb, ownerId);
 
     // 3. Run the chosen pipeline
+    //
+    // Pass the pre-computed routing to runPipelineB so it does not call
+    // routeOwner a second time.  A repeated routeOwner call would re-evaluate
+    // routing after a lazy-geocode write that occurred in step 2 above; in
+    // rare cases this can produce a different (A-pipeline) decision, causing
+    // runPipelineB to throw and the lead to be silently marked UNRESOLVED
+    // instead of having its name-based researchers run.
     if (routing.pipeline === "A") {
       await runPipelineA(sb, ownerId);
     } else {
-      await runPipelineB(sb, ownerId);
+      await runPipelineB(sb, ownerId, { precomputedRouting: routing });
     }
 
     // 4. Look up the strongest hypothesis to seed the owner_record

@@ -210,6 +210,43 @@ async function dispatch(
       completed_at: new Date().toISOString(),
       raw_output:   { outcome: pipelineResult.outcome, stageReached: pipelineResult.stageReached },
     }).eq("id", (jobRow as { id: string }).id);
+
+    // Safety net: the pipeline is expected to update the lead status internally
+    // (via publishOwnerRecordToCrm or setLeadStatus), but if it fails silently
+    // (e.g. publishOwnerRecordToCrm throws and is caught) the lead can remain
+    // stuck at 'enrichment_running' forever.  Re-check the lead's current status
+    // and, if it is still 'enrichment_running', apply the correct next-state
+    // derived from the pipeline outcome.
+    const { data: leadNow } = await sb
+      .from("leads")
+      .select("status")
+      .eq("id", leadId)
+      .single();
+    const currentStatus = (leadNow as { status: string } | null)?.status ?? "";
+
+    if (currentStatus === "enrichment_running") {
+      // Map pipeline outcome → lead status (mirrors crm-bridge + pipeline logic)
+      let fallbackStatus: string;
+      switch (pipelineResult.outcome) {
+        case "solved":
+          fallbackStatus = "ready_to_call";
+          break;
+        case "review":
+          fallbackStatus = "needs_phone_review";
+          break;
+        case "openclaw_dispatched":
+          fallbackStatus = "openclaw_researching";
+          break;
+        default:
+          // "unresolved" | "unsuitable" | any unknown outcome
+          fallbackStatus = "unresolved_after_all_sources";
+          break;
+      }
+      console.warn(
+        `[worker] lead ${leadId} still 'enrichment_running' after pipeline (outcome=${pipelineResult.outcome}); forcing → ${fallbackStatus}`,
+      );
+      await sb.from("leads").update({ status: fallbackStatus }).eq("id", leadId);
+    }
     return;
   }
 

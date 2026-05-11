@@ -251,7 +251,11 @@ async function runPipelineForLead(
   const opts = smokeTest ? { skipBrave: true, skipTwilio: true } : {};
 
   try {
-    // Determine routing (A or B) without triggering the full pipeline twice
+    // Determine routing (A or B) without triggering the full pipeline twice.
+    // The routing decision is passed as precomputedRouting so runPipelineB
+    // (and runPipelineA) do not call routeOwner a second time — avoiding a
+    // potential race where a lazy-geocode write that occurred here produces a
+    // different routing result on the second call.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const routing = await routeOwner(sb as any, ownerId);
 
@@ -275,7 +279,7 @@ async function runPipelineForLead(
       };
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await runPipelineB(sb as any, ownerId, opts);
+      const result = await runPipelineB(sb as any, ownerId, { ...opts, precomputedRouting: routing });
       const isAccepted = result.primaryHypothesisId !== undefined;
       const hasCandidate = result.hypothesisIds.length > 0;
 

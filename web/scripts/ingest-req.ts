@@ -702,6 +702,186 @@ async function ingestAddressesFile(csvPath: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Administrateur.csv / directors-file ingest
+// ---------------------------------------------------------------------------
+
+/**
+ * Column name variants for the Quebec REQ Administrateur.csv.
+ *
+ * The file typically has columns:
+ *   NEQ, NOM_ADMIN, PRENOM_ADMIN, TITRE_ADMIN, DAT_DEBUT_ADMIN, DAT_FIN_ADMIN
+ *
+ * Some export versions use slightly different names, so we probe a few
+ * alternatives using the same COL_MAP patterns already in the script.
+ */
+interface AdminColumnMapping {
+  neq?: string;
+  surname?: string;
+  given_name?: string;
+  role?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+const ADMIN_COL_PATTERNS: Array<{ field: keyof AdminColumnMapping; patterns: string[] }> = [
+  { field: "neq",        patterns: ["NEQ", "NO_ENTR", "NUMERO_ENTREPRISE"] },
+  { field: "surname",    patterns: ["NOM_ADMIN", "NOM_DIRIGEANT", "SURNAME_DIRECTOR", "NOM"] },
+  { field: "given_name", patterns: ["PRENOM_ADMIN", "PRENOM_DIRIGEANT", "GIVEN_DIRECTOR", "PRENOM"] },
+  { field: "role",       patterns: ["TITRE_ADMIN", "ROLE_DIRIGEANT", "ROLE_DIRECTOR", "TITRE", "FONCTION"] },
+  { field: "start_date", patterns: ["DAT_DEBUT_ADMIN", "DATE_DEBUT_DIR", "DAT_DEBUT"] },
+  { field: "end_date",   patterns: ["DAT_FIN_ADMIN", "DATE_FIN_DIR", "DAT_FIN"] },
+];
+
+function resolveAdminColumnMapping(headers: string[]): AdminColumnMapping {
+  const normalHeader = (h: string) => h.trim().toUpperCase().replace(/\s+/g, "_");
+  const normalizedHeaders = headers.map(normalHeader);
+
+  const mapping: AdminColumnMapping = {};
+  for (const { field, patterns } of ADMIN_COL_PATTERNS) {
+    for (const pattern of patterns) {
+      const idx = normalizedHeaders.indexOf(pattern.toUpperCase());
+      if (idx >= 0) {
+        (mapping as Record<string, string>)[field] = headers[idx];
+        break;
+      }
+    }
+  }
+  return mapping;
+}
+
+/**
+ * Ingest a standalone directors CSV (Administrateur.csv or equivalent).
+ *
+ * Strategy: TRUNCATE req_directors first (this is always a full-snapshot
+ * replacement), then stream-insert in batches of BATCH_SIZE rows.
+ * The id column uses the DB default (gen_random_uuid()), so we never include
+ * it in the insert payload — this avoids the "upsert on conflict id" trap
+ * that would silently produce duplicates on re-runs.
+ *
+ * The truncate is skipped when --no-truncate is passed (useful for appending
+ * director data from multiple files).
+ */
+async function ingestDirectorsFile(csvPath: string, opts: { noTruncate?: boolean } = {}) {
+  console.log(`[ingest-req] --directors-file mode: ${csvPath}`);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.");
+    process.exit(1);
+  }
+  const sb = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Truncate first for idempotency (full snapshot replacement).
+  if (!opts.noTruncate) {
+    console.log("[ingest-req] Clearing req_directors before re-ingest…");
+    // Delete all rows. The service-role key bypasses RLS.
+    // We use .gt("id", "00000000-0000-0000-0000-000000000000") which matches
+    // every UUID row without requiring a TRUNCATE statement.
+    const { error: delErr } = await sb
+      .from("req_directors")
+      .delete()
+      .gt("id", "00000000-0000-0000-0000-000000000000");
+    if (delErr) {
+      console.error("[ingest-req] Failed to clear req_directors:", delErr.message);
+      process.exit(1);
+    }
+    console.log("[ingest-req] req_directors cleared.");
+  }
+
+  const parser = fs.createReadStream(csvPath).pipe(
+    parse({ columns: true, skip_empty_lines: true, trim: true, bom: true }),
+  );
+
+  let adminMapping: AdminColumnMapping | null = null;
+  let totalRowsRead = 0;
+  let totalInserted = 0;
+  let totalSkipped = 0;
+
+  type DirectorInsert = Omit<ParsedDirector, "neq"> & { neq: string };
+  const batch: DirectorInsert[] = [];
+
+  const flushBatch = async (rows: DirectorInsert[]) => {
+    if (rows.length === 0) return;
+
+    // Insert without the id field — let the DB generate UUIDs.
+    const { error } = await sb.from("req_directors").insert(rows);
+    if (error) {
+      // Log and skip the batch rather than crashing (e.g. FK violations for NEQs
+      // not in req_entities — those directors are simply skipped).
+      console.warn(`[ingest-req] Director insert warning (batch of ${rows.length}):`, error.message);
+      totalSkipped += rows.length;
+    } else {
+      totalInserted += rows.length;
+    }
+  };
+
+  for await (const row of parser as AsyncIterable<Record<string, string>>) {
+    totalRowsRead++;
+
+    if (!adminMapping) {
+      adminMapping = resolveAdminColumnMapping(Object.keys(row));
+      console.log("[ingest-req] Admin column mapping resolved:", adminMapping);
+
+      if (!adminMapping.neq) {
+        console.error("[ingest-req] ERROR: Could not find NEQ column in directors CSV.");
+        console.error("            Headers found:", Object.keys(row).join(", "));
+        process.exit(1);
+      }
+    }
+
+    const get = (field: keyof AdminColumnMapping): string | undefined => {
+      const col = adminMapping![field];
+      return col ? row[col]?.trim() : undefined;
+    };
+
+    const neq = get("neq");
+    const surname = get("surname");
+    if (!neq || !surname) {
+      totalSkipped++;
+      continue;
+    }
+
+    const givenName = get("given_name") ?? null;
+    const full_name = [givenName, surname].filter(Boolean).join(" ");
+
+    batch.push({
+      neq,
+      full_name,
+      full_name_normalized: normalizePersonName(full_name),
+      surname,
+      given_name: givenName,
+      role: get("role") ?? null,
+      start_date: parseDateField(get("start_date")),
+      end_date: parseDateField(get("end_date")),
+    });
+
+    if (batch.length >= BATCH_SIZE) {
+      await flushBatch(batch);
+      batch.length = 0;
+    }
+
+    if (totalRowsRead % PROGRESS_INTERVAL === 0) {
+      console.log(
+        `[ingest-req] Directors: read ${totalRowsRead} rows, ` +
+        `inserted ${totalInserted}, skipped ${totalSkipped} so far…`,
+      );
+    }
+  }
+
+  // Flush remainder.
+  await flushBatch(batch);
+  batch.length = 0;
+
+  console.log(
+    `[ingest-req] Directors done. ` +
+    `Rows read: ${totalRowsRead}, inserted: ${totalInserted}, skipped: ${totalSkipped}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -710,7 +890,9 @@ async function main() {
 
   const namesArg = args.find((a) => a.startsWith("--names-file="))?.replace("--names-file=", "");
   const addressesArg = args.find((a) => a.startsWith("--addresses-file="))?.replace("--addresses-file=", "");
+  const directorsArg = args.find((a) => a.startsWith("--directors-file="))?.replace("--directors-file=", "");
   const fileArg = args.find((a) => a.startsWith("--file="))?.replace("--file=", "");
+  const noTruncate = args.includes("--no-truncate");
 
   if (namesArg) {
     if (!fs.existsSync(namesArg)) {
@@ -727,6 +909,15 @@ async function main() {
       process.exit(1);
     }
     await ingestAddressesFile(addressesArg);
+    return;
+  }
+
+  if (directorsArg) {
+    if (!fs.existsSync(directorsArg)) {
+      console.error(`ERROR: File not found: ${directorsArg}`);
+      process.exit(1);
+    }
+    await ingestDirectorsFile(directorsArg, { noTruncate });
     return;
   }
 
@@ -760,4 +951,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__thisFile
   });
 }
 
-export { main };
+export { main, ingestDirectorsFile, resolveAdminColumnMapping };
