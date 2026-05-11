@@ -56,14 +56,19 @@ export default async function CallQueuePage({
   //   - next_action_at IS NULL OR <= now (future callbacks deferred)
   //   - sort: priority DESC → next_action_at ASC → last_contacted_at ASC
   // The assigned_to predicate is the only thing that branches on scope.
+  // NOTE: fit_score lives on leads.* but is NOT exposed by leads_view.
+  // Selecting/ordering on it makes Postgrest throw `column does not exist`,
+  // which silently returns zero rows to the queue page → "I see no leads" bug.
+  // The earlier hotfix 1765ecc removed fit_score from /api/leads but missed
+  // this file. Re-add fit_score to the view (migration) if we want to surface
+  // it again — for now keep the queue working by leaving it out.
   let queueQuery = sb
     .from("leads_view")
-    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority,assigned_to,fit_score")
+    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority,assigned_to")
     .in("status", CALLABLE_STATUSES as unknown as string[])
     .not("best_phone", "is", null)
     .or(`next_action_at.is.null,next_action_at.lte.${now}`)
     .order("priority", { ascending: false })
-    .order("fit_score", { ascending: false, nullsFirst: false })
     .order("next_action_at", { ascending: true, nullsFirst: false })
     .order("last_contacted_at", { ascending: true, nullsFirst: true });
 

@@ -31,7 +31,9 @@ export type QueueLead = {
   last_contacted_at: string | null;
   next_action_at: string | null;
   priority: number | null;
-  fit_score: number | null;
+  // fit_score is on leads.* but not exposed by leads_view, so the queue
+  // doesn't fetch it. Optional so the cast in page.tsx still works.
+  fit_score?: number | null;
 };
 
 export type AugmentedLead = {
