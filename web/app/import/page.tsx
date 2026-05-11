@@ -224,8 +224,11 @@ export default function ImportPage() {
             });
 
             // Fetch newly created lead IDs for quick-assign
-            if (campaignId) {
-              const leadsResp = await fetch(`/api/leads?campaign_id=${campaignId}&limit=500`);
+            {
+              const leadsUrl = campaignId
+                ? `/api/leads?campaign_id=${campaignId}&limit=500`
+                : `/api/leads?import_job_id=${jobId}&limit=500`;
+              const leadsResp = await fetch(leadsUrl);
               const leadsJson = await leadsResp.json();
               if (leadsJson.ok) {
                 setNewLeadIds(leadsJson.data.leads.map((l: { lead_id: string }) => l.lead_id));

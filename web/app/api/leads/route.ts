@@ -1,5 +1,5 @@
 // GET /api/leads
-// Query: ?city=&status=&assigned_to=&campaign_id=&has_phone=&q=&limit=&offset=
+// Query: ?city=&status=&assigned_to=&campaign_id=&import_job_id=&has_phone=&q=&limit=&offset=
 // Admin sees everything. Caller sees only their assigned leads.
 
 import { NextResponse } from "next/server";
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   const status = url.searchParams.get("status")?.trim();
   const assignedTo = url.searchParams.get("assigned_to")?.trim();
   const campaignId = url.searchParams.get("campaign_id")?.trim();
+  const importJobId = url.searchParams.get("import_job_id")?.trim();
   const hasPhone = url.searchParams.get("has_phone")?.trim(); // "1" = only with phone
   const q = url.searchParams.get("q")?.trim();
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 500);
@@ -41,6 +42,7 @@ export async function GET(request: Request) {
   if (city) query = query.ilike("city", `%${city}%`);
   if (status) query = query.eq("status", status);
   if (campaignId) query = query.eq("campaign_id", campaignId);
+  if (importJobId) query = query.eq("source_import_job_id", importJobId);
   if (hasPhone === "1") query = query.not("best_phone", "is", null);
   if (q) query = query.or(`address.ilike.%${q}%,full_name.ilike.%${q}%,company_name.ilike.%${q}%`);
 
