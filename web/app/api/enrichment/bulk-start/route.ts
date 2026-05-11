@@ -163,7 +163,7 @@ export async function POST(request: Request) {
         await sb.from("enrichment_jobs").update({
           status:       jobStatus,
           completed_at: result.openclawDispatched ? undefined : new Date().toISOString(),
-          raw_output:   { outcome: result.outcome, stageReached: result.stageReached },
+          raw_output:   { outcome: result.outcome, stageReached: result.stageReached, pipeline: result.pipeline },
         }).eq("id", enrichmentJobId);
         queued++;
       } catch (pipeErr) {

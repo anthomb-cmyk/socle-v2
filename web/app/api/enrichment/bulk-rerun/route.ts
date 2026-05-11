@@ -128,6 +128,7 @@ async function processSingleLead(lead: LeadRow, sb: SupabaseClient): Promise<voi
       raw_output:   {
         outcome:      result.outcome,
         stageReached: result.stageReached,
+        pipeline:     result.pipeline,
         bulkRerun:    true,
       },
     }).eq("id", enrichmentJobId);

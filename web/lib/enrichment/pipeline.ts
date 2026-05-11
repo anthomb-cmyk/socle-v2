@@ -50,6 +50,8 @@ export interface PipelineResult {
   stageReached: PipelineStage | "preflight" | "none";
   candidateIds: string[];
   openclawDispatched: boolean;
+  /** Which sub-pipeline was selected by the classifier ("A" | "B"), or null if routing never ran. */
+  pipeline: "A" | "B" | null;
 }
 
 const UNRESOLVED: PipelineResult = {
@@ -57,6 +59,7 @@ const UNRESOLVED: PipelineResult = {
   stageReached: "none",
   candidateIds: [],
   openclawDispatched: false,
+  pipeline: null,
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -200,7 +203,10 @@ export async function runEnrichmentPipeline(
 ): Promise<PipelineResult> {
   if ((process.env.ENRICHMENT_USE_LEGACY ?? "").toLowerCase() === "true") {
     const { runEnrichmentPipelineLegacy } = await import("./pipeline-legacy");
-    return runEnrichmentPipelineLegacy(sb, ctx);
+    const legacyResult = await runEnrichmentPipelineLegacy(sb, ctx);
+    // The legacy pipeline pre-dates the `pipeline` field — it never calls
+    // routeOwner, so we surface null to make it clear routing did not run.
+    return { ...legacyResult, pipeline: null };
   }
 
   await setLeadStatus(sb, ctx.leadId, "enrichment_running");
@@ -218,6 +224,7 @@ export async function runEnrichmentPipeline(
 
     // 2. Route to A or B
     const routing = await routeOwner(sb, ownerId);
+    const chosenPipeline: "A" | "B" = routing.pipeline;
 
     // 3. Run the chosen pipeline
     //
@@ -227,7 +234,7 @@ export async function runEnrichmentPipeline(
     // rare cases this can produce a different (A-pipeline) decision, causing
     // runPipelineB to throw and the lead to be silently marked UNRESOLVED
     // instead of having its name-based researchers run.
-    if (routing.pipeline === "A") {
+    if (chosenPipeline === "A") {
       await runPipelineA(sb, ownerId);
     } else {
       await runPipelineB(sb, ownerId, { precomputedRouting: routing });
@@ -290,6 +297,7 @@ export async function runEnrichmentPipeline(
       stageReached: "none",
       candidateIds: [],
       openclawDispatched: false,
+      pipeline: chosenPipeline,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

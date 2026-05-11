@@ -156,7 +156,7 @@ export async function POST() {
   await sb.from("enrichment_jobs").update({
     status:       jobStatus,
     completed_at: result.openclawDispatched ? undefined : new Date().toISOString(),
-    raw_output:   { outcome: result.outcome, stageReached: result.stageReached, candidateIds: result.candidateIds },
+    raw_output:   { outcome: result.outcome, stageReached: result.stageReached, candidateIds: result.candidateIds, pipeline: result.pipeline },
   }).eq("id", enrichmentJobId);
 
   // ── Fetch candidates for response ───────────────────────────────────────

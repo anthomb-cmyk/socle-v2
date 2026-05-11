@@ -145,7 +145,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ jobId: str
             await admin.from("enrichment_jobs").update({
               status:       jobStatus,
               completed_at: result.openclawDispatched ? undefined : new Date().toISOString(),
-              raw_output:   { outcome: result.outcome, stageReached: result.stageReached },
+              raw_output:   { outcome: result.outcome, stageReached: result.stageReached, pipeline: result.pipeline },
             }).eq("id", enrichmentJobId);
           } catch {
             // Non-critical — log failure but keep enriching the rest

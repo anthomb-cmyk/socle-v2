@@ -207,6 +207,7 @@ export async function POST(request: Request) {
       stageReached:       result.stageReached,
       candidateIds:       result.candidateIds,
       openclawDispatched: result.openclawDispatched,
+      pipeline:           result.pipeline,
     },
   }).eq("id", enrichmentJobId);
 

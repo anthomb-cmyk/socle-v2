@@ -15,6 +15,7 @@ const DEFAULT_MAX_RUNTIME_MS = 240_000; // 240 s — Railway HTTP timeout is ~5 
 const CONCURRENCY = 3;                 // process up to 3 leads in parallel
                                         // safe ceiling: Brave handles 3 RPS easily,
                                         // n8n OpenClaw can run 3 concurrent browser sessions
+const ZOMBIE_THRESHOLD_MS = 15 * 60_000; // rows stuck in 'running' for >15 min are reset
 
 export interface WorkerOptions {
   batchSize?: number;
@@ -48,6 +49,23 @@ export async function processNextBatch(
 
   const result: WorkerResult = { processed: 0, succeeded: 0, failed: 0 };
 
+  // ── Zombie sweep ─────────────────────────────────────────────────────────
+  // Reset any queue rows that have been stuck in 'running' for longer than
+  // ZOMBIE_THRESHOLD_MS.  This recovers jobs where the worker process was
+  // killed mid-run (Railway restart, OOM, network timeout) leaving the row
+  // permanently in 'running' without a heartbeat mechanism.
+  try {
+    const zombieCutoff = new Date(Date.now() - ZOMBIE_THRESHOLD_MS).toISOString();
+    await sb
+      .from("lead_post_processing_queue")
+      .update({ status: "pending", scheduled_for: new Date().toISOString() })
+      .eq("status", "running")
+      .lt("started_at", zombieCutoff);
+  } catch (err) {
+    // Non-fatal — log and continue so the main batch still runs.
+    console.warn("[worker] zombie sweep failed:", err instanceof Error ? err.message : String(err));
+  }
+
   // Fetch pending tasks ordered by priority then scheduled_for.
   const { data: rows, error: fetchErr } = await sb
     .from("lead_post_processing_queue")
@@ -66,6 +84,19 @@ export async function processNextBatch(
   // Process one queue row end-to-end (mark running → dispatch → mark done/failed/pending).
   // Used inside the concurrency-limited chunk loop below.
   const processRow = async (row: QueueRow): Promise<void> => {
+    // Guard: a null lead_id means the queue row is malformed — fail it
+    // immediately rather than propagating null into dispatch() where it
+    // would create a zombie enrichment_jobs row and then crash.
+    if (!row.lead_id) {
+      console.error(`[worker] task ${row.id} has null lead_id — failing immediately`);
+      await sb
+        .from("lead_post_processing_queue")
+        .update({ status: "failed", last_error: "null lead_id" })
+        .eq("id", row.id);
+      result.failed++;
+      return;
+    }
+
     // Mark as running
     await sb
       .from("lead_post_processing_queue")
@@ -202,13 +233,27 @@ async function dispatch(
       numUnits:        (property?.num_units as number | null) ?? null,
     };
 
-    const pipelineResult = await runEnrichmentPipeline(sb, ctx);
+    let pipelineResult: Awaited<ReturnType<typeof runEnrichmentPipeline>>;
+    try {
+      pipelineResult = await runEnrichmentPipeline(sb, ctx);
+    } catch (pipeErr) {
+      // runEnrichmentPipeline is documented to never throw, but guard anyway.
+      // If it does throw, mark the enrichment_jobs row as failed so it doesn't
+      // stay stuck at 'processing' (zombie).
+      const pipeErrMsg = pipeErr instanceof Error ? pipeErr.message : String(pipeErr);
+      await sb.from("enrichment_jobs").update({
+        status:        "failed",
+        completed_at:  new Date().toISOString(),
+        error_message: pipeErrMsg,
+      }).eq("id", (jobRow as { id: string }).id);
+      throw pipeErr; // re-throw so processRow can retry via the queue
+    }
 
     // Update the enrichment job with the outcome.
     await sb.from("enrichment_jobs").update({
       status:       pipelineResult.outcome === "unsuitable" || pipelineResult.outcome === "unresolved" ? "failed" : "completed",
       completed_at: new Date().toISOString(),
-      raw_output:   { outcome: pipelineResult.outcome, stageReached: pipelineResult.stageReached },
+      raw_output:   { outcome: pipelineResult.outcome, stageReached: pipelineResult.stageReached, pipeline: pipelineResult.pipeline },
     }).eq("id", (jobRow as { id: string }).id);
 
     // Safety net: the pipeline is expected to update the lead status internally
