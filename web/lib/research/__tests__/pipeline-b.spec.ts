@@ -23,6 +23,10 @@ vi.mock("../researchers/reverse-address", () => ({
   reverseAddressResearcher: vi.fn(),
 }));
 
+vi.mock("../researchers/req-address", () => ({
+  reqAddressResearcher: vi.fn(),
+}));
+
 vi.mock("../researchers/name-postal-directory", () => ({
   namePostalDirectoryResearcher: vi.fn(),
 }));
@@ -38,6 +42,7 @@ vi.mock("../../twilio/lookup", () => ({
 import { runPipelineB } from "../pipeline-b";
 import * as classifier from "../classifier";
 import * as db from "../db";
+import * as reqAddressMod from "../researchers/req-address";
 import * as reverseAddressMod from "../researchers/reverse-address";
 import * as namePostalMod from "../researchers/name-postal-directory";
 import * as crossPropertyMod from "../researchers/cross-property";
@@ -50,6 +55,7 @@ import * as twilioLookupMod from "../../twilio/lookup";
 const mockRouteOwner = classifier.routeOwner as ReturnType<typeof vi.fn>;
 const mockInsertEvidence = db.insertEvidence as ReturnType<typeof vi.fn>;
 const mockInsertHypothesis = db.insertHypothesis as ReturnType<typeof vi.fn>;
+const mockReqAddress = reqAddressMod.reqAddressResearcher as ReturnType<typeof vi.fn>;
 const mockReverseAddress = reverseAddressMod.reverseAddressResearcher as ReturnType<typeof vi.fn>;
 const mockNamePostal = namePostalMod.namePostalDirectoryResearcher as ReturnType<typeof vi.fn>;
 const mockCrossProperty = crossPropertyMod.crossPropertyResearcher as ReturnType<typeof vi.fn>;
@@ -167,6 +173,7 @@ beforeEach(() => {
 
   mockInsertEvidence.mockResolvedValue({ data: { evidence_id: "ev-001" }, error: null });
   mockInsertHypothesis.mockResolvedValue(makeHypResult("hyp-001"));
+  mockReqAddress.mockResolvedValue([]);
   mockReverseAddress.mockResolvedValue([]);
   mockNamePostal.mockResolvedValue([]);
   mockCrossProperty.mockResolvedValue([]);
@@ -177,6 +184,10 @@ beforeEach(() => {
     cached: false,
     error: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set",
   });
+
+  delete process.env.ENRICHMENT_JUDGE_ENABLED;
+  delete process.env.REQ_ADDRESS_RESEARCHER_ENABLED;
+  process.env.REVERSE_ADDRESS_WEB_ENABLED = "true";
 });
 
 // ---------------------------------------------------------------------------
@@ -364,6 +375,55 @@ describe("runPipelineB — Twilio corroboration", () => {
       expect.anything(),
       expect.objectContaining({ source: "twilio_caller_name" }),
     );
+  });
+});
+
+describe("runPipelineB — REQ address fallback ordering", () => {
+  it("runs REQ address lookup by default, then name-postal fallback when no candidates are found", async () => {
+    mockRouteOwner.mockResolvedValue(routingDecisionB);
+    process.env.REVERSE_ADDRESS_WEB_ENABLED = "false";
+
+    const sb = makeSb();
+    await runPipelineB(sb, OWNER_ID);
+
+    expect(mockReqAddress).toHaveBeenCalledWith(expect.anything(), fakeOwner);
+    expect(mockNamePostal).toHaveBeenCalledWith(expect.anything(), fakeOwner);
+  });
+
+  it("honors REQ_ADDRESS_RESEARCHER_ENABLED=false as a kill switch", async () => {
+    mockRouteOwner.mockResolvedValue(routingDecisionB);
+    process.env.REQ_ADDRESS_RESEARCHER_ENABLED = "false";
+    process.env.REVERSE_ADDRESS_WEB_ENABLED = "false";
+
+    const sb = makeSb();
+    await runPipelineB(sb, OWNER_ID);
+
+    expect(mockReqAddress).not.toHaveBeenCalled();
+    expect(mockNamePostal).toHaveBeenCalledWith(expect.anything(), fakeOwner);
+  });
+
+  it("skips name-postal fallback when REQ address lookup produces a candidate", async () => {
+    mockRouteOwner.mockResolvedValue(routingDecisionB);
+    process.env.REQ_ADDRESS_RESEARCHER_ENABLED = "true";
+    process.env.REVERSE_ADDRESS_WEB_ENABLED = "false";
+
+    mockReqAddress.mockResolvedValue([
+      {
+        evidenceId: "ev-req-address",
+        source: "req_address_lookup",
+        phone: "+15145550123",
+        isAuthoritative: true,
+        sourceUrl: "https://www.registreentreprises.gouv.qc.ca/",
+        snippet: "REQ address match",
+        searchQuery: "REQ address lookup",
+      },
+    ]);
+
+    const sb = makeSb();
+    await runPipelineB(sb, OWNER_ID);
+
+    expect(mockReqAddress).toHaveBeenCalledWith(expect.anything(), fakeOwner);
+    expect(mockNamePostal).not.toHaveBeenCalled();
   });
 });
 

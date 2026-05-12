@@ -273,6 +273,7 @@ export function scoreHypothesis(input: ScoreInput): ScoreResult {
     (r) =>
       r.source === "name_postal_directory" ||
       r.source === "pages_jaunes_business" ||
+      r.source === "req_address_lookup" ||
       r.source === "pages_jaunes_personal" ||
       r.source === "canada411_personal" ||
       r.source === "reverse_address",

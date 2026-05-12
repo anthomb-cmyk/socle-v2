@@ -10,6 +10,7 @@ export type ResearcherSource =
   | "company_website"
   | "pages_jaunes_business"
   | "twilio_caller_name"
+  | "req_address_lookup"
   | "reverse_address"
   | "name_postal_directory"
   | "cross_property";

@@ -88,6 +88,18 @@ describe("scoreHypothesis", () => {
     expect(result.statusReason).toContain("directory match");
   });
 
+  it("3b. single REQ-address web result → tier C review candidate", () => {
+    const result = scoreHypothesis({
+      evidenceRows: [row("req_address_lookup", { isAuthoritative: false })],
+      ownerType: "individual",
+      pipeline: "B",
+    });
+
+    expect(result.tier).toBe("C");
+    expect(result.label).toBe("connected");
+    expect(result.statusReason).toContain("directory match");
+  });
+
   // ---------------------------------------------------------------------------
   // Test 4: Director-of signal alone → Tier D
   // ---------------------------------------------------------------------------
