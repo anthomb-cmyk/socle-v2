@@ -28,4 +28,14 @@ export interface EvidenceCandidate {
   isAuthoritative: boolean;
   /** URL of the page where the phone was found (null for REQ / Twilio sources). */
   sourceUrl?: string | null;
+  /**
+   * Brave search result snippet for the page where this phone was found.
+   * Populated by Brave-powered researchers; null for REQ / Twilio / DB-only sources.
+   */
+  snippet?: string | null;
+  /**
+   * The exact search query string that produced the page where this phone was found.
+   * Populated by Brave-powered researchers; null for REQ / Twilio / DB-only sources.
+   */
+  searchQuery?: string | null;
 }

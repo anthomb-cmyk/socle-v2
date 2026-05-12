@@ -226,6 +226,19 @@ export async function runEnrichmentPipeline(
     const routing = await routeOwner(sb, ownerId);
     const chosenPipeline: "A" | "B" = routing.pipeline;
 
+    // Check if the judge flow is enabled (feature flag).
+    const judgeEnabled =
+      (process.env.ENRICHMENT_JUDGE_ENABLED ?? "").toLowerCase() === "true";
+
+    // Common context passed to pipelines when the judge flow is active.
+    const judgeContext = judgeEnabled
+      ? {
+          leadId:          ctx.leadId,
+          contactId:       ctx.contactId,
+          enrichmentJobId: ctx.enrichmentJobId,
+        }
+      : {};
+
     // 3. Run the chosen pipeline
     //
     // Pass the pre-computed routing to runPipelineB so it does not call
@@ -234,13 +247,57 @@ export async function runEnrichmentPipeline(
     // rare cases this can produce a different (A-pipeline) decision, causing
     // runPipelineB to throw and the lead to be silently marked UNRESOLVED
     // instead of having its name-based researchers run.
+    let judgeCandidateIds: string[] | undefined;
     if (chosenPipeline === "A") {
-      await runPipelineA(sb, ownerId);
+      const aResult = await runPipelineA(sb, ownerId, judgeContext);
+      judgeCandidateIds = aResult.judgeCandidateIds;
     } else {
-      await runPipelineB(sb, ownerId, { precomputedRouting: routing });
+      const bResult = await runPipelineB(sb, ownerId, {
+        precomputedRouting: routing,
+        ...judgeContext,
+      });
+      judgeCandidateIds = bResult.judgeCandidateIds;
     }
 
-    // 4. Look up the strongest hypothesis to seed the owner_record
+    // 4a. When ENRICHMENT_JUDGE_ENABLED: derive lead status from phone_candidates
+    //     (approved → ready_to_call; needs_review → needs_phone_review; else unresolved).
+    if (judgeEnabled && judgeCandidateIds && judgeCandidateIds.length > 0) {
+      const { data: candidateRows } = await sb
+        .from("phone_candidates")
+        .select("candidate_status")
+        .in("id", judgeCandidateIds);
+
+      type CandRow = { candidate_status: string | null };
+      const rows = (candidateRows ?? []) as CandRow[];
+
+      const hasApproved     = rows.some((r) => r.candidate_status === "approved_by_anthony");
+      const hasNeedsReview  = rows.some((r) => r.candidate_status === "needs_anthony_review");
+
+      let newStatus: string;
+      let outcome: PipelineOutcome;
+      if (hasApproved) {
+        newStatus = "ready_to_call";
+        outcome   = "solved";
+      } else if (hasNeedsReview) {
+        newStatus = "needs_phone_review";
+        outcome   = "review";
+      } else {
+        newStatus = "unresolved_after_all_sources";
+        outcome   = "unresolved";
+      }
+
+      await setLeadStatus(sb, ctx.leadId, newStatus);
+
+      return {
+        outcome,
+        stageReached: "none",
+        candidateIds: judgeCandidateIds,
+        openclawDispatched: false,
+        pipeline: chosenPipeline,
+      };
+    }
+
+    // 4b. Legacy hypothesis path: look up the strongest hypothesis to seed the owner_record.
     const { data: topHyp } = await sb
       .from("hypothesis")
       .select("claim_value_e164, tier, confidence_label, is_direct")

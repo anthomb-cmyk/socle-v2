@@ -34,7 +34,8 @@ export type LlmFeature =
   | "auto_segment"
   | "outreach_draft"
   | "chat_with_data"
-  | "objection_coach";
+  | "objection_coach"
+  | "phone_judge";
 
 export interface CallAnthropicOptions {
   /** Which feature is calling — used for cost-tracking analytics. */
