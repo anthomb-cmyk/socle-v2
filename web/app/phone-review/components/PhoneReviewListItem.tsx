@@ -123,11 +123,16 @@ function StagePill({ stage }: { stage: string }) {
   const labels: Record<string, string> = {
     address_search: ev.stageAddress,
     company_search: ev.stageCompany,
-    openclaw:       "OpenClaw",
+    req_address_lookup: "REQ adresse",
+    name_postal_directory: "Nom + postal",
+    reverse_address_lookup: "Adresse inverse",
+    pages_jaunes_business: "Pages Jaunes",
+    company_website: "Site entreprise",
+    openclaw:       "OpenClaw legacy",
   };
   const variant: string =
-    stage === "address_search" ? "address"
-    : stage === "company_search" ? "company"
+    stage === "address_search" || stage === "req_address_lookup" || stage === "reverse_address_lookup" ? "address"
+    : stage === "company_search" || stage === "company_website" || stage === "pages_jaunes_business" ? "company"
     : stage === "openclaw" ? "openclaw"
     : "via";
   return (

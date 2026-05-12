@@ -118,7 +118,7 @@ export default function PhoneReviewClient({
       same_address_company: "même adresse entreprise",
       public_directory:     "annuaire public",
       company_website:      "site web entreprise",
-      openclaw:             "OpenClaw",
+      openclaw:             "Juge IA",
     };
 
     // Smoking-gun signal detection from snippet/evidence text.
@@ -183,11 +183,11 @@ export default function PhoneReviewClient({
       if (verdict === "✓") {
         if (matched && host) reason = `${matched} sur ${host} — approuver`;
         else if (matched)    reason = `${matched} (${conf}%) — approuver`;
-        else if (v === "likely_match") reason = `OpenClaw confirme (${conf}%) — approuver`;
+        else if (v === "likely_match") reason = `Juge IA confirme (${conf}%) — approuver`;
         else reason = `Confiance élevée (${conf}%) — approuver`;
       } else if (verdict === "✗") {
         if (v === "unlikely_match") {
-          reason = host ? `OpenClaw rejette via ${host} — refuser` : `OpenClaw rejette ce numéro — refuser`;
+          reason = host ? `Juge IA rejette via ${host} — refuser` : `Juge IA rejette ce numéro — refuser`;
         } else if (conf < 10) {
           reason = `Aucune preuve directe (${conf}%) — refuser`;
         } else {
