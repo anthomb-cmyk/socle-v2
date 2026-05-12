@@ -29,6 +29,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { routeOwner, type RoutingDecision } from "./classifier";
 import { insertEvidence, insertHypothesis } from "./db";
 import type { HypothesisTier, HypothesisConfidenceLabel, CanonicalOwnerRow } from "./db";
+import { reqAddressResearcher } from "./researchers/req-address";
 import { reverseAddressResearcher } from "./researchers/reverse-address";
 import {
   namePostalDirectoryResearcher,
@@ -171,6 +172,10 @@ export async function runPipelineB(
   // writing directly to hypothesis. Default false for safety.
   const judgeEnabled =
     (process.env.ENRICHMENT_JUDGE_ENABLED ?? "").toLowerCase() === "true";
+  const reqAddressEnabled =
+    (process.env.REQ_ADDRESS_RESEARCHER_ENABLED ?? "true").toLowerCase() === "true";
+  const reverseAddressWebEnabled =
+    (process.env.REVERSE_ADDRESS_WEB_ENABLED ?? "false").toLowerCase() === "true";
 
   // 1. Route check
   //
@@ -218,18 +223,31 @@ export async function runPipelineB(
     }
   }
 
-  // 3. Run researchers in parallel
-  //    Brave-powered researchers (reverseAddress, namePostal) are skipped in
-  //    smoke-test mode; crossProperty is always run (DB-only, no external API).
+  // 3. Run researchers.
+  //
+  //    REQ-by-address runs first when enabled. If it finds no candidates, the
+  //    name+postal directory researcher runs as the individual-owner fallback.
+  //    The old blind reverse-address web search is noisy, so it is now behind
+  //    REVERSE_ADDRESS_WEB_ENABLED=false by default.
+  const reqAddressCandidates =
+    reqAddressEnabled && !skipBrave
+      ? await reqAddressResearcher(sb, owner).catch((err) => {
+          console.error("[pipeline-b] reqAddressResearcher failed:", err);
+          return [] as EvidenceCandidate[];
+        })
+      : [];
+
+  const shouldRunNamePostal = !skipBrave && reqAddressCandidates.length === 0;
+
   const [reverseCandidates, namePostalCandidates, crossPropertyCandidates] =
     await Promise.all([
-      skipBrave
+      skipBrave || !reverseAddressWebEnabled
         ? Promise.resolve([] as EvidenceCandidate[])
         : reverseAddressResearcher(sb, owner).catch((err) => {
             console.error("[pipeline-b] reverseAddressResearcher failed:", err);
             return [] as EvidenceCandidate[];
           }),
-      skipBrave
+      !shouldRunNamePostal
         ? Promise.resolve([] as NamePostalDirectoryCandidate[])
         : namePostalDirectoryResearcher(sb, owner).catch((err) => {
             console.error("[pipeline-b] namePostalDirectoryResearcher failed:", err);
@@ -242,6 +260,7 @@ export async function runPipelineB(
     ]);
 
   const allCandidates: EvidenceCandidate[] = [
+    ...reqAddressCandidates,
     ...reverseCandidates,
     ...namePostalCandidates,
     ...crossPropertyCandidates,
