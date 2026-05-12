@@ -93,6 +93,9 @@ export async function crossPropertyResearcher(
           phone,
           isAuthoritative: false,
           sourceUrl: null,
+          // cross_property is a DB-only lookup — no web search, no snippet.
+          snippet: null,
+          searchQuery: null,
         });
       }
     }
@@ -148,6 +151,9 @@ export async function crossPropertyResearcher(
           phone,
           isAuthoritative: false,
           sourceUrl: null,
+          // cross_property CRM lookup is DB-only — no web search, no snippet.
+          snippet: null,
+          searchQuery: null,
         });
       }
     }

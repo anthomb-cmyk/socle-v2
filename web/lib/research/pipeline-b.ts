@@ -284,6 +284,9 @@ export async function runPipelineB(
         phone,
         isAuthoritative: true,
         sourceUrl: null,
+        // Twilio caller-name is an API lookup — no web search, no snippet.
+        snippet: null,
+        searchQuery: null,
       });
     }
   }

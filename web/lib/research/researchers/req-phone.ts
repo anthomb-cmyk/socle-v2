@@ -51,6 +51,9 @@ export async function reqPhoneResearcher(
       phone: e164,
       isAuthoritative: true,
       sourceUrl: null,
+      // REQ is a direct government registry lookup — no web search, no snippet.
+      snippet: null,
+      searchQuery: null,
     },
   ];
 }

@@ -90,6 +90,8 @@ export async function pagesJaunesBusinessResearcher(
         phone,
         isAuthoritative: false,
         sourceUrl: result.url,
+        snippet: result.snippet || null,
+        searchQuery: query,
       });
     }
   }

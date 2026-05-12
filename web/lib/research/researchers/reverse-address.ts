@@ -97,6 +97,8 @@ export async function reverseAddressResearcher(
         phone,
         isAuthoritative: false,
         sourceUrl: result.url,
+        snippet: result.snippet || null,
+        searchQuery: query,
       });
     }
   }
