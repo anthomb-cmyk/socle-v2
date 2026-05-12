@@ -227,6 +227,7 @@ async function commitRow(
       }, { onConflict: "contact_id,e164", ignoreDuplicates: true });
       if (!error) counts.phones_created++;
     }
+    const contactHasPhone = await hasPhoneForContact(supabase, contactId);
 
     // 5. Lead per (campaign, property, contact)
     const leadStatus: string = isOwnerAddressBlocked
@@ -284,17 +285,34 @@ async function commitRow(
 
     // 7. Enqueue post-processing tasks for the lead.
     if (leadId) {
-      if (owner.phones.length === 0 && !isOwnerAddressBlocked) {
+      if (!contactHasPhone && !isOwnerAddressBlocked) {
         // No phone yet — prioritize phone search ahead of slower post-import chores.
         await enqueue(supabase, leadId, "enrichment", 1);
-      } else if (owner.phones.length > 0) {
-        // Phone already attached via role import — skip enrichment, run lower-priority chores.
+      } else if (contactHasPhone) {
+        // Phone already attached/imported for this contact — skip enrichment, run lower-priority chores.
         await enqueue(supabase, leadId, "briefing", 7);
         await enqueue(supabase, leadId, "fit_score", 7);
       }
       // Blocked owners: no enrichment tasks (address incomplete)
     }
   }
+}
+
+async function hasPhoneForContact(
+  supabase: SupabaseClient,
+  contactId: string,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("phones")
+    .select("id", { count: "exact", head: true })
+    .eq("contact_id", contactId);
+
+  if (error) {
+    console.error("[import-commit] phone lookup failed:", { contactId, error: error.message });
+    return false;
+  }
+
+  return (count ?? 0) > 0;
 }
 
 async function upsertContact(
