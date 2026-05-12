@@ -31,6 +31,7 @@ import { lookupCallerName } from "../twilio/lookup";
 import type { EvidenceCandidate } from "./researchers/types";
 import { scoreHypothesis } from "./scorer";
 import { judgePhoneCandidate } from "../llm/judge";
+import { candidateStatusFromJudge, openclawVerdictFromJudge } from "./judge-routing";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any>;
@@ -341,15 +342,14 @@ export async function runPipelineA(
       // Map judge verdicts to the actual openclaw_verdict + candidate_status enums.
       //   approve  → openclaw_verdict=likely_match,   candidate_status=approved_by_anthony
       //   review   → openclaw_verdict=uncertain,      candidate_status=needs_anthony_review
+      //   failed weak review → candidate_status=weak_review (audit only)
       //   reject   → openclaw_verdict=unlikely_match, candidate_status=rejected_by_openclaw
-      const openclawVerdict =
-        judgeResult.verdict === "approve" ? "likely_match" :
-        judgeResult.verdict === "review"  ? "uncertain" :
-        "unlikely_match";
-      const verdictStatus =
-        judgeResult.verdict === "approve" ? "approved_by_anthony" :
-        judgeResult.verdict === "review"  ? "needs_anthony_review" :
-        "rejected_by_openclaw";
+      const initialConfidence = repr.isAuthoritative ? 90 : 55;
+      const openclawVerdict = openclawVerdictFromJudge(judgeResult);
+      const verdictStatus = candidateStatusFromJudge(judgeResult, {
+        isAuthoritative: repr.isAuthoritative ?? false,
+        initialConfidence,
+      });
 
       const { error: updateError } = await sb
         .from("phone_candidates")

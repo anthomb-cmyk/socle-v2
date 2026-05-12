@@ -43,6 +43,7 @@ const NA_AREA_CODES = new Set([
   '418','438','450','514','579','581','819','873','367',  // QC primary
   '204','226','236','249','250','289','306','343','365','416','437','519','548','587','604','613','639','647','672','705','709','778','780','782','807','825','867','902','905', // other Canadian
 ]);
+const QC_AREA_CODES = new Set(['367','418','438','450','514','579','581','819','873']);
 const PRIORITY_DOMAINS = [
   'canada411.ca','pagesjaunes.ca','411.ca','b2bhint.com','facebook.com',
   'yellow.ca','yellowpages.ca','linkedin.com','infobel.com','quebec.ca',
@@ -64,6 +65,9 @@ type Candidate = {
   search_query: string;
   source: 'snippet' | 'page';
 };
+
+type CandidateStatus = 'needs_anthony_review' | 'weak_review' | 'quarantined';
+type CandidateWriteStatus = CandidateStatus | 'approved_by_anthony' | 'auto_attached';
 
 type PageFetchResult = {
   ok: boolean;
@@ -422,6 +426,12 @@ function normalizePhone(raw: string): string | null {
   return ten; // normalized 10-digit key
 }
 
+function areaCodeFromRawPhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '');
+  const ten = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
+  return ten.length === 10 ? ten.slice(0, 3) : null;
+}
+
 function extractPhonesFromText(
   text: string,
 ): Array<{ raw: string; normalized: string }> {
@@ -452,13 +462,43 @@ function countStrongEvidence(matched_on: string): number {
   return n;
 }
 
+function hasIdentityEvidence(matched_on: string): boolean {
+  return /(^|;\s*)(contact_name|company_name|related_entity)/.test((matched_on || '').toLowerCase());
+}
+
+function hasAddressEvidence(matched_on: string): boolean {
+  return /(^|;\s*)mailing_address/.test((matched_on || '').toLowerCase());
+}
+
+function chooseCandidateStatus(c: Candidate): CandidateStatus {
+  const area = areaCodeFromRawPhone(c.phone_raw);
+  const isQcArea = area ? QC_AREA_CODES.has(area) : false;
+  const hasIdentity = hasIdentityEvidence(c.matched_on);
+  const hasAddress = hasAddressEvidence(c.matched_on);
+
+  if (c.confidence < 50) return 'quarantined';
+
+  // This runner has no LLM verdict. Keep non-QC and name-less finds out of
+  // Anthony Review unless the deterministic evidence is unusually strong.
+  if (!isQcArea && !(c.confidence >= 85 && hasIdentity && hasAddress)) {
+    return 'quarantined';
+  }
+
+  if (c.confidence >= 70 && hasIdentity && (hasAddress || c.source === 'page')) {
+    return 'needs_anthony_review';
+  }
+
+  return 'weak_review';
+}
+
 function isAutoAttachable(c: Candidate): boolean {
-  // Auto-attach when ≥2 strong evidence types matched + source URL present.
-  // Confidence score floor was removed: address+city matches (40+25=65) are
-  // strong enough for Quebec multifamily owners (whose mailing address is
-  // typically their professional office, with a phone reachable for them).
+  // This legacy inline runner has no synchronous judge. Only auto-attach when
+  // deterministic evidence includes both identity and address corroboration.
   return !!(c.source_url && c.source_url.length > 0)
-      && countStrongEvidence(c.matched_on) >= 2;
+      && c.confidence >= 85
+      && hasIdentityEvidence(c.matched_on)
+      && hasAddressEvidence(c.matched_on)
+      && countStrongEvidence(c.matched_on) >= 3;
 }
 
 // ── POST handler ───────────────────────────────────────────────────────────────
@@ -558,7 +598,6 @@ export async function POST(request: Request) {
       const reasoning_summary =
         'BRAVE_API_KEY not configured on Railway. Set it in env vars and retry. Falling back to no candidates.';
 
-      const finalCandidates: Candidate[] = [];
       const candidateIds: string[] = [];
 
       // Downgrade protection: don't demote a lead that's already in a better state
@@ -895,12 +934,9 @@ export async function POST(request: Request) {
     const allCandidates = Array.from(candidatesMap.values())
       .sort((a, b) => b.confidence - a.confidence);
 
-    let finalCandidates = allCandidates.filter(c => c.confidence >= 50).slice(0, TOP_CANDIDATES);
-
-    // Fallback: if all below threshold, take top 2 anyway
-    if (finalCandidates.length === 0 && allCandidates.length > 0) {
-      finalCandidates = allCandidates.slice(0, 2);
-    }
+    const finalCandidates = allCandidates
+      .filter(c => c.confidence >= 50)
+      .slice(0, TOP_CANDIDATES);
 
     // ── 9. DB writes ──────────────────────────────────────────────────────────
 
@@ -918,14 +954,18 @@ export async function POST(request: Request) {
     // 9b. Fetch existing phone_candidates for dedup
     const { data: existingRows } = await sb
       .from('phone_candidates')
-      .select('id, phone_e164, source_label, initial_confidence')
+      .select('id, phone_e164, source_label, initial_confidence, candidate_status')
       .eq('lead_id', body.lead_id);
 
-    const existingMap = new Map<string, { id: string; initial_confidence: number }>();
+    const existingMap = new Map<string, { id: string; initial_confidence: number; candidate_status: string | null }>();
     for (const r of (existingRows ?? [])) {
-      const row = r as { id: string; phone_e164: string; source_label: string; initial_confidence: number | null };
+      const row = r as { id: string; phone_e164: string; source_label: string; initial_confidence: number | null; candidate_status: string | null };
       const key = `${row.phone_e164}|${row.source_label}`;
-      existingMap.set(key, { id: row.id, initial_confidence: row.initial_confidence ?? 0 });
+      existingMap.set(key, {
+        id: row.id,
+        initial_confidence: row.initial_confidence ?? 0,
+        candidate_status: row.candidate_status,
+      });
     }
 
     // 9c. Per-candidate loop: dedup + insert/update + auto-attach
@@ -939,13 +979,20 @@ export async function POST(request: Request) {
     for (const c of finalCandidates) {
       const phoneE164 = '+1' + c.phone_raw.replace(/\D/g, '').slice(-10);
       const key = `${phoneE164}|${c.source_label}`;
+      const computedStatus = chooseCandidateStatus(c);
 
       let candidateId: string | null = null;
+      let candidateStatus: CandidateWriteStatus = computedStatus;
 
       const existing = existingMap.get(key);
       if (existing) {
         // Dedup: UPDATE existing row — bump confidence, refresh fields
         const bumped = Math.max(existing.initial_confidence, c.confidence);
+        const protectedStatus = existing.candidate_status === 'approved_by_anthony'
+          || existing.candidate_status === 'auto_attached';
+        candidateStatus = protectedStatus
+          ? (existing.candidate_status as CandidateWriteStatus)
+          : computedStatus;
         await sb
           .from('phone_candidates')
           .update({
@@ -955,6 +1002,7 @@ export async function POST(request: Request) {
             matched_on:         c.matched_on,
             review_reason:      `OpenClaw deep search — confidence ${bumped} (${c.matched_on})`,
             search_query:       c.search_query,
+            candidate_status:   candidateStatus,
           })
           .eq('id', existing.id);
         candidateId = existing.id;
@@ -971,7 +1019,7 @@ export async function POST(request: Request) {
           source_url:         c.source_url,
           snippet:            c.snippet,
           initial_confidence: c.confidence,
-          candidate_status:   'needs_anthony_review',
+          candidate_status:   candidateStatus,
           review_reason:      `OpenClaw deep search — confidence ${c.confidence} (${c.matched_on})`,
         }).select('id').single();
 
@@ -985,7 +1033,7 @@ export async function POST(request: Request) {
       }
 
       // 9d. Auto-attach check
-      if (candidateId && isAutoAttachable(c) && contactId) {
+      if (candidateId && candidateStatus === 'needs_anthony_review' && isAutoAttachable(c) && contactId) {
         // Check whether this phone already exists in the canonical phones table
         const { data: existingPhone } = await sb
           .from('phones')
@@ -1023,10 +1071,7 @@ export async function POST(request: Request) {
         autoAttachedPhoneIds.push(candidateId);
         autoAttachedPhones.push(phoneE164);
         anyAutoAttached = true;
-      } else if (candidateId && !existing) {
-        // Only count freshly inserted non-auto-attached rows as review candidates
-        reviewCandidateIds.push(candidateId);
-      } else if (candidateId && existing) {
+      } else if (candidateId && candidateStatus === 'needs_anthony_review') {
         reviewCandidateIds.push(candidateId);
       }
     }
@@ -1045,7 +1090,7 @@ export async function POST(request: Request) {
     let newLeadStatus: string;
     if (anyAutoAttached) {
       newLeadStatus = 'ready_to_call';
-    } else if (finalCandidates.length > 0) {
+    } else if (reviewCandidateIds.length > 0) {
       newLeadStatus = 'needs_phone_review';
     } else {
       newLeadStatus = 'unresolved_after_openclaw';
@@ -1084,7 +1129,7 @@ export async function POST(request: Request) {
       auto_attached_phone_ids:  autoAttachedPhoneIds,
       auto_attached_phones:     autoAttachedPhones,
       dedup_updates:            dedupUpdates,
-      threshold_rule:           'source_url present && strong_evidence >= 2 (confidence floor removed for QC multifamily owners)',
+      threshold_rule:           'source_url present && score>=85 && identity+address evidence (legacy runner has no judge)',
     };
 
     const meta = {
@@ -1105,6 +1150,8 @@ export async function POST(request: Request) {
       page_candidates_count:      candidatesMap.size - snippetCount,
       rejected_count:             candidatesMap.size - finalCandidates.length,
       candidates_above_threshold: finalCandidates.length,
+      review_candidates_count:    reviewCandidateIds.length,
+      weak_or_quarantined_count:  candidateIds.length - reviewCandidateIds.length - autoAttachedPhoneIds.length,
       total_candidates_seen:      candidatesMap.size,
       brave_credential_set:       true,
       secondary_pass:             secondaryPassMeta,
@@ -1120,9 +1167,8 @@ export async function POST(request: Request) {
 
     let reasoning_summary: string;
     if (anyAutoAttached && finalCandidates.length > 0) {
-      const top = finalCandidates[0];
       const autoList = autoAttachedPhones
-        .map((ph, i) => {
+        .map((ph) => {
           const cand = finalCandidates.find(
             fc => ('+1' + fc.phone_raw.replace(/\D/g, '').slice(-10)) === ph,
           );
@@ -1134,12 +1180,16 @@ export async function POST(request: Request) {
       reasoning_summary =
         `Found ${finalCandidates.length} candidate(s) — ${autoAttachedPhoneIds.length} auto-attached: ${autoList} → phones. Lead → ready_to_call.` +
         secondaryReasoningSuffix;
-    } else if (finalCandidates.length > 0) {
+    } else if (reviewCandidateIds.length > 0) {
       const top = finalCandidates[0];
       reasoning_summary =
-        `Found ${finalCandidates.length} candidate(s) from ${queriesRun.length} Brave queries + ${pagesFetched.length} page fetches.` +
+        `Found ${reviewCandidateIds.length} review candidate(s) from ${queriesRun.length} Brave queries + ${pagesFetched.length} page fetches.` +
         secondaryReasoningSuffix +
         ` Top: ${top.phone_raw} conf ${top.confidence} (${top.matched_on}; source=${top.source}).`;
+    } else if (candidateIds.length > 0) {
+      reasoning_summary =
+        `Found ${candidateIds.length} weak/quarantined candidate(s), none strong enough for Anthony Review.` +
+        secondaryReasoningSuffix;
     } else {
       reasoning_summary =
         `No phone candidates accepted. Queries: ${queriesRun.length} (e.g. ${queryExamples}). ` +
@@ -1155,8 +1205,8 @@ export async function POST(request: Request) {
         status:       'completed',
         completed_at: new Date().toISOString(),
         raw_output: {
-          outcome:          finalCandidates.length > 0 ? 'candidates_found' : 'no_result',
-          candidates_count: finalCandidates.length,
+          outcome:          candidateIds.length > 0 ? 'candidates_found' : 'no_result',
+          candidates_count: candidateIds.length,
           candidate_ids:    candidateIds,
           reasoning_summary,
           meta,
@@ -1168,7 +1218,7 @@ export async function POST(request: Request) {
 
     await sb.from('enrichment_events').insert({
       lead_id:    body.lead_id,
-      event_type: finalCandidates.length > 0
+      event_type: candidateIds.length > 0
         ? 'phone_candidates_found_by_openclaw'
         : 'unresolved_after_openclaw',
       stage:   'openclaw',
@@ -1187,8 +1237,8 @@ export async function POST(request: Request) {
       related_lead_id: body.lead_id,
       payload: {
         mode:             'deep_search',
-        outcome:          finalCandidates.length > 0 ? 'candidates_found' : 'no_result',
-        candidates:       finalCandidates.length,
+        outcome:          candidateIds.length > 0 ? 'candidates_found' : 'no_result',
+        candidates:       candidateIds.length,
         candidate_ids:    candidateIds,
         job_id:           body.enrichment_job_id ?? null,
         reasoning_summary,
@@ -1233,7 +1283,7 @@ export async function POST(request: Request) {
     // ── Return ────────────────────────────────────────────────────────────────
     return NextResponse.json({
       ok:                true,
-      outcome:           finalCandidates.length > 0 ? 'candidates_found' : 'no_result',
+      outcome:           candidateIds.length > 0 ? 'candidates_found' : 'no_result',
       lead_status:       newLeadStatus,
       reasoning_summary,
       candidates:        finalCandidates,

@@ -67,7 +67,7 @@ export default async function PhoneReviewPage({
           )
         )
       `)
-      .in("candidate_status", ["needs_anthony_review", "weak_review"])
+      .eq("candidate_status", "needs_anthony_review")
       .order("created_at", { ascending: false })
       .limit(200),
     sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),
