@@ -1,8 +1,10 @@
 name: process-queue
 
 # Drains the lead_post_processing_queue every 5 minutes by hitting the
-# Next.js cron endpoint. Replaces the Railway scheduled cron service,
-# which silently stopped firing after creation (Hobby-plan scheduler issue).
+# Next.js cron endpoint. The endpoint now loops through batches for a few
+# minutes per call, so one workflow run can chew through a meaningful backlog.
+# Replaces the Railway scheduled cron service, which silently stopped firing
+# after creation (Hobby-plan scheduler issue).
 #
 # Auth: Bearer token in CRON_SECRET (set as a GitHub Actions secret).
 # The same secret value lives in Railway env vars on the web service so
@@ -16,7 +18,7 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     steps:
       - name: POST to /api/cron/process-queue
         env:
@@ -30,7 +32,7 @@ jobs:
           echo "CRON_SECRET length: ${#CRON_SECRET}"
 
           # Hit the endpoint, capture body + status, fail loudly if non-2xx.
-          HTTP_CODE=$(curl -sS -o /tmp/body.txt -w "%{http_code}" --max-time 200 -X POST \
+          HTTP_CODE=$(curl -sS -o /tmp/body.txt -w "%{http_code}" --max-time 290 -X POST \
             -H "Authorization: Bearer $CRON_SECRET" \
             https://socle-v2-production.up.railway.app/api/cron/process-queue)
           echo "HTTP $HTTP_CODE"
