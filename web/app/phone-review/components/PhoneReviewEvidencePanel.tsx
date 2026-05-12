@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { PhoneCandidate } from "../PhoneReviewClient";
 
@@ -75,7 +75,7 @@ function getToolInfo(c: PhoneCandidate): ToolInfo {
   try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
 
   if (stage === "openclaw") {
-    return { name: "OpenClaw — deep search IA", description: "Recherche multi-sources approfondie avec analyse contextuelle par IA. Combine annuaires + REQ + sites publics." };
+    return { name: "OpenClaw legacy", description: "Recherche multi-sources approfondie de l'ancien pipeline. Utilise seulement le flux legacy quand ENRICHMENT_USE_LEGACY=true." };
   }
   if (host.includes("canada411") || host === "411.ca" || host.includes("pagesjaunes") || host.includes("yellowpages")) {
     return { name: `Annuaire public — ${host}`, description: "Annuaire téléphonique officiel. Si le nom du proprio y figure, le numéro est généralement fiable." };
@@ -139,7 +139,7 @@ function computeAnalysis(c: PhoneCandidate): Analysis {
     pros.push("Entreprise liée au proprio confirmée");
   }
   if (c.openclaw_verdict === "likely_match") {
-    pros.push(`OpenClaw confirme — confiance ${c.openclaw_confidence ?? c.initial_confidence}%`);
+    pros.push(`Juge IA confirme - confiance ${c.openclaw_confidence ?? c.initial_confidence}%`);
   }
   if (c.initial_confidence >= 80 && pros.length === 0) {
     pros.push(`Score de confiance élevé (${c.initial_confidence}%)`);
@@ -172,9 +172,9 @@ function computeAnalysis(c: PhoneCandidate): Analysis {
   if (c.matched_on === "city") {
     cons.push("Seulement la ville correspond — lien faible");
   }
-  // OpenClaw rejection
+  // Judge rejection
   if (c.openclaw_verdict === "unlikely_match") {
-    cons.push(`OpenClaw rejette : ${c.openclaw_reasoning ?? "incompatibilité détectée"}`);
+    cons.push(`Juge IA rejette : ${c.openclaw_reasoning ?? "incompatibilité détectée"}`);
   }
   // No name at all on a non-directory source
   const url = c.source_url ?? "";
@@ -202,6 +202,147 @@ function computeAnalysis(c: PhoneCandidate): Analysis {
   return { pros, cons, recommendation };
 }
 
+type Tone = "success" | "warn" | "danger" | "neutral";
+
+type JudgeStatus = {
+  label: string;
+  detail: string;
+  tone: Tone;
+  failed: boolean;
+};
+
+function hasJudgeFailure(c: PhoneCandidate): boolean {
+  const text = `${c.openclaw_reasoning ?? ""} ${c.openclaw_evidence ?? ""}`.toLowerCase();
+  return /llm judge failed|overloaded|overloaded_error|rate limited|rate_limit|request failed|api error|\b529\b/.test(text);
+}
+
+function getJudgeStatus(c: PhoneCandidate): JudgeStatus {
+  const failed = hasJudgeFailure(c);
+  if (failed) {
+    return {
+      label: "Juge IA indisponible",
+      detail: "Le juge IA n'a pas validé ce numéro. Il a eu une erreur et a routé le candidat en revue humaine.",
+      tone: "warn",
+      failed: true,
+    };
+  }
+
+  if (c.openclaw_verdict === "likely_match") {
+    return {
+      label: "Juge IA favorable",
+      detail: `Le juge IA a classé ce numéro comme probablement correct${c.openclaw_confidence != null ? ` (${c.openclaw_confidence}%)` : ""}.`,
+      tone: "success",
+      failed: false,
+    };
+  }
+
+  if (c.openclaw_verdict === "unlikely_match") {
+    return {
+      label: "Juge IA défavorable",
+      detail: "Le juge IA a classé ce numéro comme probablement incorrect.",
+      tone: "danger",
+      failed: false,
+    };
+  }
+
+  if (c.openclaw_verdict === "uncertain") {
+    return {
+      label: "Juge IA incertain",
+      detail: "Le juge IA n'a pas assez de preuves pour valider ce numéro.",
+      tone: "warn",
+      failed: false,
+    };
+  }
+
+  return {
+    label: "Pas de verdict IA",
+    detail: "Aucun verdict automatique n'est disponible. Ce numéro doit être jugé à partir des preuves affichées.",
+    tone: "neutral",
+    failed: false,
+  };
+}
+
+function getToneStyle(tone: Tone): { background: string; border: string; color: string } {
+  if (tone === "success") {
+    return { background: "#f1f8f1", border: "#b9d8bf", color: "var(--so-success,#2d7a3e)" };
+  }
+  if (tone === "danger") {
+    return { background: "#fff5f4", border: "#efc7c3", color: "var(--so-danger,#b04545)" };
+  }
+  if (tone === "warn") {
+    return { background: "#fff8e8", border: "#ead39a", color: "var(--so-warn,#b7791f)" };
+  }
+  return { background: "var(--so-bg-2,#fafaf7)", border: "var(--so-border,#e8e4d8)", color: "var(--so-fg-4,#4f4a42)" };
+}
+
+function getDecisionSummary(analysis: Analysis, c: PhoneCandidate, judge: JudgeStatus) {
+  if (judge.failed) {
+    return {
+      tone: "warn" as Tone,
+      title: "Vérification humaine requise",
+      body: "Le pipeline a trouvé un numéro possible, mais le juge IA n'a pas pu le vérifier. Ce candidat est en revue parce qu'il n'est pas assez sûr pour être rendu appelable automatiquement.",
+      action: "Action conseillée : garder non résolu ou rejeter. Approuver seulement après vérification manuelle de la source.",
+    };
+  }
+
+  if (analysis.recommendation === "approve") {
+    return {
+      tone: "success" as Tone,
+      title: "Peut être approuvé",
+      body: "Les preuves affichent assez de signaux favorables pour rendre ce lead appelable.",
+      action: "Action conseillée : approuver si la source et le numéro semblent cohérents à l'écran.",
+    };
+  }
+
+  if (analysis.recommendation === "reject") {
+    return {
+      tone: "danger" as Tone,
+      title: "Ne pas approuver tel quel",
+      body: "Le système voit des signaux contre ce numéro. L'approbation est bloquée sauf vérification manuelle explicite.",
+      action: "Action conseillée : rejeter, ou approuver seulement si vous avez vérifié hors CRM.",
+    };
+  }
+
+  if (c.initial_confidence <= 50 || c.openclaw_verdict === "uncertain") {
+    return {
+      tone: "warn" as Tone,
+      title: "Vérification humaine requise",
+      body: "La confiance est faible ou incertaine. Le numéro est seulement un candidat, pas une validation.",
+      action: "Action conseillée : vérifier la source avant d'approuver; sinon garder non résolu ou rejeter.",
+    };
+  }
+
+  return {
+    tone: "warn" as Tone,
+    title: "À vérifier avant approbation",
+    body: "Le système a trouvé des indices, mais pas assez pour une approbation automatique.",
+    action: "Action conseillée : approuver seulement après vérification manuelle.",
+  };
+}
+
+function sourceHost(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function stageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    address_search: "Recherche web par adresse",
+    company_search: "Recherche web par nom",
+    req_address_lookup: "Recherche adresse REQ",
+    name_postal_directory: "Recherche annuaire nom + postal",
+    reverse_address_lookup: "Recherche inverse adresse",
+    pages_jaunes_business: "Recherche Pages Jaunes",
+    company_website: "Recherche site d'entreprise",
+    openclaw: "OpenClaw legacy",
+  };
+  return labels[stage] ?? stage;
+}
+
 /**
  * Phase 5 — full evidence detail. Pure presentation; only cosmetic local
  * state (note input, action-pending transition). The note value flows
@@ -217,6 +358,11 @@ export default function PhoneReviewEvidencePanel({
   const [note, setNote] = useState("");
   const [confirmOverride, setConfirmOverride] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setNote("");
+    setConfirmOverride(false);
+  }, [candidate?.id]);
 
   if (!candidate) {
     return (
@@ -257,16 +403,50 @@ export default function PhoneReviewEvidencePanel({
   // Which tool found this number, and the pros/cons analysis
   const tool = getToolInfo(candidate);
   const analysis = computeAnalysis(candidate);
+  const judge = getJudgeStatus(candidate);
+  const decision = getDecisionSummary(analysis, candidate, judge);
+  const decisionStyle = getToneStyle(decision.tone);
+  const judgeStyle = getToneStyle(judge.tone);
+  const host = sourceHost(candidate.source_url);
+  const matchedSignals = candidate.matched_on
+    ? candidate.matched_on.split(/[;,]+/).map((token) => token.trim()).filter(Boolean).map((token) => evidenceLabel(token, ev as EvidenceDict)).join(", ")
+    : "aucun signal de concordance explicite";
+  const reviewTrail = [
+    {
+      label: "1. Point de départ",
+      detail: `${name} - ${address}${city ? `, ${city}` : ""}${contact?.mailing_address ? `; adresse postale ${contact.mailing_address}` : ""}`,
+      tone: "neutral" as Tone,
+    },
+    {
+      label: "2. Recherche lancée",
+      detail: `${stageLabel(candidate.stage)}${candidate.search_query ? ` avec la requête "${candidate.search_query}"` : ""}`,
+      tone: "neutral" as Tone,
+    },
+    {
+      label: "3. Source trouvée",
+      detail: `${tool.name}${host ? ` (${host})` : ""}${candidate.candidate_name ? `; nom source : ${candidate.candidate_name}` : ""}`,
+      tone: "neutral" as Tone,
+    },
+    {
+      label: "4. Score local",
+      detail: `${candidate.initial_confidence}% - signaux : ${matchedSignals}`,
+      tone: analysis.recommendation === "approve" ? "success" as Tone : analysis.recommendation === "reject" ? "danger" as Tone : "warn" as Tone,
+    },
+    {
+      label: "5. Vérification IA",
+      detail: judge.detail,
+      tone: judge.tone,
+    },
+  ];
   const recoLabel =
     analysis.recommendation === "approve" ? { text: "Recommandation : approuver",  color: "var(--so-success)" }
     : analysis.recommendation === "reject"  ? { text: "Recommandation : refuser",   color: "var(--so-danger)"  }
     : { text: "Recommandation : vérifier manuellement", color: "var(--so-warn)" };
 
-  // v3: when the analysis recommends rejection, the green Approve button must
-  // require an explicit override. We surface a confirm checkbox; without it,
-  // Approve is disabled. This closes the loophole where every "refuser"
-  // candidate could still be approved with one click.
+  // Weak/rejected candidates need a positive human confirmation before approval.
   const blockApprove = analysis.recommendation === "reject";
+  const approveRequiresConfirm = analysis.recommendation !== "approve" || judge.failed || candidate.openclaw_verdict === "uncertain";
+  const approveDisabled = isPending || (approveRequiresConfirm && !confirmOverride);
 
   return (
     <div className="pr-evidence">
@@ -311,6 +491,55 @@ export default function PhoneReviewEvidencePanel({
         {candidate.review_reason && (
           <div className="pr-evidence__score-reason">{candidate.review_reason}</div>
         )}
+      </div>
+
+      {/* Decision summary — answer "should I approve this?" before raw evidence */}
+      <div className="pr-evidence__section" style={{
+        background: decisionStyle.background,
+        border: `1px solid ${decisionStyle.border}`,
+        borderLeft: `4px solid ${decisionStyle.color}`,
+        padding: "12px 14px",
+        borderRadius: 6,
+      }}>
+        <div className="pr-evidence__section-title" style={{ marginBottom: 6 }}>
+          Décision recommandée
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 15, color: decisionStyle.color, marginBottom: 4 }}>
+          {decision.title}
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.45, color: "var(--so-fg-4)" }}>
+          {decision.body}
+        </div>
+        <div style={{ fontSize: 12, lineHeight: 1.45, color: "var(--so-fg-5)", marginTop: 8, fontWeight: 600 }}>
+          {decision.action}
+        </div>
+      </div>
+
+      {/* Process trail — compact reconstruction of how this candidate arrived here */}
+      <div className="pr-evidence__section" style={{
+        background: "var(--so-bg-2, #fafaf7)",
+        padding: "10px 12px",
+        borderRadius: 6,
+        border: "1px solid var(--so-border, #e8e4d8)",
+      }}>
+        <div className="pr-evidence__section-title" style={{ marginBottom: 8 }}>
+          Comment ce numéro est arrivé ici
+        </div>
+        <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+          {reviewTrail.map((step) => {
+            const style = getToneStyle(step.tone);
+            return (
+              <li key={step.label} style={{ borderLeft: `3px solid ${style.border}`, paddingLeft: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: step.tone === "neutral" ? "var(--so-fg-4)" : style.color }}>
+                  {step.label}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--so-fg-5)", lineHeight: 1.4 }}>
+                  {step.detail}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       </div>
 
       {/* Tool used — which data source actually found this number */}
@@ -446,7 +675,7 @@ export default function PhoneReviewEvidencePanel({
         companyName={contact?.company_name}
       />
 
-      {/* OpenClaw analysis — always expanded */}
+      {/* Judge analysis — always expanded. Field names remain openclaw_* in DB. */}
       {(candidate.openclaw_reasoning || candidate.openclaw_evidence) ? (
         <div className="pr-evidence__section">
           <div className="pr-evidence__section-title">
@@ -456,6 +685,18 @@ export default function PhoneReviewEvidencePanel({
                 {candidate.openclaw_confidence}%
               </span>
             )}
+          </div>
+          <div style={{
+            background: judgeStyle.background,
+            border: `1px solid ${judgeStyle.border}`,
+            color: judgeStyle.color,
+            borderRadius: 6,
+            padding: "8px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+            marginBottom: 8,
+          }}>
+            {judge.label}: {judge.detail}
           </div>
           <div className="pr-evidence__openclaw-body">
             {candidate.openclaw_evidence && (
@@ -525,18 +766,22 @@ export default function PhoneReviewEvidencePanel({
 
       {errorText && <p className="pr-evidence__error">{errorText}</p>}
 
-      {blockApprove && (
+      {approveRequiresConfirm && (
         <label style={{
-          display: "flex", alignItems: "center", gap: 8,
-          marginBottom: 8, fontSize: 12, color: "var(--so-danger,#b04545)",
+          display: "flex", alignItems: "flex-start", gap: 8,
+          marginBottom: 8, fontSize: 12, color: blockApprove ? "var(--so-danger,#b04545)" : "var(--so-warn,#b7791f)",
+          lineHeight: 1.35,
         }}>
           <input
             type="checkbox"
             checked={confirmOverride}
             onChange={(e) => setConfirmOverride(e.target.checked)}
             disabled={isPending}
+            style={{ marginTop: 2 }}
           />
-          Override the &laquo;refuser&raquo; recommendation and approve anyway
+          {blockApprove
+            ? "Je comprends que le système recommande de rejeter, mais j'ai vérifié manuellement et je veux approuver."
+            : "J'ai vérifié manuellement que ce numéro appartient au propriétaire ou à son entreprise."}
         </label>
       )}
 
@@ -544,9 +789,9 @@ export default function PhoneReviewEvidencePanel({
         <button
           type="button"
           onClick={() => act("approve")}
-          disabled={isPending || (blockApprove && !confirmOverride)}
+          disabled={approveDisabled}
           className="crm-action-btn crm-action-btn--primary"
-          title={blockApprove && !confirmOverride ? "Cochez la case d'override pour approuver malgré la recommandation refuser" : ""}
+          title={approveRequiresConfirm && !confirmOverride ? "Cochez la vérification manuelle avant d'approuver ce candidat" : ""}
         >
           {t.review.approve}
         </button>
@@ -627,7 +872,7 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
   };
   return (
     <span className={`crm-pill ${variant ? `crm-pill-verdict--${variant}` : ""}`}>
-      OpenClaw: {labels[verdict] ?? verdict}
+      Juge IA: {labels[verdict] ?? verdict}
     </span>
   );
 }
@@ -638,38 +883,19 @@ function StagePill({ stage }: { stage: string }) {
   const labels: Record<string, string> = {
     address_search: ev.stageAddress,
     company_search: ev.stageCompany,
-    openclaw:       "OpenClaw",
+    req_address_lookup: "REQ adresse",
+    name_postal_directory: "Nom + postal",
+    reverse_address_lookup: "Adresse inverse",
+    pages_jaunes_business: "Pages Jaunes",
+    company_website: "Site entreprise",
+    openclaw:       "OpenClaw legacy",
   };
   const variant: string =
-    stage === "address_search" ? "address"
-    : stage === "company_search" ? "company"
+    stage === "address_search" || stage === "req_address_lookup" || stage === "reverse_address_lookup" ? "address"
+    : stage === "company_search" || stage === "company_website" || stage === "pages_jaunes_business" ? "company"
     : stage === "openclaw" ? "openclaw"
     : "via";
   return (
     <span className={`crm-pill crm-pill-stage--${variant}`}>{labels[stage] ?? stage}</span>
-  );
-}
-
-function MatchedOnPill({ matchedOn }: { matchedOn: string | null }) {
-  const { t } = useLocale();
-  const ev = t.review.evidence;
-
-  if (!matchedOn) return null;
-  const labels: Record<string, string> = {
-    mailing_address:      ev.matchedMailingAddress,
-    mailing_postal:       ev.matchedPostal,
-    address_company:      ev.matchedAddressCompany,
-    property_address:     ev.matchedPropertyAddress,
-    company_name:         ev.matchedCompanyName,
-    director_name:        ev.matchedDirectorName,
-    related_company:      ev.matchedRelatedCompany,
-    same_address_company: ev.matchedSameAddress,
-    public_directory:     ev.matchedPublicDirectory,
-    company_website:      ev.matchedCompanyWebsite,
-    public_b2bhint_page:  ev.matchedB2BHint,
-    openclaw:             "OpenClaw",
-  };
-  return (
-    <span className="crm-pill crm-pill-via">via {labels[matchedOn] ?? matchedOn}</span>
   );
 }
