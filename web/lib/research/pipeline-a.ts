@@ -318,24 +318,31 @@ export async function runPipelineA(
       );
 
       // ── 4c. Write verdict back to phone_candidates ─────────────────────────
-      // Map judge verdicts to existing candidate_status enum values:
-      //   approve  → approved_by_anthony  (judge acts as automated approver)
-      //   review   → needs_anthony_review (route to human review queue)
-      //   reject   → rejected_by_openclaw (LLM judge rejection, columns named for openclaw)
+      // Map judge verdicts to the actual openclaw_verdict + candidate_status enums.
+      //   approve  → openclaw_verdict=likely_match,   candidate_status=approved_by_anthony
+      //   review   → openclaw_verdict=uncertain,      candidate_status=needs_anthony_review
+      //   reject   → openclaw_verdict=unlikely_match, candidate_status=rejected_by_openclaw
+      const openclawVerdict =
+        judgeResult.verdict === "approve" ? "likely_match" :
+        judgeResult.verdict === "review"  ? "uncertain" :
+        "unlikely_match";
       const verdictStatus =
         judgeResult.verdict === "approve" ? "approved_by_anthony" :
         judgeResult.verdict === "review"  ? "needs_anthony_review" :
         "rejected_by_openclaw";
 
-      await sb
+      const { error: updateError } = await sb
         .from("phone_candidates")
         .update({
-          openclaw_verdict:    judgeResult.verdict,
+          openclaw_verdict:    openclawVerdict,
           openclaw_confidence: judgeResult.confidence,
           openclaw_reasoning:  judgeResult.reasoning,
           candidate_status:    verdictStatus,
         })
         .eq("id", candidateId);
+      if (updateError) {
+        console.error("[pipeline-a] phone_candidates verdict update failed:", updateError.message);
+      }
 
       // ── 4d. Promote approved candidates to phones ──────────────────────────
       if (judgeResult.verdict === "approve") {
