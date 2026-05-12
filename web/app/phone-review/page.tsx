@@ -56,7 +56,7 @@ export default async function PhoneReviewPage({
           status,
           campaign_id,
           campaigns ( name ),
-          properties ( address, city, num_units ),
+        properties ( id, address, city, num_units ),
           contacts (
             id,
             full_name,
@@ -83,7 +83,72 @@ export default async function PhoneReviewPage({
     );
   }
 
-  const candidates = (candidatesRes.data ?? []) as unknown as PhoneCandidate[];
+  const rawCandidates = (candidatesRes.data ?? []) as unknown as PhoneCandidate[];
+  const propertyIds = [
+    ...new Set(
+      rawCandidates
+        .map((candidate) => candidate.leads?.properties?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const neqs = [
+    ...new Set(
+      rawCandidates
+        .map((candidate) => candidate.snippet?.match(/\((\d{10})\)/)?.[1] ?? null)
+        .filter((neq): neq is string => Boolean(neq)),
+    ),
+  ];
+
+  const [ownerLinksRes, directorsRes] = await Promise.all([
+    propertyIds.length > 0
+      ? sb
+          .from("property_contacts")
+          .select("property_id, contacts ( id, full_name, company_name )")
+          .in("property_id", propertyIds)
+          .eq("relationship", "owner")
+      : Promise.resolve({ data: [], error: null }),
+    neqs.length > 0
+      ? sb
+          .from("req_directors")
+          .select("neq, full_name")
+          .in("neq", neqs)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const ownerNamesByProperty = new Map<string, string[]>();
+  for (const row of ownerLinksRes.data ?? []) {
+    const link = row as {
+      property_id?: string | null;
+      contacts?: { full_name?: string | null; company_name?: string | null } | null;
+    };
+    if (!link.property_id) continue;
+    const name = link.contacts?.full_name?.trim() || link.contacts?.company_name?.trim() || "";
+    if (!name) continue;
+    ownerNamesByProperty.set(link.property_id, [
+      ...(ownerNamesByProperty.get(link.property_id) ?? []),
+      name,
+    ]);
+  }
+
+  const directorNamesByNeq = new Map<string, string[]>();
+  for (const row of directorsRes.data ?? []) {
+    const director = row as { neq?: string | null; full_name?: string | null };
+    if (!director.neq || !director.full_name?.trim()) continue;
+    directorNamesByNeq.set(director.neq, [
+      ...(directorNamesByNeq.get(director.neq) ?? []),
+      director.full_name.trim(),
+    ]);
+  }
+
+  const candidates = rawCandidates.map((candidate) => {
+    const propertyId = candidate.leads?.properties?.id;
+    const neq = candidate.snippet?.match(/\((\d{10})\)/)?.[1] ?? null;
+    return {
+      ...candidate,
+      co_owner_names: propertyId ? [...new Set(ownerNamesByProperty.get(propertyId) ?? [])] : [],
+      req_director_names: neq ? [...new Set(directorNamesByNeq.get(neq) ?? [])] : [],
+    };
+  });
   const readyCount = readyRes.count ?? 0;
 
   return (

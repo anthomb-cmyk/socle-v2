@@ -59,6 +59,8 @@ export interface JudgeInput {
 export interface OwnerRecord {
   /** Owner's full canonical name (individual or business). */
   canonicalName: string;
+  /** Other owner/contact names attached to the same property/import row. */
+  relatedNames?: string[];
   /** Raw mailing address string as stored in canonical_owner. */
   mailingAddress: string | null;
   /** Owner type: individual / named_co / numbered_co / trust / government. */
@@ -154,6 +156,9 @@ export async function judgePhoneCandidate(
   const lines: string[] = [
     `OWNER:`,
     `  Name: ${owner.canonicalName}`,
+    ...(owner.relatedNames && owner.relatedNames.length > 0
+      ? [`  Other owner names on same property/import row: ${owner.relatedNames.join("; ")}`]
+      : []),
     `  Type: ${owner.ownerType}`,
     `  Mailing address: ${owner.mailingAddress ?? "(not available)"}`,
     ``,

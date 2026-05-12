@@ -17,7 +17,7 @@ import PhoneReviewBulkBar from "./components/PhoneReviewBulkBar";
 import PhoneReviewMobileSlideover from "./components/PhoneReviewMobileSlideover";
 
 type Campaign = { name: string } | null;
-type Property = { address: string; city: string | null; num_units: number | null } | null;
+type Property = { id?: string; address: string; city: string | null; num_units: number | null } | null;
 type Contact = {
   id: string;
   full_name: string | null;
@@ -67,6 +67,8 @@ export type PhoneCandidate = {
   } | null;
   /** v3 source classification (page-shape classifier output). */
   source_class: string | null;
+  co_owner_names?: string[];
+  req_director_names?: string[];
   created_at: string;
   leads: Lead;
 };

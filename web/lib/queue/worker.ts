@@ -35,6 +35,38 @@ interface QueueRow {
   attempts: number;
 }
 
+async function fetchPropertyOwnerNames(
+  sb: SupabaseClient,
+  propertyId: string | null,
+): Promise<string[]> {
+  if (!propertyId) return [];
+
+  try {
+    const { data, error } = await sb
+      .from("property_contacts")
+      .select("contacts ( full_name, company_name )")
+      .eq("property_id", propertyId)
+      .eq("relationship", "owner");
+
+    if (error) {
+      console.warn("[worker] co-owner lookup failed:", error.message);
+      return [];
+    }
+
+    const names = new Set<string>();
+    for (const row of data ?? []) {
+      const contact = (row as { contacts?: { full_name?: string | null; company_name?: string | null } | null }).contacts;
+      const name = contact?.full_name?.trim() || contact?.company_name?.trim() || "";
+      if (name) names.add(name);
+    }
+
+    return [...names];
+  } catch (err) {
+    console.warn("[worker] co-owner lookup threw:", err instanceof Error ? err.message : String(err));
+    return [];
+  }
+}
+
 /**
  * Process the next batch of pending tasks from lead_post_processing_queue.
  * Returns counts of processed / succeeded / failed tasks.
@@ -198,6 +230,8 @@ async function dispatch(
     const contact    = (lead as Record<string, unknown>).contacts as Record<string, unknown> | null;
     const property   = (lead as Record<string, unknown>).properties as Record<string, unknown> | null;
     const contactId  = (lead as Record<string, unknown>).contact_id as string;
+    const propertyId = (lead as Record<string, unknown>).property_id as string | null;
+    const relatedOwnerNames = await fetchPropertyOwnerNames(sb, propertyId);
 
     // Create a minimal enrichment_jobs row so pipeline logging works.
     // NOTE: enrichment_jobs has no property_id column — do NOT include it here,
@@ -224,6 +258,7 @@ async function dispatch(
       fullName:        (contact?.full_name as string | null) ?? null,
       companyName:     (contact?.company_name as string | null) ?? null,
       secondaryName:   null,
+      relatedOwnerNames,
       propertyAddress: (property?.address as string | null) ?? null,
       propertyCity:    (property?.city as string | null) ?? null,
       mailingAddress:  (contact?.mailing_address as string | null) ?? null,

@@ -255,13 +255,33 @@ function reqAddressSearchQuery(ownerAddress: string, fsa: string): string {
   return `REQ address lookup postal_fsa=${fsa} owner_address="${ownerAddress}"`;
 }
 
-function reqSnippet(match: AddressMatch, phoneSource: string): string {
+function reqSnippet(match: AddressMatch, phoneSource: string, directorNames: string[] = []): string {
   return [
     `REQ address match: ${match.entity.legal_name} (${match.entity.neq})`,
     `${match.matchedField}="${match.matchedAddress}"`,
     `matched civic=${match.civicOverlap.join(",")} street=${match.streetOverlap.join(",")}`,
+    directorNames.length > 0 ? `REQ directors=${directorNames.join(", ")}` : null,
     phoneSource,
-  ].join("; ");
+  ].filter(Boolean).join("; ");
+}
+
+async function getReqDirectorNames(sb: AnyClient, neq: string): Promise<string[]> {
+  try {
+    const { data, error } = await sb
+      .from("req_directors")
+      .select("full_name")
+      .eq("neq", neq);
+
+    if (error) return [];
+
+    return [...new Set(
+      ((data ?? []) as Array<{ full_name?: string | null }>)
+        .map((row) => row.full_name?.trim() ?? "")
+        .filter(Boolean),
+    )];
+  } catch {
+    return [];
+  }
 }
 
 async function insertReqAddressEvidence(
@@ -273,6 +293,7 @@ async function insertReqAddressEvidence(
   searchQuery: string,
   snippet: string,
   weight: number,
+  directorNames: string[] = [],
 ): Promise<string | undefined> {
   const { data, error } = await insertEvidence(sb, {
     owner_id: owner.owner_id,
@@ -288,6 +309,7 @@ async function insertReqAddressEvidence(
       matched_address: match.matchedAddress,
       civic_overlap: match.civicOverlap,
       street_overlap: match.streetOverlap,
+      req_directors: directorNames,
     },
     weight_at_fetch: weight,
   });
@@ -405,7 +427,8 @@ export async function reqAddressResearcher(
       if (seenPhones.has(registeredPhone)) continue;
       seenPhones.add(registeredPhone);
 
-      const snippet = reqSnippet(match, "registered_phone present in req_entities");
+      const directorNames = await getReqDirectorNames(sb, match.entity.neq);
+      const snippet = reqSnippet(match, "registered_phone present in req_entities", directorNames);
       const evidenceId = await insertReqAddressEvidence(
         sb,
         owner,
@@ -415,6 +438,7 @@ export async function reqAddressResearcher(
         baseReqQuery,
         snippet,
         1.0,
+        directorNames,
       );
 
       candidates.push({
@@ -436,6 +460,13 @@ export async function reqAddressResearcher(
     if (!webPhone || seenPhones.has(webPhone.phone)) continue;
     seenPhones.add(webPhone.phone);
 
+    const directorNames = await getReqDirectorNames(sb, match.entity.neq);
+    const snippet = reqSnippet(
+      match,
+      webPhone.snippet.replace(/^REQ address match:[^;]+;\s*[^;]+;\s*matched [^;]+;\s*/i, ""),
+      directorNames,
+    );
+
     const evidenceId = await insertReqAddressEvidence(
       sb,
       owner,
@@ -443,8 +474,9 @@ export async function reqAddressResearcher(
       webPhone.phone,
       webPhone.sourceUrl,
       webPhone.searchQuery,
-      webPhone.snippet,
+      snippet,
       0.85,
+      directorNames,
     );
 
     candidates.push({
@@ -453,7 +485,7 @@ export async function reqAddressResearcher(
       phone: webPhone.phone,
       isAuthoritative: false,
       sourceUrl: webPhone.sourceUrl,
-      snippet: webPhone.snippet,
+      snippet,
       searchQuery: webPhone.searchQuery,
     });
   }

@@ -236,6 +236,7 @@ export async function runEnrichmentPipeline(
           leadId:          ctx.leadId,
           contactId:       ctx.contactId,
           enrichmentJobId: ctx.enrichmentJobId,
+          relatedOwnerNames: ctx.relatedOwnerNames ?? [],
         }
       : {};
 

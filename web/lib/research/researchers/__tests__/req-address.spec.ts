@@ -62,15 +62,24 @@ function makeReqEntity(overrides: Partial<ReqEntity> = {}): ReqEntity {
   };
 }
 
-function makeSb(rows: ReqEntity[], error: { message: string } | null = null) {
-  const chain = {
+function makeSb(
+  rows: ReqEntity[],
+  error: { message: string } | null = null,
+  directors: Array<{ full_name: string }> = [],
+) {
+  const entitiesChain = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue({ data: rows, error }),
   };
+  const directorsChain = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockResolvedValue({ data: directors, error: null }),
+  };
   return {
-    from: vi.fn().mockReturnValue(chain),
-    _chain: chain,
+    from: vi.fn((table: string) => table === "req_directors" ? directorsChain : entitiesChain),
+    _chain: entitiesChain,
+    _directorsChain: directorsChain,
   };
 }
 
@@ -142,6 +151,26 @@ describe("reqAddressResearcher", () => {
     expect(mockBraveSearch).toHaveBeenCalledWith(
       expect.stringContaining("Gestion Principale Inc."),
       3,
+    );
+  });
+
+  it("includes REQ directors in evidence when an address-matched entity yields a phone", async () => {
+    const sb = makeSb(
+      [makeReqEntity({ registered_phone: "(450) 555-1234" })],
+      null,
+      [{ full_name: "RUDY HABIB SOKSIPE LEUKOUE" }],
+    );
+
+    const candidates = await reqAddressResearcher(sb as never, makeOwner());
+
+    expect(candidates[0].snippet).toContain("REQ directors=RUDY HABIB SOKSIPE LEUKOUE");
+    expect(mockInsertEvidence).toHaveBeenCalledWith(
+      sb,
+      expect.objectContaining({
+        structured: expect.objectContaining({
+          req_directors: ["RUDY HABIB SOKSIPE LEUKOUE"],
+        }),
+      }),
     );
   });
 

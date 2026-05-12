@@ -71,6 +71,8 @@ export interface PipelineAOptions {
    * so phone_candidates rows have a complete audit trail.
    */
   enrichmentJobId?: string;
+  /** Other owner/contact names attached to the same property/import row. */
+  relatedOwnerNames?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +131,7 @@ export async function runPipelineA(
     leadId,
     contactId,
     enrichmentJobId,
+    relatedOwnerNames = [],
   } = _options;
 
   // Feature flag: when true, use the candidate+judge+promote flow instead of
@@ -332,6 +335,7 @@ export async function runPipelineA(
         },
         {
           canonicalName:  ownerContext?.canonical_name ?? primaryTarget?.legal_name ?? ownerId,
+          relatedNames:   relatedOwnerNames,
           mailingAddress: ownerContext?.mailing_address_raw ?? null,
           ownerType:      ownerContext?.owner_type ?? "named_co",
         },

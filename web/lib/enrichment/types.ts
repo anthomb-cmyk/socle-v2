@@ -120,6 +120,7 @@ export interface LeadContext {
   fullName: string | null;        // primary contact / director full name
   companyName: string | null;     // legal company owner name
   secondaryName: string | null;   // secondary contact if any
+  relatedOwnerNames?: string[];   // all owner names linked to the same property
 
   // Property address
   propertyAddress: string | null;

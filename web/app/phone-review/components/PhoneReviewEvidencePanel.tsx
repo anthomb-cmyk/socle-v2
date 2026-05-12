@@ -110,14 +110,43 @@ function getToolInfo(c: PhoneCandidate): ToolInfo {
 // ── Pros/Cons analysis from the candidate data ────────────────────────────
 // Lays out exactly WHY the number is here and WHAT supports/opposes it.
 type Analysis = { pros: string[]; cons: string[]; recommendation: "approve" | "reject" | "verify" };
+
+function normalizeNameToken(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\p{L}0-9]+/gu, " ")
+    .trim();
+}
+
+function lastNameToken(value: string): string {
+  return (normalizeNameToken(value).split(/\s+/).pop() ?? "").replace(/[^\p{L}]/gu, "");
+}
+
+function namesOverlap(left: string, right: string): boolean {
+  const leftTokens = normalizeNameToken(left).split(/\s+/).filter((token) => token.length >= 4);
+  const rightTokens = new Set(normalizeNameToken(right).split(/\s+/).filter((token) => token.length >= 4));
+  return leftTokens.some((token) => rightTokens.has(token));
+}
+
 function computeAnalysis(c: PhoneCandidate): Analysis {
   const pros: string[] = [];
   const cons: string[] = [];
   const phone7 = (c.phone_e164 ?? c.phone_raw ?? "").replace(/\D/g, "").slice(-7);
-  const blob = `${c.snippet ?? ""} ${c.openclaw_evidence ?? ""} ${c.openclaw_reasoning ?? ""}`.toLowerCase();
+  const blob = normalizeNameToken(`${c.snippet ?? ""} ${c.openclaw_evidence ?? ""} ${c.openclaw_reasoning ?? ""}`);
   const contact = c.leads?.contacts;
   const ownerName = (contact?.full_name ?? contact?.company_name ?? "").trim();
-  const ownerLast = (ownerName.toLowerCase().split(/\s+/).pop() ?? "").replace(/[^\p{L}]/gu, "");
+  const coOwnerNames = c.co_owner_names ?? [];
+  const allOwnerNames = [...new Set([ownerName, ...coOwnerNames].map((name) => name.trim()).filter(Boolean))];
+  const ownerLast = lastNameToken(ownerName);
+  const matchingReqDirector = (c.req_director_names ?? []).find((directorName) =>
+    allOwnerNames.some((name) => namesOverlap(name, directorName)),
+  );
+  const matchingOwnerInSnippet = allOwnerNames.find((name) => {
+    const last = lastNameToken(name);
+    return last.length >= 4 && blob.includes(last);
+  });
   const matched = (c.matched_on ?? "").split(/[;,\s]+/).filter(Boolean);
 
   // ── PROS ─────────────────────────────────────────────────────────────
@@ -129,8 +158,11 @@ function computeAnalysis(c: PhoneCandidate): Analysis {
   }
   if (matched.includes("contact_name") || matched.includes("director_name")) {
     pros.push(`Nom du proprio « ${ownerName} » visible dans la source`);
-  } else if (ownerLast && ownerLast.length >= 4 && blob.includes(ownerLast)) {
-    pros.push(`Nom de famille « ${ownerLast} » présent dans le snippet`);
+  } else if (matchingReqDirector) {
+    pros.push(`Administrateur REQ « ${matchingReqDirector} » correspond à un propriétaire de l'immeuble`);
+  } else if (matchingOwnerInSnippet) {
+    const last = lastNameToken(matchingOwnerInSnippet);
+    pros.push(`Nom de famille « ${last} » présent dans le snippet`);
   }
   if (matched.includes("company_name") && contact?.company_name) {
     pros.push(`Entreprise « ${contact.company_name} » concorde`);
@@ -159,9 +191,13 @@ function computeAnalysis(c: PhoneCandidate): Analysis {
   }
   // Different last name
   if (c.candidate_name && ownerName) {
-    const sourceName = c.candidate_name.toLowerCase();
-    const sourceLast = (sourceName.split(/\s+/).pop() ?? "").replace(/[^\p{L}]/gu, "");
-    if (ownerLast && sourceLast && ownerLast.length >= 3 && sourceLast.length >= 3 && ownerLast !== sourceLast && !sourceName.includes(ownerLast) && !ownerName.toLowerCase().includes(sourceLast)) {
+    const sourceName = normalizeNameToken(c.candidate_name);
+    const sourceLast = lastNameToken(c.candidate_name);
+    const sourceMatchesAnyOwner = allOwnerNames.some((name) => {
+      const last = lastNameToken(name);
+      return last.length >= 3 && (sourceName.includes(last) || normalizeNameToken(name).includes(sourceLast));
+    });
+    if (ownerLast && sourceLast && ownerLast.length >= 3 && sourceLast.length >= 3 && !sourceMatchesAnyOwner) {
       cons.push(`Nom source « ${c.candidate_name} » ≠ proprio « ${ownerName} »`);
     }
   }
@@ -181,7 +217,11 @@ function computeAnalysis(c: PhoneCandidate): Analysis {
   let host = "";
   try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
   const isDirectory = host.includes("canada411") || host === "411.ca" || host.includes("pagesjaunes") || host.includes("yellowpages") || host.includes("b2bhint");
-  if (ownerLast && ownerLast.length >= 4 && !blob.includes(ownerLast) && !isDirectory && pros.length === 0) {
+  const anyOwnerNameInEvidence = allOwnerNames.some((name) => {
+    const last = lastNameToken(name);
+    return last.length >= 4 && blob.includes(last);
+  });
+  if (ownerLast && ownerLast.length >= 4 && !anyOwnerNameInEvidence && !matchingReqDirector && !isDirectory && pros.length === 0) {
     cons.push(`Nom du proprio « ${ownerLast} » absent du snippet`);
   }
   // Very low confidence
