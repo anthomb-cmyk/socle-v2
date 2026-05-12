@@ -270,7 +270,24 @@ export async function runPipelineA(
 
     const ownerContext = ownerForJudge as Pick<CanonicalOwnerRow, "canonical_name" | "owner_type" | "mailing_address_raw"> | null;
 
-    for (const group of groups.values()) {
+    // Per-lead candidate cap: prevents a single researcher result blowing
+    // judge cost (one bad CSV scrape produced 187 candidates in testing).
+    // Authoritative phones (REQ, twilio name match) survive first.
+    const CANDIDATE_CAP_PER_LEAD = 25;
+    const rankedGroups = [...groups.values()].sort((a, b) => {
+      const aAuth = a.candidates.some((c) => c.isAuthoritative) ? 1 : 0;
+      const bAuth = b.candidates.some((c) => c.isAuthoritative) ? 1 : 0;
+      if (aAuth !== bAuth) return bAuth - aAuth;
+      return b.candidates.length - a.candidates.length;
+    });
+    const groupsToJudge = rankedGroups.slice(0, CANDIDATE_CAP_PER_LEAD);
+    if (rankedGroups.length > CANDIDATE_CAP_PER_LEAD) {
+      console.warn(
+        `[pipeline-a] candidate cap hit: ${rankedGroups.length} unique phones for lead ${leadId}, judging top ${CANDIDATE_CAP_PER_LEAD}`,
+      );
+    }
+
+    for (const group of groupsToJudge) {
       // Use the first (or best) candidate as provenance representative.
       const repr = group.candidates.find((c) => c.sourceUrl) ?? group.candidates[0];
 

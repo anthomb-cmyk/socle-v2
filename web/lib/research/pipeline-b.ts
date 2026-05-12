@@ -320,7 +320,31 @@ export async function runPipelineB(
     const judgeCandidateIds: string[] = [];
     const ownerRow = owner as CanonicalOwnerRow;
 
-    for (const group of groups.values()) {
+    // Per-lead candidate cap: bounds judge cost when a single researcher
+    // returns a runaway result set (e.g. a scraped CSV with hundreds of phones).
+    // Rank groups so authoritative + multi-source + corroborated phones survive.
+    const CANDIDATE_CAP_PER_LEAD = 25;
+    const rankedGroups = [...groups.values()].sort((a, b) => {
+      const aAuth = a.candidates.some((c) => c.isAuthoritative) ? 1 : 0;
+      const bAuth = b.candidates.some((c) => c.isAuthoritative) ? 1 : 0;
+      if (aAuth !== bAuth) return bAuth - aAuth;
+      const aCorr = a.candidates.some(
+        (c) => isNamePostalCandidate(c) && c.postalCorroborated,
+      ) ? 1 : 0;
+      const bCorr = b.candidates.some(
+        (c) => isNamePostalCandidate(c) && c.postalCorroborated,
+      ) ? 1 : 0;
+      if (aCorr !== bCorr) return bCorr - aCorr;
+      return b.candidates.length - a.candidates.length; // more sources = better
+    });
+    const groupsToJudge = rankedGroups.slice(0, CANDIDATE_CAP_PER_LEAD);
+    if (rankedGroups.length > CANDIDATE_CAP_PER_LEAD) {
+      console.warn(
+        `[pipeline-b] candidate cap hit: ${rankedGroups.length} unique phones for lead ${leadId}, judging top ${CANDIDATE_CAP_PER_LEAD}`,
+      );
+    }
+
+    for (const group of groupsToJudge) {
       // Use the first (or best) candidate for the group as source of provenance.
       // All candidates for the same phone share the same E.164; we pick the most
       // informative one (sourceUrl present, or first).
