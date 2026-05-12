@@ -8,11 +8,18 @@ describe("judge-routing", () => {
     expect(openclawVerdictFromJudge({ verdict: "reject" })).toBe("unlikely_match");
   });
 
-  it("keeps normal review verdicts in Anthony Review", () => {
+  it("keeps stronger review verdicts in Anthony Review", () => {
     expect(candidateStatusFromJudge(
       { verdict: "review", confidence: 60, reasoning: "Plausible but ambiguous." },
       { isAuthoritative: false, initialConfidence: 50 },
     )).toBe("needs_anthony_review");
+  });
+
+  it("demotes low-confidence review verdicts for weak candidates", () => {
+    expect(candidateStatusFromJudge(
+      { verdict: "review", confidence: 55, reasoning: "Plausible area code, but no source evidence." },
+      { isAuthoritative: false, initialConfidence: 50 },
+    )).toBe("weak_review");
   });
 
   it("demotes weak candidates when the judge is unavailable", () => {

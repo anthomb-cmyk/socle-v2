@@ -342,7 +342,7 @@ export async function runPipelineA(
       // Map judge verdicts to the actual openclaw_verdict + candidate_status enums.
       //   approve  → openclaw_verdict=likely_match,   candidate_status=approved_by_anthony
       //   review   → openclaw_verdict=uncertain,      candidate_status=needs_anthony_review
-      //   failed weak review → candidate_status=weak_review (audit only)
+      //   weak low-confidence review → candidate_status=weak_review (audit only)
       //   reject   → openclaw_verdict=unlikely_match, candidate_status=rejected_by_openclaw
       const initialConfidence = repr.isAuthoritative ? 90 : 55;
       const openclawVerdict = openclawVerdictFromJudge(judgeResult);

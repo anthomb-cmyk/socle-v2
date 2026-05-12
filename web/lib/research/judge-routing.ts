@@ -20,10 +20,9 @@ export function candidateStatusFromJudge(
   if (result.verdict === "approve") return "approved_by_anthony";
   if (result.verdict === "reject") return "rejected_by_openclaw";
 
-  const judgeUnavailable = /LLM judge failed|unparse-able response/i.test(result.reasoning ?? "");
   const weakCandidate = !candidate.isAuthoritative && candidate.initialConfidence <= 55;
 
-  if (judgeUnavailable && weakCandidate && result.confidence <= 50) {
+  if (weakCandidate && result.confidence < 60) {
     return "weak_review";
   }
 
