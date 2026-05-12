@@ -7,8 +7,11 @@ export type NextStepBannerKind = "enrich_done" | "review_done" | "queue_empty" |
 
 export type ImportDoneCounts = {
   leadsCreated: number;
+  leadsUpdated?: number;
   propertiesCreated: number;
+  propertiesUpdated?: number;
   contactsCreated: number;
+  contactsUpdated?: number;
   phonesCreated: number;
   errorsCount: number;
   campaignName: string | null;
@@ -135,7 +138,10 @@ export default function NextStepBanner({ kind, counts, importDone, onEnrichImpor
             </p>
             <p style={{ margin: "0 0 10px", fontSize: 12, color: "#047857" }}>
               {importDone.propertiesCreated} propriété{importDone.propertiesCreated !== 1 ? "s" : ""}{" "}
-              · {importDone.contactsCreated} contact{importDone.contactsCreated !== 1 ? "s" : ""}{" "}
+              créée{importDone.propertiesCreated !== 1 ? "s" : ""}
+              {importDone.propertiesUpdated ? ` · ${importDone.propertiesUpdated} mise${importDone.propertiesUpdated !== 1 ? "s" : ""} à jour` : ""}
+              · {importDone.contactsCreated} contact{importDone.contactsCreated !== 1 ? "s" : ""} créé{importDone.contactsCreated !== 1 ? "s" : ""}{" "}
+              {importDone.contactsUpdated ? ` · ${importDone.contactsUpdated} contact${importDone.contactsUpdated !== 1 ? "s" : ""} mis à jour` : ""}
               · {importDone.phonesCreated} téléphone{importDone.phonesCreated !== 1 ? "s" : ""}{" "}
               · {importDone.errorsCount} erreur{importDone.errorsCount !== 1 ? "s" : ""}
             </p>

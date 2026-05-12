@@ -113,9 +113,13 @@ export async function commitImport(
     if ((i + 1) % INCREMENTAL_FLUSH_EVERY === 0) {
       await supabase.from("import_jobs").update({
         properties_created: counts.properties_created,
+        properties_updated: counts.properties_updated,
         contacts_created:   counts.contacts_created,
+        contacts_updated:   counts.contacts_updated,
         leads_created:      counts.leads_created,
+        leads_updated:      counts.leads_updated,
         phones_created:     counts.phones_created,
+        duplicates_seen:    counts.duplicates_seen,
         errors_count:       counts.errors.length,
         updated_at:         new Date().toISOString(),
       }).eq("id", opts.importJobId);
@@ -281,12 +285,12 @@ async function commitRow(
     // 7. Enqueue post-processing tasks for the lead.
     if (leadId) {
       if (owner.phones.length === 0 && !isOwnerAddressBlocked) {
-        // No phone yet — needs enrichment pipeline
-        await enqueue(supabase, leadId, "enrichment", 5);
+        // No phone yet — prioritize phone search ahead of slower post-import chores.
+        await enqueue(supabase, leadId, "enrichment", 1);
       } else if (owner.phones.length > 0) {
-        // Phone already attached via role import — skip enrichment, just run briefing + fit-score
-        await enqueue(supabase, leadId, "briefing", 5);
-        await enqueue(supabase, leadId, "fit_score", 5);
+        // Phone already attached via role import — skip enrichment, run lower-priority chores.
+        await enqueue(supabase, leadId, "briefing", 7);
+        await enqueue(supabase, leadId, "fit_score", 7);
       }
       // Blocked owners: no enrichment tasks (address incomplete)
     }

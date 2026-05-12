@@ -10,7 +10,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ jobId: str
   const { jobId } = await ctx.params;
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin.from("import_jobs")
-    .select("id, status, file_name, format_detected, total_rows, properties_created, properties_updated, contacts_created, phones_created, leads_created, errors_count, completed_at, created_at, preview_data")
+    .select("id, status, file_name, format_detected, total_rows, properties_created, properties_updated, contacts_created, contacts_updated, phones_created, leads_created, leads_updated, errors_count, completed_at, created_at, updated_at, preview_data")
     .eq("id", jobId).single();
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 404 });
   return NextResponse.json({ ok: true, data });

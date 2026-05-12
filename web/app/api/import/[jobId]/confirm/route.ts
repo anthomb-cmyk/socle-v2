@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { commitImport } from "@/lib/import-commit";
 import { runEnrichmentPipeline } from "@/lib/enrichment/pipeline";
+import { processNextBatch } from "@/lib/queue/worker";
 import type { ParseResult } from "@/lib/role-parser/types";
 import type { LeadContext } from "@/lib/enrichment/types";
 
@@ -38,7 +39,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ jobId: str
   }
 
   // Move to processing
-  await admin.from("import_jobs").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", jobId);
+  await admin.from("import_jobs").update({
+    status: "processing",
+    started_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
 
   const parse: ParseResult | undefined = (job.preview_data as { parsed_full?: ParseResult })?.parsed_full;
   if (!parse) {
@@ -64,6 +69,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ jobId: str
     errors_count: counts.errors.length,
     errors: counts.errors,
     completed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   }).eq("id", jobId);
 
   await admin.from("automation_events").insert({
@@ -79,6 +85,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ jobId: str
     },
     result: counts,
   });
+
+  // If no immediate auto-enrichment was requested, still kick the queue once so
+  // newly-imported no-phone leads are not stuck behind an old scheduled backlog.
+  if (!autoEnrich && counts.leads_created > 0) {
+    void processNextBatch(admin, { batchSize: 10, maxRuntimeMs: 50_000 }).catch((err) => {
+      console.error("[import-confirm] post-import queue kick failed:", err instanceof Error ? err.message : String(err));
+    });
+  }
 
   // Improvement 7: Auto-enrich — fire-and-forget, capped at AUTO_ENRICH_MAX_LEADS
   if (autoEnrich && counts.leads_created > 0) {

@@ -28,12 +28,16 @@ type JobPollData = {
   status: string;
   total_rows: number | null;
   properties_created: number | null;
+  properties_updated: number | null;
   contacts_created: number | null;
+  contacts_updated: number | null;
   phones_created: number | null;
   leads_created: number | null;
+  leads_updated: number | null;
   errors_count: number | null;
   completed_at: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 type Counts = {
@@ -46,6 +50,23 @@ type Counts = {
 type User = { user_id: string; display_name: string; role: string };
 
 const POLL_INTERVAL_MS = 1500;
+const ANALYZE_TIMEOUT_MS = 2 * 60 * 1000;
+const ANALYZE_STAGES = [
+  { minSec: 0, label: "Téléversement du fichier" },
+  { minSec: 2, label: "Lecture du classeur XLSX" },
+  { minSec: 5, label: "Détection du format" },
+  { minSec: 8, label: "Validation des lignes" },
+  { minSec: 14, label: "Vérification des doublons" },
+  { minSec: 25, label: "Préparation de la prévisualisation" },
+] as const;
+
+function getAnalyzeStageIndex(elapsedSec: number) {
+  let current = 0;
+  for (let i = 0; i < ANALYZE_STAGES.length; i++) {
+    if (elapsedSec >= ANALYZE_STAGES[i].minSec) current = i;
+  }
+  return current;
+}
 
 export default function ImportPage() {
   const router = useRouter();
@@ -53,6 +74,8 @@ export default function ImportPage() {
   const [campaignName, setCampaignName] = useState("");
   const [city, setCity] = useState("");
   const [busy, setBusy] = useState(false);
+  const [analyzeStartedAt, setAnalyzeStartedAt] = useState<number | null>(null);
+  const [analyzeElapsedSec, setAnalyzeElapsedSec] = useState(0);
   const [preview, setPreview] = useState<PreviewSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Counts | null>(null);
@@ -106,6 +129,15 @@ export default function ImportPage() {
     }).catch(() => { /* non-fatal */ });
   }, []);
 
+  useEffect(() => {
+    if (!busy || !analyzeStartedAt) return;
+    setAnalyzeElapsedSec(0);
+    const timer = setInterval(() => {
+      setAnalyzeElapsedSec(Math.max(0, Math.round((Date.now() - analyzeStartedAt) / 1000)));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [busy, analyzeStartedAt]);
+
   /** Restore a previously-uploaded preview into the page state. */
   async function resumePending() {
     if (!pendingPreview) return;
@@ -158,16 +190,16 @@ export default function ImportPage() {
     confirmStartRef.current = Date.now();
 
     let consecutivePollFailures = 0;
-    const MAX_TOLERATED_FAILURES = 5;   // ~7-8s outage tolerated silently
+    let lastServerUpdatedAt = 0;
+    let lastServerProgressSeenAt = Date.now();
     const MAX_TOTAL_FAILURES = 30;       // ~45s — give up
-    const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 min hard ceiling
+    const MAX_STALE_DURATION_MS = 15 * 60 * 1000; // stale backend progress, not total runtime
 
     pollRef.current = setInterval(async () => {
-      // Hard ceiling — if we've polled for more than 10 min and never seen completed/failed, stop
-      if (confirmStartRef.current && Date.now() - confirmStartRef.current > MAX_POLL_DURATION_MS) {
+      if (Date.now() - lastServerProgressSeenAt > MAX_STALE_DURATION_MS) {
         stopPolling();
         setConfirming(false);
-        setError("Le suivi de l'import a expiré. Vérifiez /admin/enrichment ou les logs Railway.");
+        setError("Aucune progression serveur depuis 15 minutes. L'import peut encore être en arrière-plan; vérifiez les logs Railway avant de relancer.");
         return;
       }
 
@@ -187,6 +219,11 @@ export default function ImportPage() {
         consecutivePollFailures = 0; // reset on any successful poll
         const job: JobPollData = json.data;
         setPollData(job);
+        const serverUpdatedAt = job.updated_at ? Date.parse(job.updated_at) : Date.now();
+        if (!Number.isNaN(serverUpdatedAt) && serverUpdatedAt > lastServerUpdatedAt) {
+          lastServerUpdatedAt = serverUpdatedAt;
+          lastServerProgressSeenAt = Date.now();
+        }
 
         if (job.status === "completed" || job.status === "failed") {
           stopPolling();
@@ -200,12 +237,12 @@ export default function ImportPage() {
 
             const fakeCounts: Counts = {
               properties_created: finalJob.properties_created ?? 0,
-              properties_updated: 0,
+              properties_updated: finalJob.properties_updated ?? 0,
               contacts_created: finalJob.contacts_created ?? 0,
-              contacts_updated: 0,
+              contacts_updated: finalJob.contacts_updated ?? 0,
               phones_created: finalJob.phones_created ?? 0,
               leads_created: finalJob.leads_created ?? 0,
-              leads_updated: 0,
+              leads_updated: finalJob.leads_updated ?? 0,
               duplicates_seen: 0,
               errors: [],
             };
@@ -216,8 +253,11 @@ export default function ImportPage() {
             setImportDoneCounts({
               leadsCreated: finalJob.leads_created ?? 0,
               propertiesCreated: finalJob.properties_created ?? 0,
+              propertiesUpdated: finalJob.properties_updated ?? 0,
               contactsCreated: finalJob.contacts_created ?? 0,
+              contactsUpdated: finalJob.contacts_updated ?? 0,
               phonesCreated: finalJob.phones_created ?? 0,
+              leadsUpdated: finalJob.leads_updated ?? 0,
               errorsCount: finalJob.errors_count ?? 0,
               campaignName: campaignName || null,
               campaignId,
@@ -255,6 +295,8 @@ export default function ImportPage() {
     e.preventDefault();
     if (!file) return;
     setError(null); setBusy(true); setPreview(null); setResult(null);
+    setAnalyzeStartedAt(Date.now());
+    setAnalyzeElapsedSec(0);
     setAssignResult(null); setNewLeadIds([]); setImportDoneCounts(null); setPollData(null);
 
     const fd = new FormData();
@@ -262,11 +304,33 @@ export default function ImportPage() {
     if (campaignName.trim()) fd.append("campaignName", campaignName.trim());
     if (city.trim()) fd.append("city", city.trim());
 
-    const resp = await fetch("/api/import/upload", { method: "POST", body: fd });
-    const json = await resp.json();
-    setBusy(false);
-    if (!json.ok) { setError(json.error); return; }
-    setPreview({ ...json.data, campaignId: json.data.campaignId ?? null });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+
+    try {
+      const resp = await fetch("/api/import/upload", {
+        method: "POST",
+        body: fd,
+        signal: controller.signal,
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok) {
+        setError(json?.detail ?? json?.error ?? "L'analyse a échoué. Réessayez ou vérifiez le fichier XLSX.");
+        return;
+      }
+      setPendingPreview(null);
+      setPreview({ ...json.data, campaignId: json.data.campaignId ?? null });
+    } catch (err) {
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      setError(isAbort
+        ? "L'analyse dépasse 2 minutes. Le serveur peut encore terminer la prévisualisation; rafraîchissez la page dans une minute pour reprendre une prévisualisation en attente."
+        : "Connexion interrompue pendant l'analyse. Réessayez; si une prévisualisation a été créée, elle sera proposée au rechargement."
+      );
+    } finally {
+      clearTimeout(timeout);
+      setBusy(false);
+      setAnalyzeStartedAt(null);
+    }
   }
 
   async function onConfirm() {
@@ -348,9 +412,13 @@ export default function ImportPage() {
 
   // Progress bar helpers
   const totalRows = preview?.totalRows ?? pollData?.total_rows ?? 0;
-  const leadsProcessed = pollData?.leads_created ?? 0;
-  const progressPct = totalRows > 0 ? Math.min(100, Math.round((leadsProcessed / totalRows) * 100)) : 0;
+  const rowsProcessed = Math.min(
+    totalRows,
+    (pollData?.properties_created ?? 0) + (pollData?.properties_updated ?? 0),
+  );
+  const progressPct = totalRows > 0 ? Math.min(100, Math.round((rowsProcessed / totalRows) * 100)) : 0;
   const elapsedSec = confirmStartRef.current ? Math.round((Date.now() - confirmStartRef.current) / 1000) : 0;
+  const analyzeStageIndex = getAnalyzeStageIndex(analyzeElapsedSec);
 
   return (
     <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -441,6 +509,35 @@ export default function ImportPage() {
               </button>
             )}
           </div>
+          {busy && file && (
+            <div style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, background: "var(--crm-bg-alt)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--crm-text)" }}>
+                  <strong>{ANALYZE_STAGES[analyzeStageIndex].label}</strong>
+                  <span style={{ color: "var(--crm-text3)", marginLeft: 8 }}>
+                    {file.name} · {analyzeElapsedSec} s
+                  </span>
+                </p>
+                <span style={{ fontSize: 11, color: "var(--crm-text3)", whiteSpace: "nowrap" }}>
+                  ID import après prévisualisation
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
+                {ANALYZE_STAGES.map((stage, index) => (
+                  <div key={stage.label} style={{
+                    height: 4,
+                    borderRadius: 999,
+                    background: index <= analyzeStageIndex ? "var(--crm-gold)" : "var(--crm-card-border)",
+                  }} title={stage.label} />
+                ))}
+              </div>
+              {analyzeElapsedSec >= 20 && (
+                <p style={{ margin: 0, fontSize: 12, color: "var(--crm-text2)" }}>
+                  Toujours en cours. Les gros fichiers passent souvent plus de temps sur la vérification des doublons avant l&rsquo;affichage de la prévisualisation.
+                </p>
+              )}
+            </div>
+          )}
           {error && <p style={{ fontSize: 13, color: "var(--crm-red)" }}>{error}</p>}
         </form>
       )}
@@ -452,6 +549,7 @@ export default function ImportPage() {
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-text)", marginBottom: 4 }}>Prévisualisation</h2>
             <p style={{ fontSize: 12, color: "var(--crm-text3)" }}>
               Format : <code style={{ background: "var(--crm-bg-alt)", padding: "1px 5px", borderRadius: 4 }}>{preview.format}</code> · {preview.totalRows} lignes scannées
+              <span style={{ marginLeft: 8 }}>ID import : <code style={{ background: "var(--crm-bg-alt)", padding: "1px 5px", borderRadius: 4 }}>{preview.jobId.slice(0, 8)}</code></span>
               {!campaignName && (
                 <span style={{ marginLeft: 8, color: "var(--crm-amber)" }}>Aucun nom de campagne — les leads n&rsquo;auront pas de tag</span>
               )}
@@ -595,6 +693,11 @@ export default function ImportPage() {
       {confirming && (
         <div className="crm-card" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 16 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--crm-text)", margin: 0 }}>Import en cours…</h2>
+          {preview?.jobId && (
+            <p style={{ fontSize: 12, color: "var(--crm-text3)", margin: 0 }}>
+              ID import : <code style={{ background: "var(--crm-bg-alt)", padding: "1px 5px", borderRadius: 4 }}>{preview.jobId}</code>
+            </p>
+          )}
 
           {/* Progress bar */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -611,7 +714,7 @@ export default function ImportPage() {
               }} />
             </div>
             <p style={{ fontSize: 13, color: "var(--crm-text2)", margin: 0 }}>
-              {leadsProcessed} / {totalRows} leads
+              {rowsProcessed} / {totalRows} propriétés traitées
               {elapsedSec > 0 && (
                 <span style={{ color: "var(--crm-text3)", marginLeft: 12 }}>
                   Démarré il y a {elapsedSec} s
@@ -622,8 +725,10 @@ export default function ImportPage() {
 
           {pollData && (
             <p style={{ fontSize: 12, color: "var(--crm-text3)", margin: 0 }}>
-              {pollData.properties_created ?? 0} propriétés
-              {" · "}{pollData.contacts_created ?? 0} contacts
+              {pollData.properties_created ?? 0} propriétés créées
+              {" · "}{pollData.properties_updated ?? 0} mises à jour
+              {" · "}{pollData.contacts_created ?? 0} contacts créés
+              {" · "}{pollData.contacts_updated ?? 0} mis à jour
               {" · "}{pollData.leads_created ?? 0} leads
               {" · "}{pollData.phones_created ?? 0} téléphones
               {" · "}{pollData.errors_count ?? 0} erreurs
