@@ -1,7 +1,7 @@
 // NANP-only phone normalization. E.164 form: "+1XXXXXXXXXX" (12 chars total).
 
-const PHONE_TEXT_RE = /(?:\+?1[\s.\-]?)?\(?(\d{3})\)?[\s.\-]?(\d{3})[\s.\-]?(\d{4})\b/g;
-const PHONE_COMPACT_RE = /\b1?(\d{3})(\d{3})(\d{4})\b/g;
+const PHONE_TEXT_RE = /(?:^|[^\d])(?:\+?1[\s.\-]?)?\(?(\d{3})\)?[\s.\-]?(\d{3})[\s.\-]?(\d{4})\b/g;
+const PHONE_COMPACT_RE = /(?:^|[^\d])1?(\d{3})(\d{3})(\d{4})\b/g;
 const VALID_NANP_AREA = /^[2-9][0-8]\d$/;
 const VALID_NANP_EXCH = /^[2-9]\d\d$/;
 
@@ -9,6 +9,27 @@ const VALID_NANP_EXCH = /^[2-9]\d\d$/;
 const LOOKS_LIKE_MATRICULE = /^\s*\d{4}[\s\-]\d{2}[\s\-]\d{4}[\s\-]\d[\s\-]\d{3}[\s\-]\d{4}\s*$/;
 const LOOKS_LIKE_CADASTRE = /^\s*\d{11,}\s*$/;
 const LOOKS_LIKE_NUMBERED_CO = /^\s*\d{4}[\s\-]\d{4}\s+(?:qu[eé]bec|que|qc|inc)\b/i;
+
+function looksLikeHtml(value: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(value);
+}
+
+function textForPhoneExtraction(value: string): string {
+  if (!looksLikeHtml(value)) return value;
+
+  const telValues = [...value.matchAll(/tel:\s*([+()\d\s.\-]{7,25})/gi)]
+    .map((match) => match[1]);
+
+  const visibleText = value
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<[^>]+>/g, " ");
+
+  return [...telValues, visibleText].join(" ");
+}
 
 export function isValidNanp(area: string, exch: string, sub: string): boolean {
   return VALID_NANP_AREA.test(area) && VALID_NANP_EXCH.test(exch) && /^\d{4}$/.test(sub);
@@ -30,7 +51,8 @@ export function formatDisplay(e164: string): string {
  */
 export function extractPhonesFromValue(value: unknown): string[] {
   if (value === null || value === undefined) return [];
-  const txt = typeof value === "string" ? value : String(value);
+  const raw = typeof value === "string" ? value : String(value);
+  const txt = textForPhoneExtraction(raw);
   if (!txt.trim()) return [];
 
   // Bail out if the WHOLE string looks like something that isn't a phone
