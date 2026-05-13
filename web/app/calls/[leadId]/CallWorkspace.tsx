@@ -65,12 +65,16 @@ export default function CallWorkspace({
   userForwardTo,
   lead,
   callCount,
+  briefingText,
+  briefingGeneratedAt,
 }: {
   leadId: string;
   phones: Phone[];
   userForwardTo: string | null;
   lead: WorkspaceLead;
   callCount: number;
+  briefingText?: string | null;
+  briefingGeneratedAt?: string | null;
 }) {
   const router = useRouter();
   const { t } = useLocale();
@@ -431,6 +435,22 @@ export default function CallWorkspace({
       <div className="cw-grid">
         {/* LEFT — sticky on desktop ≥1180px */}
         <div className="cw-grid__left">
+          <PhoneActionCard
+            phones={phones}
+            selectedPhoneId={phoneId}
+            onSelectPhone={setPhoneId}
+            userForwardTo={userForwardTo}
+            callState={callState}
+            durationSec={durationSec}
+            callError={callError}
+            onTwilioCall={startCall}
+          />
+          <CallScriptCard
+            lead={lead}
+            ownerName={ownerName}
+            briefingText={briefingText ?? null}
+            briefingGeneratedAt={briefingGeneratedAt ?? null}
+          />
           <OwnerCard
             name={ownerName}
             statusKey={lead.status}
@@ -442,16 +462,6 @@ export default function CallWorkspace({
             address={lead.address}
             city={lead.city}
             units={lead.num_units}
-          />
-          <PhoneActionCard
-            phones={phones}
-            selectedPhoneId={phoneId}
-            onSelectPhone={setPhoneId}
-            userForwardTo={userForwardTo}
-            callState={callState}
-            durationSec={durationSec}
-            callError={callError}
-            onTwilioCall={startCall}
           />
         </div>
 
@@ -536,4 +546,82 @@ function Icon({ name, size = 14 }: { name: string; size?: number }) {
     chevronLeft: <path d="M15 18l-6-6 6-6" />,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{paths[name]}</svg>;
+}
+
+function CallScriptCard({
+  lead,
+  ownerName,
+  briefingText,
+  briefingGeneratedAt,
+}: {
+  lead: WorkspaceLead;
+  ownerName: string;
+  briefingText: string | null;
+  briefingGeneratedAt: string | null;
+}) {
+  const question = extractSuggestedQuestion(briefingText);
+  const reason = firstReadableSentence(briefingText) ?? [
+    lead.num_units != null ? `${lead.num_units} logements` : null,
+    lead.city ? `à ${lead.city}` : null,
+    lead.campaign_name ? `campagne ${lead.campaign_name}` : null,
+  ].filter(Boolean).join(" · ");
+  const opener = `Bonjour, je cherche à joindre ${ownerName} au sujet du ${lead.address}${lead.city ? ` à ${lead.city}` : ""}.`;
+
+  return (
+    <section className="cw-script-card" aria-label="Script d'appel">
+      <div className="cw-script-card__head">
+        <div>
+          <div className="cw-script-card__eyebrow">Script rapide</div>
+          <h3 className="cw-script-card__title">À dire au téléphone</h3>
+        </div>
+        <span className="cw-script-card__time">
+          {briefingGeneratedAt ? relativeBriefingTime(briefingGeneratedAt) : "—"}
+        </span>
+      </div>
+      <div className="cw-script-card__steps">
+        <ScriptLine n="1" label="Ouverture" text={opener} />
+        <ScriptLine n="2" label="Contexte" text={reason || "—"} />
+        <ScriptLine n="3" label="Question" text={question ?? "—"} strong />
+      </div>
+    </section>
+  );
+}
+
+function ScriptLine({ n, label, text, strong = false }: { n: string; label: string; text: string; strong?: boolean }) {
+  return (
+    <div className="cw-script-line">
+      <span className="cw-script-line__n">{n}</span>
+      <div>
+        <div className="cw-script-line__label">{label}</div>
+        <div className={`cw-script-line__text${strong ? " cw-script-line__text--strong" : ""}`}>{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function extractSuggestedQuestion(text: string | null): string | null {
+  if (!text) return null;
+  const match = text.match(/Question suggérée\s*:\s*([\s\S]+)/i);
+  if (!match?.[1]) return null;
+  return match[1].trim().split(/\n{2,}/)[0]?.trim() || null;
+}
+
+function firstReadableSentence(text: string | null): string | null {
+  if (!text) return null;
+  const withoutQuestion = text.replace(/Question suggérée\s*:[\s\S]*/i, "").trim();
+  const first = withoutQuestion.split(/\n{2,}|(?<=[.!?])\s+/).find((part) => part.trim().length > 20);
+  if (!first) return null;
+  return first.trim().replace(/\s+/g, " ");
+}
+
+function relativeBriefingTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  const hrs = Math.floor(diffMs / 3_600_000);
+  const days = Math.floor(diffMs / 86_400_000);
+  if (mins < 2) return "à l'instant";
+  if (mins < 60) return `${mins} min`;
+  if (hrs < 24) return `${hrs}h`;
+  if (days === 1) return "hier";
+  return `${days}j`;
 }

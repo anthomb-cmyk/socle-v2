@@ -4,7 +4,6 @@ import CallerAppShell from "@/components/caller/CallerAppShell";
 import CallWorkspace from "./CallWorkspace";
 import CallHistoryPanel from "./CallHistoryPanel";
 import CallPageTabs from "./CallPageTabs";
-import LeadBriefingCard from "@/components/lead-briefing-card";
 
 export default async function CallLeadPage(
   { params }: { params: Promise<{ leadId: string }> }
@@ -102,13 +101,6 @@ export default async function CallLeadPage(
             : "Cette adresse postale est incomplète. Corrigez le fichier source et réimportez."}
         </div>
       )}
-      <div style={{ padding: "0 0 0 0" }}>
-        <LeadBriefingCard
-          leadId={leadId}
-          initialText={briefingRow?.briefing_text ?? null}
-          initialGeneratedAt={briefingRow?.briefing_generated_at ?? null}
-        />
-      </div>
       <CallPageTabs historyCount={history.length}>
         <CallWorkspace
           leadId={leadId}
@@ -116,6 +108,8 @@ export default async function CallLeadPage(
           userForwardTo={userForwardTo}
           lead={lead as Parameters<typeof CallWorkspace>[0]["lead"]}
           callCount={history.length}
+          briefingText={briefingRow?.briefing_text ?? null}
+          briefingGeneratedAt={briefingRow?.briefing_generated_at ?? null}
         />
         <CallHistoryPanel history={history} />
       </CallPageTabs>
