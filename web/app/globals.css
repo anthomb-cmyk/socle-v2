@@ -4951,6 +4951,114 @@ html, body {
   border-radius: 6px;
   border: 1px solid var(--border-soft);
 }
+.dash-geo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dash-geo-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.dash-geo-panel__stats > div {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--bg-alt);
+}
+.dash-geo-panel__stats span {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.dash-geo-panel__stats strong {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink);
+}
+.dash-geo-panel__cities,
+.dash-geo-panel__deals {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.dash-geo-city,
+.dash-geo-deal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+.dash-geo-city:first-child,
+.dash-geo-deal:first-child { border-top: 0; }
+.dash-geo-city strong,
+.dash-geo-deal strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-geo-city span,
+.dash-geo-deal small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-geo-city em,
+.dash-geo-deal em {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--gold-deep);
+  white-space: nowrap;
+}
+.dash-geo-panel__empty {
+  padding: 18px 12px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  text-align: center;
+}
+.dash-geo-deal {
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  color: var(--ink);
+  text-decoration: none;
+}
+.dash-geo-deal:hover {
+  background: var(--gold-soft);
+}
+.dash-geo-deal__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow: 0 0 0 4px oklch(0.62 0.10 78 / .16);
+}
+.dash-geo-deal__dot--hot {
+  background: var(--red);
+  box-shadow: 0 0 0 4px oklch(0.53 0.17 25 / .18);
+}
 .dash-act-list {
   display: flex;
   flex-direction: column;

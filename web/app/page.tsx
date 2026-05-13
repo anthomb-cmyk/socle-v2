@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import KpiTile           from "@/app/components/dashboard/KpiTile";
 
@@ -48,7 +47,7 @@ export default async function Home() {
     recentCalls, urgentItems, urgentHeroItems,
     leadRows7d, phoneRows7d, callRows7d, reviewRows7d, followRows7d,
     allLeads, allPhones, allCallsForFunnel, submissions, meetings, closedDeals,
-    hotCityRows, userMeta, costRowsMonth, costRows7d, monthHotSubmissions,
+    dashboardDeals, userMeta, costRowsMonth, costRows7d, monthHotSubmissions,
     teamUsers, teamCallRows, teamSubmissionRows,
   ] = await Promise.all([
     sb.from("review_items").select("id", { count: "exact", head: true }).eq("status", "open"),
@@ -93,10 +92,10 @@ export default async function Home() {
     sb.from("lead_submissions").select("id, lead_id, outcome, seller_interest_level, status").limit(10000),
     sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "meeting_set"),
     sb.from("deals").select("id", { count: "exact", head: true }).eq("stage", "cloture"),
-    sb.from("leads_view")
-      .select("lead_id, city, priority, status")
-      .or("priority.gte.80,status.in.(ready_to_call,phone_verified,in_outreach)")
-      .order("priority", { ascending: false })
+    sb.from("deals")
+      .select("id,title,stage,address,units,asking_price,temperature,updated_at")
+      .not("stage", "in", '("cloture","abandonne")')
+      .order("updated_at", { ascending: false })
       .limit(80),
     sb.from("users_meta")
       .select("display_name")
@@ -161,6 +160,16 @@ export default async function Home() {
   type TeamUser = { user_id: string; display_name: string | null; role: string | null };
   type TeamCall = { id: string; user_id: string | null; outcome: string | null; recorded_at: string };
   type TeamSubmission = { id: string; submitted_by: string | null; seller_interest_level: string | null; outcome: string | null; created_at: string };
+  type DashboardDeal = {
+    id: string;
+    title: string;
+    stage: string;
+    address: string | null;
+    units: number | null;
+    asking_price: number | null;
+    temperature: string | null;
+    updated_at: string;
+  };
 
   const imports  = (recentImports.data  ?? []) as ImportJob[];
   const failures = (recentFailures.data ?? []) as AutoEvent[];
@@ -197,7 +206,7 @@ export default async function Home() {
     reviewItems: allItems,
     failures,
   });
-  const cityDots = buildCityDots((hotCityRows.data ?? []) as Array<{ city: string | null; priority: number | null; status: string | null }>);
+  const geoSummary = buildGeoSummary((dashboardDeals.data ?? []) as DashboardDeal[]);
   const team = buildTeamRows({
     users: (teamUsers.data ?? []) as TeamUser[],
     calls: (teamCallRows.data ?? []) as TeamCall[],
@@ -293,7 +302,7 @@ export default async function Home() {
             <TeamPanel rows={team} />
           </div>
           <div className="dash-stack">
-            <HotLeadMap cities={cityDots} />
+            <PipelineGeoPanel geo={geoSummary} />
             <UnifiedActivity items={activity} />
           </div>
         </div>
@@ -305,8 +314,19 @@ export default async function Home() {
 
 type FunnelStep = { label: string; value: number };
 type ActivityItem = { id: string; label: string; detail: string; at: string; tone: "gold" | "green" | "red" | "neutral" };
-type CityDot = { city: string; count: number; intensity: number; tone: "hot" | "warm"; x: number; y: number };
 type TeamRow = { id: string; initials: string; name: string; role: string; calls: number; reached: number; hot: number; self: boolean };
+type GeoDeal = {
+  id: string;
+  title: string;
+  stage: string;
+  address: string | null;
+  units: number | null;
+  asking_price: number | null;
+  temperature: string | null;
+  updated_at: string;
+};
+type GeoCity = { city: string; count: number; value: number; hot: number };
+type GeoSummary = { total: number; addressed: number; totalValue: number; cities: GeoCity[]; deals: GeoDeal[] };
 
 function dailyCounts<T extends Record<string, string>>(rows: T[], key: keyof T, now: Date) {
   const days = Array.from({ length: 7 }, (_, index) => {
@@ -367,30 +387,6 @@ function buildActivity(input: {
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 10);
 }
 
-function buildCityDots(rows: Array<{ city: string | null; priority: number | null; status: string | null }>): CityDot[] {
-  const counts = new Map<string, { count: number; priority: number; hot: boolean }>();
-  for (const row of rows) {
-    const city = row.city ?? "—";
-    const current = counts.get(city) ?? { count: 0, priority: 0, hot: false };
-    counts.set(city, {
-      count: current.count + 1,
-      priority: Math.max(current.priority, row.priority ?? 0),
-      hot: current.hot || (row.priority ?? 0) >= 80,
-    });
-  }
-  return [...counts.entries()]
-    .map(([city, value], index) => ({
-      city,
-      count: value.count,
-      intensity: value.priority,
-      tone: value.hot ? "hot" as const : "warm" as const,
-      x: 24 + (index * 19) % 56,
-      y: 28 + (index * 23) % 48,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-}
-
 function buildTeamRows(input: {
   users: Array<{ user_id: string; display_name: string | null; role: string | null }>;
   calls: Array<{ id: string; user_id: string | null; outcome: string | null }>;
@@ -428,6 +424,43 @@ function buildTeamRows(input: {
     .filter((row) => row.calls > 0 || row.hot > 0 || row.self)
     .sort((a, b) => (b.hot - a.hot) || (b.calls - a.calls))
     .slice(0, 4);
+}
+
+function buildGeoSummary(deals: GeoDeal[]): GeoSummary {
+  const active = deals.filter((deal) => deal.stage !== "cloture" && deal.stage !== "abandonne");
+  const cityMap = new Map<string, GeoCity>();
+  for (const deal of active) {
+    if (!deal.address) continue;
+    const city = extractCity(deal.address);
+    const row = cityMap.get(city) ?? { city, count: 0, value: 0, hot: 0 };
+    row.count += 1;
+    row.value += deal.asking_price ?? 0;
+    if (deal.temperature === "chaud") row.hot += 1;
+    cityMap.set(city, row);
+  }
+
+  return {
+    total: active.length,
+    addressed: active.filter((deal) => Boolean(deal.address)).length,
+    totalValue: active.reduce((sum, deal) => sum + (deal.asking_price ?? 0), 0),
+    cities: [...cityMap.values()]
+      .sort((a, b) => (b.value - a.value) || (b.count - a.count))
+      .slice(0, 4),
+    deals: active
+      .filter((deal) => Boolean(deal.address))
+      .sort((a, b) => {
+        const hotDiff = Number(b.temperature === "chaud") - Number(a.temperature === "chaud");
+        if (hotDiff !== 0) return hotDiff;
+        return (b.asking_price ?? 0) - (a.asking_price ?? 0);
+      })
+      .slice(0, 3),
+  };
+}
+
+function extractCity(address: string): string {
+  const parts = address.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) return parts[parts.length - 2].replace(/\s+Québec$/i, "");
+  return parts[0] ?? "—";
 }
 
 function FunnelPanel({ steps }: { steps: FunnelStep[] }) {
@@ -485,28 +518,56 @@ function UnifiedActivity({ items }: { items: ActivityItem[] }) {
   );
 }
 
-function HotLeadMap({ cities }: { cities: CityDot[] }) {
+function PipelineGeoPanel({ geo }: { geo: GeoSummary }) {
   return (
     <section className="dash-ref-card">
       <div className="dash-ref-card__h">
-        <div className="dash-ref-card__t">Géographie · leads chauds</div>
+        <div className="dash-ref-card__t">Géographie · pipeline</div>
         <Link href="/map" className="dash-ref-card__link">Carte complète <Icon name="arrow" /></Link>
       </div>
-      {cities.length === 0 ? <div className="dash-decision-empty">—</div> : (
-        <div className="dash-hot-map">
-          <div className="dash-hot-map__label">
-            <span><span className="heat heat--hot" />Hot</span>
-            <span><span className="heat heat--warm" />À appeler</span>
+      {geo.total === 0 ? <div className="dash-decision-empty">—</div> : (
+        <div className="dash-geo-panel">
+          <div className="dash-geo-panel__stats">
+            <div>
+              <span>Deals actifs</span>
+              <strong>{geo.total}</strong>
+            </div>
+            <div>
+              <span>Avec adresse</span>
+              <strong>{geo.addressed}/{geo.total}</strong>
+            </div>
+            <div>
+              <span>Valeur</span>
+              <strong>{formatMoney(geo.totalValue)}</strong>
+            </div>
           </div>
-          {cities.map((city) => (
-            <span
-              key={city.city}
-              className={`dash-hot-map__dot dash-hot-map__dot--${city.tone}`}
-              style={{ "--x": `${city.x}%`, "--y": `${city.y}%` } as CSSProperties}
-              title={`${city.city} · ${city.count}`}
-            />
-          ))}
-          <div className="dash-hot-map__place">{cities[0]?.city ?? "—"}</div>
+
+          <div className="dash-geo-panel__cities">
+            {geo.cities.length === 0 ? (
+              <div className="dash-geo-panel__empty">Aucune adresse renseignée</div>
+            ) : geo.cities.map((city) => (
+              <div key={city.city} className="dash-geo-city">
+                <div>
+                  <strong>{city.city}</strong>
+                  <span>{city.count} deal{city.count > 1 ? "s" : ""}{city.hot > 0 ? ` · ${city.hot} chaud${city.hot > 1 ? "s" : ""}` : ""}</span>
+                </div>
+                <em>{formatMoney(city.value)}</em>
+              </div>
+            ))}
+          </div>
+
+          <div className="dash-geo-panel__deals">
+            {geo.deals.map((deal) => (
+              <Link key={deal.id} href={`/pipeline/${deal.id}` as never} className="dash-geo-deal">
+                <span className={`dash-geo-deal__dot dash-geo-deal__dot--${deal.temperature === "chaud" ? "hot" : "warm"}`} />
+                <span>
+                  <strong>{deal.title}</strong>
+                  <small>{deal.address ?? "—"}</small>
+                </span>
+                <em>{deal.units != null ? `${deal.units} log.` : "—"}</em>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
     </section>
