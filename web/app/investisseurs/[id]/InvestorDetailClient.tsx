@@ -130,24 +130,37 @@ export default function InvestorDetailClient({
   const [tab, setTab] = useState<"calls" | "deals" | "notes" | "edit">("calls");
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <header className="mb-6">
-        <Link href={"/investisseurs" as never} className="text-sm text-zinc-500 hover:underline">
-          ← Investisseurs
+    <main className="socle-page">
+      <header>
+        <Link href={"/investisseurs" as never} className="btn btn--ghost btn--sm">
+          <Icon name="chevronLeft" />Investisseurs
         </Link>
-        <div className="mt-2 flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold">{investor.full_name}</h1>
+        <section className="investor-hero">
+          <div className="investor-hero__avatar">{initials(investor.full_name)}</div>
+          <div className="investor-hero__body">
+            <div className="investor-hero__pills">
+              <InvestorStatus status={investor.status} />
+              <span className="pill pill--brand">Co-invest LP</span>
+            </div>
+          <h1 className="investor-hero__name">{investor.full_name}</h1>
           {investor.firm_name && (
-            <span className="text-base text-zinc-500">— {investor.firm_name}</span>
+            <div className="investor-hero__firm">{investor.firm_name}{investor.city && <> · <em>{investor.city}</em></>}</div>
           )}
-          <span className="ml-auto text-xs uppercase tracking-wide rounded px-1.5 py-0.5 bg-zinc-100">
-            {investor.status}
-          </span>
-        </div>
+          <div className="investor-hero__contact">
+            {investor.email && <a href={`mailto:${investor.email}`}><Icon name="mail" />{investor.email}</a>}
+            {investor.phone_e164 && <a href={`tel:${investor.phone_e164.replace(/\D/g, "")}`} className="mono"><Icon name="phone" />{investor.phone_e164}</a>}
+            {investor.source && <span>Source · {investor.source}</span>}
+          </div>
+          </div>
+          <div className="socle-head-actions">
+            <button className="btn btn--primary" type="button">Trouver un deal</button>
+            <button className="btn" type="button">Lier un deal</button>
+          </div>
+        </section>
         <SummaryGrid investor={investor} />
       </header>
 
-      <nav className="flex gap-1 border-b border-zinc-200 mb-4">
+      <nav className="tabs">
         {(
           [
             ["calls", "Appels"],
@@ -160,11 +173,7 @@ export default function InvestorDetailClient({
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm border-b-2 ${
-              tab === key
-                ? "border-zinc-900 font-semibold text-zinc-900"
-                : "border-transparent text-zinc-500 hover:text-zinc-800"
-            }`}
+            className={`tab ${tab === key ? "tab--active" : ""}`}
           >
             {label}
           </button>
@@ -194,8 +203,8 @@ function SummaryGrid({ investor }: { investor: Investor }) {
       ? `≥ ${fmtMoney(investor.ticket_size_min_cad)}`
       : "—";
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
-      <Stat label="Capital dispo" value={fmtMoney(investor.capital_available_cad)} />
+    <div className="kpi-strip">
+      <Stat hero label="Capital dispo" value={fmtMoney(investor.capital_available_cad)} />
       <Stat label="Ticket" value={ticket} />
       <Stat label="Focus" value={investor.asset_class_focus ?? "—"} />
       <Stat label="Géographie" value={investor.preferred_geography ?? "—"} />
@@ -207,13 +216,41 @@ function SummaryGrid({ investor }: { investor: Investor }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, hero }: { label: string; value: string; hero?: boolean }) {
   return (
-    <div className="bg-white rounded-xl border border-zinc-200 p-3">
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="text-sm mt-0.5">{value}</div>
+    <div className={`ki ${hero ? "ki--hero" : ""}`}>
+      <div className="ki__l">{label}</div>
+      <div className="ki__v">{value}</div>
     </div>
   );
+}
+
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "LP";
+}
+
+function InvestorStatus({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    active: { label: "Actif", cls: "pill--ready" },
+    prospect: { label: "Prospect", cls: "pill--review" },
+    inactive: { label: "Inactif", cls: "pill--cold" },
+    lost: { label: "Perdu", cls: "pill--hot" },
+  };
+  const item = map[status] ?? { label: status, cls: "pill--cold" };
+  return <span className={`pill ${item.cls}`}><span className="pill__dot" />{item.label}</span>;
+}
+
+function Icon({ name, size = 14 }: { name: string; size?: number }) {
+  const paths: Record<string, React.ReactNode> = {
+    arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+    chevronLeft: <path d="M15 18l-6-6 6-6" />,
+    mail: <path d="M4 6h16v12H4zM4 7l8 6 8-6" />,
+    phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />,
+    check: <path d="M20 6L9 17l-5-5" />,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    map: <path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3zM9 3v15M15 6v15" />,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{paths[name]}</svg>;
 }
 
 // ── Calls tab ──────────────────────────────────────────────────────────────
@@ -549,14 +586,15 @@ function DealsTab({ investorId }: { investorId: string }) {
   useEffect(() => { reload(); }, [reload]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
+    <div className="lead-grid" style={{ padding: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
           type="button"
           onClick={() => setShowNew((v) => !v)}
-          className="text-sm border border-zinc-300 rounded-lg px-3 py-1.5 hover:bg-zinc-50"
+          className="btn"
         >
-          {showNew ? "Annuler" : "+ Lier un deal"}
+          {showNew ? "Annuler" : "Lier un deal"}
         </button>
       </div>
       {showNew && (
@@ -566,9 +604,9 @@ function DealsTab({ investorId }: { investorId: string }) {
         />
       )}
 
-      {loading && <div className="text-zinc-400 text-sm p-4">Chargement…</div>}
+      {loading && <div className="crm-empty-state">Chargement…</div>}
       {!loading && deals.length === 0 && (
-        <div className="text-zinc-400 text-sm p-8 bg-white rounded-2xl border border-zinc-200 text-center">
+        <div className="crm-empty-state card">
           Aucun deal pour cet investisseur.
         </div>
       )}
@@ -576,6 +614,18 @@ function DealsTab({ investorId }: { investorId: string }) {
       {deals.map((d) => (
         <DealCard key={d.id} deal={d} investorId={investorId} onChange={reload} />
       ))}
+      </div>
+      <aside className="match-panel">
+        <div className="panel__h">
+          <div className="panel__t">Matching</div>
+          <span className="pill pill--brand">{deals.length} liés</span>
+        </div>
+        <div className="outcome-list">
+          <button className="out-btn out-btn--pos" type="button"><span className="out-btn__i"><Icon name="check" /></span>Ticket compatible</button>
+          <button className="out-btn out-btn--neu" type="button"><span className="out-btn__i"><Icon name="map" /></span>Géographie cible</button>
+          <button className="out-btn out-btn--neg" type="button"><span className="out-btn__i"><Icon name="clock" /></span>À relancer</button>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -840,35 +890,31 @@ function DealCard({
   }
 
   return (
-    <article className="bg-white rounded-2xl border border-zinc-200 p-4">
-      <header className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-lg leading-tight">{deal.deal_name}</h3>
-          {pipeline && (
-            <Link
-              href={`/pipeline/${pipeline.id}` as never}
-              className="mt-1 inline-block text-sm text-zinc-700 underline"
-            >
-              Ouvrir le deal pipeline
-            </Link>
-          )}
-        </div>
+    <article className="deal-card">
+      <header className="deal-card__head">
         <select
           value={stage}
           onChange={(e) => updateStage(e.target.value)}
-          className="text-xs border border-zinc-300 rounded px-1.5 py-1"
+          className="deal-stage-select"
+          aria-label="Stade du deal"
         >
           {Object.entries(STAGE_LABELS).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
-        <button onClick={remove} type="button" className="text-xs text-red-500 hover:text-red-700">
-          Supprimer
-        </button>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h3 className="deal-card__title">{deal.deal_name}</h3>
+          {pipeline && (
+            <div className="deal-card__title__sub">
+              {[pipeline.address, pipeline.units ? `${pipeline.units} logements` : null].filter(Boolean).join(" · ")}
+            </div>
+          )}
+        </div>
+        <span className="deal-card__temp">{pipeline?.temperature ?? "Tiède"}{pipeline?.priority ? ` · ${pipeline.priority}` : ""}</span>
       </header>
 
       {pipeline && (
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+        <div className="deal-card__price-row">
           <DealStat label="Adresse" value={pipeline.address ?? "—"} />
           <DealStat label="Portes" value={pipeline.units != null ? String(pipeline.units) : "—"} />
           <DealStat label="Prix demandé" value={fmtMoney(pipeline.asking_price)} />
@@ -880,64 +926,56 @@ function DealCard({
         </div>
       )}
 
-      <div className="mt-3 text-sm text-zinc-600 flex flex-wrap gap-x-4 gap-y-2">
-        {deal.properties && (
-          <span>
-            Propriété :{" "}
-            <Link
-              href={`/properties/${deal.properties.id}` as never}
-              className="text-zinc-900 underline"
-            >
-              {deal.properties.address ?? "—"}
-            </Link>
-          </span>
-        )}
-        {deal.expected_close_at && (
-          <span>Clôture prévue : {deal.expected_close_at}</span>
-        )}
-        {deal.probability_pct != null && <span>Probabilité : {deal.probability_pct}%</span>}
-      </div>
-
-      {pipeline && (pipeline.contact_name || pipeline.contact_phone || pipeline.contact_email) && (
-        <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Contact vendeur</div>
-          <div className="mt-1 text-zinc-800">
-            {[pipeline.contact_name, pipeline.contact_phone, pipeline.contact_email].filter(Boolean).join(" · ")}
+      <div className="deal-card__body">
+        <div className="deal-card__contact">
+          <div className="deal-card__notes-h">Contact vendeur</div>
+          <div className="deal-card__contact__name">{pipeline?.contact_name ?? "—"}</div>
+          <div className="deal-card__contact__data mono">
+            {[pipeline?.contact_phone, pipeline?.contact_email].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
-      )}
+        <div>
+          {pipeline?.next_action && (
+            <>
+              <div className="deal-card__notes-h">Prochaine action</div>
+              <p className="deal-card__notes">{pipeline.next_action}</p>
+            </>
+          )}
 
-      {pipeline?.next_action && (
-        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
-          <div className="text-xs uppercase tracking-wide text-blue-700">Prochaine action</div>
-          <div className="mt-1">{pipeline.next_action}</div>
+          {pipeline?.notes_deal && (
+            <>
+              <div className="deal-card__notes-h" style={{ marginTop: 14 }}>Notes du deal</div>
+              <p className="deal-card__notes">{pipeline.notes_deal}</p>
+            </>
+          )}
+
+          {pipeline?.notes_vendeur && (
+            <>
+              <div className="deal-card__notes-h" style={{ marginTop: 14 }}>Notes vendeur</div>
+              <p className="deal-card__notes">{pipeline.notes_vendeur}</p>
+            </>
+          )}
+          {deal.notes && <p className="deal-card__notes">{deal.notes}</p>}
         </div>
-      )}
+      </div>
 
-      {pipeline?.notes_deal && (
-        <div className="mt-3 text-sm">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Notes deal</div>
-          <p className="mt-1 whitespace-pre-wrap text-zinc-700">{pipeline.notes_deal}</p>
-        </div>
-      )}
-
-      {pipeline?.notes_vendeur && (
-        <div className="mt-3 text-sm">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Notes vendeur</div>
-          <p className="mt-1 whitespace-pre-wrap text-zinc-700">{pipeline.notes_vendeur}</p>
-        </div>
-      )}
-
-      {deal.notes && <p className="mt-2 text-sm whitespace-pre-wrap">{deal.notes}</p>}
+      <footer className="deal-card__foot" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {pipeline ? (
+          <Link href={`/pipeline/${pipeline.id}` as never}>Ouvrir le deal pipeline <Icon name="arrowRight" /></Link>
+        ) : <span className="socle-muted">Deal manuel</span>}
+        <button onClick={remove} type="button" className="btn btn--ghost btn--sm">
+          Supprimer
+        </button>
+      </footer>
     </article>
   );
 }
 
 function DealStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="mt-1 truncate text-zinc-900">{value}</div>
+    <div className="ki">
+      <div className="ki__l">{label}</div>
+      <div className="ki__v">{value}</div>
     </div>
   );
 }
