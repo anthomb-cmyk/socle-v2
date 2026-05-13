@@ -445,9 +445,8 @@ export default function CallWorkspace({
             callError={callError}
             onTwilioCall={startCall}
           />
-          <CallScriptCard
+          <BuildingFactsCard
             lead={lead}
-            ownerName={ownerName}
             briefingText={briefingText ?? null}
             briefingGeneratedAt={briefingGeneratedAt ?? null}
           />
@@ -548,40 +547,38 @@ function Icon({ name, size = 14 }: { name: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{paths[name]}</svg>;
 }
 
-function CallScriptCard({
+function BuildingFactsCard({
   lead,
-  ownerName,
   briefingText,
   briefingGeneratedAt,
 }: {
   lead: WorkspaceLead;
-  ownerName: string;
   briefingText: string | null;
   briefingGeneratedAt: string | null;
 }) {
-  const question = extractSuggestedQuestion(briefingText);
-  const reason = firstReadableSentence(briefingText) ?? [
-    lead.num_units != null ? `${lead.num_units} logements` : null,
-    lead.city ? `à ${lead.city}` : null,
-    lead.campaign_name ? `campagne ${lead.campaign_name}` : null,
-  ].filter(Boolean).join(" · ");
-  const opener = `Bonjour, je cherche à joindre ${ownerName} au sujet du ${lead.address}${lead.city ? ` à ${lead.city}` : ""}.`;
+  const context = firstReadableSentence(briefingText);
+  const builtYear = extractBuiltYear(briefingText);
+  const evaluation = lead.evaluation_total != null ? formatCadCompact(lead.evaluation_total) : "—";
 
   return (
-    <section className="cw-script-card" aria-label="Script d'appel">
+    <section className="cw-script-card" aria-label="Informations bâtiment">
       <div className="cw-script-card__head">
         <div>
-          <div className="cw-script-card__eyebrow">Script rapide</div>
-          <h3 className="cw-script-card__title">À dire au téléphone</h3>
+          <div className="cw-script-card__eyebrow">Infos bâtiment</div>
+          <h3 className="cw-script-card__title">À savoir avant d&apos;appeler</h3>
         </div>
         <span className="cw-script-card__time">
           {briefingGeneratedAt ? relativeBriefingTime(briefingGeneratedAt) : "—"}
         </span>
       </div>
       <div className="cw-script-card__steps">
-        <ScriptLine n="1" label="Ouverture" text={opener} />
-        <ScriptLine n="2" label="Contexte" text={reason || "—"} />
-        <ScriptLine n="3" label="Question" text={question ?? "—"} strong />
+        <ScriptLine n="1" label="Adresse" text={`${lead.address}${lead.city ? `, ${lead.city}` : ""}`} strong />
+        <ScriptLine n="2" label="Bâtiment" text={[
+          lead.num_units != null ? `${lead.num_units} logements` : null,
+          builtYear ? `construit en ${builtYear}` : null,
+          evaluation !== "—" ? `évalué à ${evaluation}` : null,
+        ].filter(Boolean).join(" · ") || "—"} />
+        <ScriptLine n="3" label="Contexte factuel" text={context ?? "—"} />
       </div>
     </section>
   );
@@ -599,19 +596,24 @@ function ScriptLine({ n, label, text, strong = false }: { n: string; label: stri
   );
 }
 
-function extractSuggestedQuestion(text: string | null): string | null {
-  if (!text) return null;
-  const match = text.match(/Question suggérée\s*:\s*([\s\S]+)/i);
-  if (!match?.[1]) return null;
-  return match[1].trim().split(/\n{2,}/)[0]?.trim() || null;
-}
-
 function firstReadableSentence(text: string | null): string | null {
   if (!text) return null;
   const withoutQuestion = text.replace(/Question suggérée\s*:[\s\S]*/i, "").trim();
   const first = withoutQuestion.split(/\n{2,}|(?<=[.!?])\s+/).find((part) => part.trim().length > 20);
   if (!first) return null;
   return first.trim().replace(/\s+/g, " ");
+}
+
+function extractBuiltYear(text: string | null): string | null {
+  if (!text) return null;
+  const match = text.match(/\b(?:construit(?:e)?|construction|b[âa]ti(?:e)?)\D{0,18}(19[4-9]\d|20[0-2]\d)\b/i);
+  return match?.[1] ?? null;
+}
+
+function formatCadCompact(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".0", "")} M$`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)} k$`;
+  return `${value.toLocaleString("fr-CA")} $`;
 }
 
 function relativeBriefingTime(iso: string): string {
