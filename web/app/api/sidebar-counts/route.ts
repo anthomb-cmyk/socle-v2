@@ -22,20 +22,20 @@ export async function GET() {
     proposedActionsRes,
     hotSellersRes,
   ] = await Promise.all([
-    sb.from("leads").select("id", { count: "exact", head: true }),
-    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),
+    sb.from("leads").select("id", { count: "planned", head: true }),
+    sb.from("leads").select("id", { count: "planned", head: true }).eq("status", "ready_to_call"),
     sb.from("phone_candidates")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "planned", head: true })
       .eq("candidate_status", "needs_anthony_review"),
     sb.from("review_items")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending"),
+      .select("id", { count: "planned", head: true })
+      .eq("status", "open"),
     sb.from("proposed_actions")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "planned", head: true })
       .eq("status", "pending"),
     // lead_submissions may not exist; catch gracefully
     sb.from("lead_submissions")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "planned", head: true })
       .eq("status", "pending"),
   ]);
 

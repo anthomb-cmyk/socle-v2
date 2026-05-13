@@ -46,7 +46,7 @@ export default async function Home() {
     recentImports, recentFailures, latestCampaign,
     recentCalls, urgentItems, urgentHeroItems,
     leadRows7d, phoneRows7d, callRows7d, reviewRows7d, followRows7d,
-    allLeads, allPhones, allCallsForFunnel, submissions, meetings, closedDeals,
+    allLeadsCount, allPhonesCount, allCallsCount, reachedCallsCount, hotSubmissionsCount, meetings, closedDeals,
     dashboardDeals, userMeta, costRowsMonth, costRows7d, monthHotSubmissions,
     teamUsers, teamCallRows, teamSubmissionRows,
   ] = await Promise.all([
@@ -86,10 +86,16 @@ export default async function Home() {
     sb.from("call_logs").select("id, lead_id, outcome, recorded_at").gte("recorded_at", weekAgo.toISOString()),
     sb.from("review_items").select("id, created_at, urgency").eq("status", "open").gte("created_at", weekAgo.toISOString()),
     sb.from("follow_ups").select("id, due_at").eq("status", "pending").gte("due_at", weekAgo.toISOString()),
-    sb.from("leads").select("id, status"),
-    sb.from("leads_view").select("lead_id, best_phone").not("best_phone", "is", null),
-    sb.from("call_logs").select("lead_id, outcome").not("lead_id", "is", null).limit(10000),
-    sb.from("lead_submissions").select("id, lead_id, outcome, seller_interest_level, status").limit(10000),
+    sb.from("leads").select("id", { count: "planned", head: true }),
+    sb.from("leads_view").select("lead_id", { count: "planned", head: true }).not("best_phone", "is", null),
+    sb.from("call_logs").select("id", { count: "planned", head: true }).not("lead_id", "is", null),
+    sb.from("call_logs")
+      .select("id", { count: "planned", head: true })
+      .not("lead_id", "is", null)
+      .in("outcome", ["answered", "callback", "open_to_selling", "wants_offer", "hot_seller"]),
+    sb.from("lead_submissions")
+      .select("id", { count: "planned", head: true })
+      .or("outcome.eq.hot_seller,seller_interest_level.in.(hot,wants_offer)"),
     sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "meeting_set"),
     sb.from("deals").select("id", { count: "exact", head: true }).eq("stage", "cloture"),
     sb.from("deals")
@@ -118,12 +124,12 @@ export default async function Home() {
       .select("id,user_id,outcome,recorded_at")
       .gte("recorded_at", weekAgo.toISOString())
       .not("user_id", "is", null)
-      .limit(10000),
+      .limit(2500),
     sb.from("lead_submissions")
       .select("id,submitted_by,seller_interest_level,outcome,created_at")
       .or("outcome.eq.hot_seller,seller_interest_level.in.(hot,wants_offer)")
       .gte("created_at", weekAgo.toISOString())
-      .limit(10000),
+      .limit(1000),
   ]);
 
   const c = {
@@ -193,10 +199,11 @@ export default async function Home() {
     cost: dailyCostCounts(costWeekRows, now),
   };
   const funnel = buildFunnel({
-    leads: (allLeads.data ?? []) as Array<{ id: string; status: string }>,
-    phones: (allPhones.data ?? []) as Array<{ lead_id: string }>,
-    calls: (allCallsForFunnel.data ?? []) as Array<{ lead_id: string | null; outcome: string | null }>,
-    submissions: (submissions.data ?? []) as Array<{ lead_id: string; outcome: string; seller_interest_level: string | null }>,
+    leads: allLeadsCount.count ?? 0,
+    phones: allPhonesCount.count ?? 0,
+    calls: allCallsCount.count ?? 0,
+    reached: reachedCallsCount.count ?? 0,
+    hot: hotSubmissionsCount.count ?? 0,
     meetings: meetings.count ?? 0,
     closed: closedDeals.count ?? 0,
   });
@@ -349,25 +356,20 @@ function dailyCostCounts(rows: Array<{ created_at: string; cost_usd: number | st
 }
 
 function buildFunnel(input: {
-  leads: Array<{ id: string; status: string }>;
-  phones: Array<{ lead_id: string }>;
-  calls: Array<{ lead_id: string | null; outcome: string | null }>;
-  submissions: Array<{ lead_id: string; outcome: string; seller_interest_level: string | null }>;
+  leads: number;
+  phones: number;
+  calls: number;
+  reached: number;
+  hot: number;
   meetings: number;
   closed: number;
 }): FunnelStep[] {
-  const called = new Set(input.calls.map((call) => call.lead_id).filter(Boolean));
-  const reachedOutcomes = new Set(["answered", "callback", "open_to_selling", "wants_offer", "hot_seller"]);
-  const reached = new Set(input.calls.filter((call) => call.lead_id && reachedOutcomes.has(call.outcome ?? "")).map((call) => call.lead_id as string));
-  const hot = new Set(input.submissions
-    .filter((item) => item.outcome === "hot_seller" || item.seller_interest_level === "hot" || item.seller_interest_level === "wants_offer")
-    .map((item) => item.lead_id));
   return [
-    { label: "Leads", value: input.leads.length },
-    { label: "Tél trouvé", value: input.phones.length },
-    { label: "Appelés", value: called.size },
-    { label: "Joints", value: reached.size },
-    { label: "Hot sellers", value: hot.size },
+    { label: "Leads", value: input.leads },
+    { label: "Tél trouvé", value: input.phones },
+    { label: "Appelés", value: input.calls },
+    { label: "Joints", value: input.reached },
+    { label: "Hot sellers", value: input.hot },
     { label: "RDV", value: input.meetings },
     { label: "Fermés", value: input.closed },
   ];

@@ -67,7 +67,7 @@ type SidebarCounts = {
   hot_sellers_pending: number;
 };
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 120_000;
 
 function useSidebarCounts(): SidebarCounts | null {
   const [counts, setCounts] = useState<SidebarCounts | null>(null);
