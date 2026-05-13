@@ -2458,6 +2458,79 @@ html, body {
 }
 .cw-phone-card__warn-body { font-size: 13px; color: var(--so-fg-3); }
 
+.cw-sms-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--so-gold-500) 22%, transparent);
+  padding-top: 12px;
+}
+.cw-sms-composer__label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--so-gold-700);
+}
+.cw-sms-composer__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+.cw-sms-composer__input {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+  border: 1px solid var(--so-border);
+  border-radius: 10px;
+  background: var(--so-card);
+  color: var(--so-fg-1);
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.cw-sms-composer__input:focus {
+  outline: 2px solid color-mix(in srgb, var(--so-gold-500) 30%, transparent);
+  border-color: var(--so-gold-500);
+}
+.cw-sms-composer__send {
+  appearance: none;
+  border: 1px solid var(--so-gold-500);
+  border-radius: 10px;
+  background: var(--so-card);
+  color: var(--so-gold-700);
+  min-width: 116px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.cw-sms-composer__send:hover {
+  background: color-mix(in srgb, var(--so-gold-500) 12%, var(--so-card));
+}
+.cw-sms-composer__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cw-sms-composer__meta {
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--so-fg-3);
+}
+.cw-sms-composer__success { color: var(--so-success); font-weight: 700; }
+.cw-sms-composer__error { color: var(--so-danger); font-weight: 700; }
+@media (max-width: 520px) {
+  .cw-sms-composer__row { grid-template-columns: 1fr; }
+  .cw-sms-composer__send { min-height: 44px; }
+}
+
 .cw-script-card {
   background: var(--surface);
   border: 1px solid var(--border-soft);

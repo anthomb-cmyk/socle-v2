@@ -99,6 +99,8 @@ export default function CallWorkspace({
   // Twilio call state
   const [callState, setCallState] = useState<TwilioCallState>("idle");
   const [callError, setCallError] = useState<string | null>(null);
+  const [smsStatus, setSmsStatus] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+  const [smsError, setSmsError] = useState<string | null>(null);
   // Phase 4 new state: persists the polled j.data?.durationSec so children
   // can render a live MM:SS counter. Polling cadence and completion logic
   // unchanged.
@@ -197,6 +199,35 @@ export default function CallWorkspace({
     } catch {
       setCallState("failed");
       setCallError(t.workspace.networkError);
+    }
+  }
+
+  async function sendSms(message: string): Promise<boolean> {
+    if (!phoneId) {
+      setSmsStatus("failed");
+      setSmsError(t.workspace.selectPhone);
+      return false;
+    }
+    setSmsStatus("sending");
+    setSmsError(null);
+    try {
+      const r = await fetch("/api/twilio/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId, phoneId, message }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setSmsStatus("failed");
+        setSmsError(j.error ?? t.workspace.smsFailed);
+        return false;
+      }
+      setSmsStatus("sent");
+      return true;
+    } catch {
+      setSmsStatus("failed");
+      setSmsError(t.workspace.networkError);
+      return false;
     }
   }
 
@@ -447,6 +478,9 @@ export default function CallWorkspace({
             durationSec={durationSec}
             callError={callError}
             onTwilioCall={startCall}
+            smsStatus={smsStatus}
+            smsError={smsError}
+            onSendSms={sendSms}
           />
           <BuildingFactsCard
             lead={lead}

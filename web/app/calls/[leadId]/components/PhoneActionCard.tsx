@@ -1,9 +1,12 @@
 "use client";
 import * as React from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useLocale } from "@/components/locale-provider";
 import PhoneSelector, { type Phone } from "./PhoneSelector";
 import TwilioCallStatePanel, { type CallState } from "./TwilioCallStatePanel";
+
+type SmsStatus = "idle" | "sending" | "sent" | "failed";
 
 type Props = {
   phones: Phone[];
@@ -14,6 +17,9 @@ type Props = {
   durationSec: number;
   callError: string | null;
   onTwilioCall: () => void;
+  smsStatus: SmsStatus;
+  smsError: string | null;
+  onSendSms: (message: string) => Promise<boolean>;
 };
 
 /**
@@ -40,8 +46,12 @@ export default function PhoneActionCard({
   durationSec,
   callError,
   onTwilioCall,
+  smsStatus,
+  smsError,
+  onSendSms,
 }: Props) {
   const { t } = useLocale();
+  const [smsText, setSmsText] = useState("");
 
   // No-phone state replaces the entire card.
   if (phones.length === 0) {
@@ -60,6 +70,14 @@ export default function PhoneActionCard({
   const noForward = !userForwardTo;
   const isActive = callState === "initiating" || callState === "ringing" || callState === "answered";
   const isPostCall = callState === "completed" || callState === "failed";
+  const smsSending = smsStatus === "sending";
+
+  async function handleSendSms() {
+    const message = smsText.trim();
+    if (!message || smsSending) return;
+    const ok = await onSendSms(message);
+    if (ok) setSmsText("");
+  }
 
   return (
     <div className="cw-card cw-phone-card">
@@ -103,6 +121,41 @@ export default function PhoneActionCard({
         <a href={`tel:${selected.e164}`} className="cw-call-btn cw-call-btn--outline">
           {t.workspace.tapToCall}
         </a>
+      </div>
+
+      <div className="cw-sms-composer">
+        <label className="cw-sms-composer__label" htmlFor="lead-sms-message">
+          {t.workspace.smsLabel}
+        </label>
+        <div className="cw-sms-composer__row">
+          <textarea
+            id="lead-sms-message"
+            value={smsText}
+            onChange={(event) => setSmsText(event.target.value)}
+            placeholder={t.workspace.smsPlaceholder}
+            maxLength={1000}
+            rows={2}
+            className="cw-sms-composer__input"
+          />
+          <button
+            type="button"
+            onClick={handleSendSms}
+            disabled={smsSending || !smsText.trim()}
+            className="cw-sms-composer__send"
+          >
+            <MessageIcon />
+            {smsSending ? t.workspace.smsSending : t.workspace.smsSend}
+          </button>
+        </div>
+        <div className="cw-sms-composer__meta">
+          {smsStatus === "sent" ? (
+            <span className="cw-sms-composer__success">{t.workspace.smsSent}</span>
+          ) : smsStatus === "failed" && smsError ? (
+            <span className="cw-sms-composer__error">{smsError}</span>
+          ) : (
+            <span>{t.workspace.smsSafeHint}</span>
+          )}
+        </div>
       </div>
 
       <div className="cw-phone-card__hint">
@@ -153,6 +206,20 @@ function PhoneIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MessageIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M21 12a8 8 0 01-8 8H7l-4 3v-6.2A8 8 0 1113 20"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"

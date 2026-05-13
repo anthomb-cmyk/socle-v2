@@ -24,6 +24,16 @@ export function getTwilioConfig() {
   return { accountSid, authToken, fromNumber };
 }
 
+/** Returns REST API credentials without requiring a default sender number. */
+export function getTwilioCredentials() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? "";
+  const authToken  = process.env.TWILIO_AUTH_TOKEN?.trim() ?? "";
+  if (!accountSid || !authToken) {
+    throw new Error("Twilio non configuré — définis TWILIO_ACCOUNT_SID et TWILIO_AUTH_TOKEN dans .env.local");
+  }
+  return { accountSid, authToken };
+}
+
 /** HTTP Basic auth header for Twilio REST API calls. */
 export function twilioBasicAuth(accountSid: string, authToken: string): string {
   return "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64");
@@ -45,7 +55,7 @@ export async function callTwilioApi(
   endpoint: string,
   body: Record<string, string | string[]>,
 ): Promise<Record<string, unknown>> {
-  const { accountSid, authToken } = getTwilioConfig();
+  const { accountSid, authToken } = getTwilioCredentials();
   const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}${endpoint}`;
 
   // Twilio REST API uses application/x-www-form-urlencoded.

@@ -229,6 +229,13 @@ const dict = {
       tapToCall:       "Appel direct",
       hangup:          "Raccrocher",
       hangupHint:      "Raccrochez depuis votre téléphone",
+      smsLabel:        "Texto",
+      smsPlaceholder:  "Écrire une réponse SMS…",
+      smsSend:         "Envoyer",
+      smsSending:      "Envoi…",
+      smsSent:         "Texto envoyé depuis le numéro Twilio.",
+      smsFailed:       "Impossible d'envoyer le texto.",
+      smsSafeHint:     "Le contact verra seulement le numéro Twilio, pas ton cell personnel.",
 
       // Submission form labels (values stay as routing keys; only display text changes)
       interestLow:      "Faible",
@@ -645,6 +652,13 @@ const dict = {
       tapToCall:       "Direct dial",
       hangup:          "Hang up",
       hangupHint:      "End the call from your phone",
+      smsLabel:        "Text",
+      smsPlaceholder:  "Write an SMS reply…",
+      smsSend:         "Send",
+      smsSending:      "Sending…",
+      smsSent:         "Text sent from the Twilio number.",
+      smsFailed:       "Unable to send text.",
+      smsSafeHint:     "The contact only sees the Twilio number, not your personal cell.",
 
       // Submission form labels
       interestLow:      "Low",
