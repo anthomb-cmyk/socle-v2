@@ -110,17 +110,15 @@ function Badge({
   highlight?: "green" | "amber" | "red";
 }) {
   if (count === 0) return null;
-  const base =
-    "inline-flex items-center justify-center text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-[5px] leading-none ml-auto shrink-0";
-  const colors =
+  const variant =
     highlight === "green"
-      ? "bg-emerald-500 text-white"
+      ? " sb__badge--ready"
       : highlight === "amber"
-      ? "bg-amber-400 text-white"
+      ? " sb__badge--warn"
       : highlight === "red"
-      ? "bg-red-500 text-white"
-      : "bg-zinc-200 text-zinc-600";
-  return <span className={`${base} ${colors}`}>{count}</span>;
+      ? " sb__badge--alert"
+      : "";
+  return <span className={`sb__badge mono${variant}`}>{count}</span>;
 }
 
 export default function AppSidebar({
@@ -208,7 +206,6 @@ export default function AppSidebar({
         <div>
           <div className="crm-sidebar-logo-title">SOCLE</div>
           <div className="crm-sidebar-logo-sub">ACQUISITIONS</div>
-          <div className="crm-sidebar-logo-tagline">Real Estate Investment</div>
         </div>
       </div>
 
@@ -227,10 +224,9 @@ export default function AppSidebar({
                 href={item.href as never}
                 className={`crm-sidebar-link${isActive(item.href) ? " crm-sidebar-link--active" : ""}`}
                 onClick={() => setMobileOpen(false)}
-                style={{ display: "flex", alignItems: "center", gap: 8 }}
               >
                 <NavIcon name={item.icon} />
-                <span style={{ flex: 1 }}>
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis">
                   {item.href === "/calls/queue"
                     ? t.nav.queue
                     : item.href === "/phone-review"
@@ -271,12 +267,13 @@ export default function AppSidebar({
             onClick={() => setMobileOpen(false)}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              gap: 6, background: "var(--crm-gold, #C9A84C)", color: "#fff",
-              borderRadius: 10, padding: "9px 12px", fontWeight: 800,
+              gap: 6, background: "var(--ink)", color: "var(--ink-inv)",
+              borderRadius: 10, padding: "9px 12px", fontWeight: 700,
               fontSize: 12, textDecoration: "none", letterSpacing: "0.3px",
             }}
           >
-            + Nouveau deal
+            <NavIcon name="pipeline" small />
+            Nouveau deal
           </Link>
         </div>
       )}
@@ -362,8 +359,8 @@ export default function AppSidebar({
         </button>
         <div className="crm-mobile-logo">
           <div className="crm-sidebar-logo-mark" style={{ width: 26, height: 26, fontSize: 11, borderRadius: 7 }}>S</div>
-          <span style={{ fontWeight: 900, fontSize: 13, letterSpacing: "1.5px", color: "var(--crm-text)" }}>SOCLE</span>
-          <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: "1px", color: "var(--crm-gold)" }}>ACQUISITIONS</span>
+          <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: "0.14em", color: "var(--ink)" }}>SOCLE</span>
+          <span style={{ fontWeight: 600, fontSize: 9, letterSpacing: "0.20em", color: "var(--gold-deep)" }}>ACQUISITIONS</span>
         </div>
         {/* Always-visible language toggle on mobile — avoids the buried-in-sidebar discoverability problem */}
         <div style={{ marginLeft: "auto" }}>
