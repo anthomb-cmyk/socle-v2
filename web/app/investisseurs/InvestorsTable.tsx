@@ -24,6 +24,12 @@ const STATUS_LABELS: Record<string, string> = {
   lost: "Perdu",
   prospect: "Prospect",
 };
+const STATUS_PILLS: Record<string, string> = {
+  active: "pill--ready",
+  inactive: "pill--cold",
+  lost: "pill--hot",
+  prospect: "pill--review",
+};
 
 function fmtMoney(n: number | null): string {
   if (n == null) return "—";
@@ -55,14 +61,14 @@ export default function InvestorsTable() {
   useEffect(() => { refresh(); }, [status]);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Statut</label>
+    <div>
+      <div className="socle-filters">
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <label className="label">Statut</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+            className="socle-select"
           >
             <option value="">Tous</option>
             <option value="active">Actif</option>
@@ -71,43 +77,38 @@ export default function InvestorsTable() {
             <option value="lost">Perdu</option>
           </select>
         </div>
-        <div className="flex-1 min-w-60">
-          <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Recherche</label>
-          <form onSubmit={(e) => { e.preventDefault(); refresh(); }}>
+        <div className="socle-search">
+          <Icon name="search" />
+          <form onSubmit={(e) => { e.preventDefault(); refresh(); }} style={{ display: "contents" }}>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Nom ou firme"
-              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
             />
           </form>
         </div>
-        <div className="text-sm text-zinc-500">{total} investisseurs</div>
+        <span className="pill pill--brand">{total} investisseurs</span>
       </div>
 
-      <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-zinc-600">
-            <tr>
-              <th className="text-left p-2">Nom</th>
-              <th className="text-left p-2">Firme</th>
-              <th className="text-left p-2">Ville</th>
-              <th className="text-left p-2">Capital</th>
-              <th className="text-left p-2">Ticket</th>
-              <th className="text-left p-2">Focus</th>
-              <th className="text-left p-2">Statut</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="socle-table">
+        <div className="socle-thead" style={{ gridTemplateColumns: "1.3fr 1fr .8fr .8fr .9fr 1.2fr .7fr .5fr" }}>
+          <div>Nom</div>
+          <div>Firme</div>
+          <div>Ville</div>
+          <div>Capital</div>
+          <div>Ticket</div>
+          <div>Focus</div>
+          <div>Statut</div>
+          <div>Deals</div>
+        </div>
             {loading && (
-              <tr><td colSpan={7} className="p-4 text-center text-zinc-400">Chargement…</td></tr>
+              <div className="crm-empty-state">Chargement…</div>
             )}
             {!loading && items.length === 0 && (
-              <tr>
-                <td colSpan={7} className="p-8 text-center text-zinc-400">
-                  Aucun investisseur. Crée le premier avec le bouton en haut à droite.
-                </td>
-              </tr>
+              <div className="crm-empty-state">
+                <p className="crm-empty-state-title">Aucun investisseur</p>
+                <p className="crm-empty-state-sub">Crée le premier avec le bouton en haut à droite.</p>
+              </div>
             )}
             {items.map((inv) => {
               const ticket =
@@ -119,32 +120,31 @@ export default function InvestorsTable() {
                   ? `≥${fmtMoney(inv.ticket_size_min_cad)}`
                   : "—";
               return (
-                <tr key={inv.id} className="border-t border-zinc-100 hover:bg-zinc-50">
-                  <td className="p-2">
-                    <Link href={`/investisseurs/${inv.id}` as never} className="hover:underline">
+                <div key={inv.id} className="socle-tr rail-normal" style={{ gridTemplateColumns: "1.3fr 1fr .8fr .8fr .9fr 1.2fr .7fr .5fr" }}>
+                  <div>
+                    <Link href={`/investisseurs/${inv.id}` as never} className="socle-name">
                       {inv.full_name}
                     </Link>
-                  </td>
-                  <td className="p-2">{inv.firm_name ?? <span className="text-zinc-400">—</span>}</td>
-                  <td className="p-2">{inv.city ?? <span className="text-zinc-400">—</span>}</td>
-                  <td className="p-2">{fmtMoney(inv.capital_available_cad)}</td>
-                  <td className="p-2">{ticket}</td>
-                  <td className="p-2 text-xs">
-                    {inv.asset_class_focus ?? inv.preferred_geography ?? (
-                      <span className="text-zinc-400">—</span>
-                    )}
-                  </td>
-                  <td className="p-2">
-                    <span className="text-xs uppercase tracking-wide rounded px-1.5 py-0.5 bg-zinc-100">
-                      {STATUS_LABELS[inv.status] ?? inv.status}
-                    </span>
-                  </td>
-                </tr>
+                    <div className="socle-subline">{inv.email ?? inv.phone_e164 ?? "—"}</div>
+                  </div>
+                  <div className="socle-muted">{inv.firm_name ?? "—"}</div>
+                  <div className="socle-muted">{inv.city ?? "—"}</div>
+                  <div className="mono">{fmtMoney(inv.capital_available_cad)}</div>
+                  <div className="mono">{ticket}</div>
+                  <div className="socle-muted" style={{ fontSize: 12 }}>{inv.asset_class_focus ?? inv.preferred_geography ?? "—"}</div>
+                  <div><span className={`pill ${STATUS_PILLS[inv.status] ?? "pill--cold"}`}><span className="pill__dot" />{STATUS_LABELS[inv.status] ?? inv.status}</span></div>
+                  <div><span className="deals-cell"><span className="deals-cell__dot" />0</span></div>
+                </div>
               );
             })}
-          </tbody>
-        </table>
       </div>
     </div>
   );
+}
+
+function Icon({ name, size = 15 }: { name: string; size?: number }) {
+  const paths: Record<string, React.ReactNode> = {
+    search: <path d="M21 21l-4.3-4.3M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4z" />,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
