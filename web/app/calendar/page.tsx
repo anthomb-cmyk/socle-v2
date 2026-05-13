@@ -6,30 +6,44 @@ import CalendarClient from "./CalendarClient";
 export type CalendarFollowUp = {
   id: string; lead_id: string | null; due_at: string; note: string;
   priority: number; status: string; source: string | null;
+  sync_status: string | null; sync_target: string | null;
+  gcal_event_id: string | null; gcal_calendar_id: string | null;
+  sync_error: string | null; last_synced_at: string | null;
   lead: {
     full_name: string | null; company_name: string | null;
     address: string; city: string | null; best_phone: string | null;
   } | null;
 };
 
+export type CalendarGoogleEvent = {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  html_link: string | null;
+  location: string | null;
+};
+
 export default async function CalendarPage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
   const role = (user.app_metadata?.role ?? "caller") as "admin" | "caller";
 
   const sb = createSupabaseAdminClient();
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
   const todayEnd   = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
-  // Show up to 30 days ahead
-  const windowEnd  = new Date(todayStart); windowEnd.setDate(windowEnd.getDate() + 30);
+  const windowStart = new Date(todayStart); windowStart.setDate(windowStart.getDate() - 14);
+  const windowEnd  = new Date(todayStart); windowEnd.setDate(windowEnd.getDate() + 45);
 
   // Fetch pending follow-ups (overdue + next 30 days) in one query
   let q = sb
     .from("follow_ups")
-    .select("id, lead_id, due_at, note, priority, status, source")
+    .select("id, lead_id, due_at, note, priority, status, source, sync_status, sync_target, gcal_event_id, gcal_calendar_id, sync_error, last_synced_at")
     .eq("status", "pending")
+    .gte("due_at", windowStart.toISOString())
     .lte("due_at", windowEnd.toISOString())
     .order("due_at", { ascending: true })
     .limit(500);
@@ -40,6 +54,9 @@ export default async function CalendarPage() {
   const rows = (rawFu ?? []) as Array<{
     id: string; lead_id: string | null; due_at: string; note: string;
     priority: number; status: string; source: string | null;
+    sync_status: string | null; sync_target: string | null;
+    gcal_event_id: string | null; gcal_calendar_id: string | null;
+    sync_error: string | null; last_synced_at: string | null;
   }>;
 
   // Hydrate with lead info
@@ -69,55 +86,84 @@ export default async function CalendarPage() {
   const upcoming = followUps.filter(f => new Date(f.due_at) >= todayEnd);
 
   // Group upcoming by YYYY-MM-DD date key
-  const upcomingByDate: Record<string, CalendarFollowUp[]> = {};
-  for (const f of upcoming) {
-    const key = f.due_at.slice(0, 10);
-    if (!upcomingByDate[key]) upcomingByDate[key] = [];
-    upcomingByDate[key].push(f);
-  }
-
   const total = overdue.length + todayFu.length + upcoming.length;
+  const google = await fetchGoogleCalendarEvents(session?.provider_token ?? null, windowStart, windowEnd);
 
   return (
-    <main className="crm-page-narrow" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-
-      {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
+    <main className="cal-page">
+      <header className="cal-head">
         <div>
-          <h1 className="crm-page-title">Calendrier</h1>
-          <p className="crm-page-sub">
+          <div className="cal-eyebrow">Google Calendar · suivis CRM</div>
+          <h1 className="cal-title">Calendrier</h1>
+          <p className="cal-sub">
             {total === 0
-              ? "Aucun suivi prévu dans les 30 prochains jours."
+              ? "Aucun suivi prévu dans la fenêtre active."
               : <>
                   {total} suivi{total > 1 ? "s" : ""} en attente
-                  {overdue.length > 0 && <> &middot; <strong style={{ color: "var(--crm-red)" }}>{overdue.length} en retard</strong></>}
-                  {todayFu.length > 0 && <> &middot; <strong style={{ color: "var(--crm-amber)" }}>{todayFu.length} aujourd&rsquo;hui</strong></>}
+                  {overdue.length > 0 && <> &middot; <strong>{overdue.length} en retard</strong></>}
+                  {todayFu.length > 0 && <> &middot; {todayFu.length} aujourd&rsquo;hui</>}
                   {upcoming.length > 0 && <> &middot; {upcoming.length} à venir</>}
                 </>
             }
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/follow-ups" className="crm-btn">Vue liste</Link>
-          <Link href="/leads" className="crm-btn crm-btn-dark">Leads</Link>
+        <div className="cal-head__actions">
+          <Link href="/leads" className="btn">Leads</Link>
+          <Link href="/calls/queue" className="btn btn--gold">File d&apos;appels</Link>
         </div>
-      </div>
+      </header>
 
-      {total === 0 ? (
-        <div className="crm-card">
-          <div className="crm-empty-state">
-            
-            <p className="crm-empty-state-title">Calendrier vide</p>
-            <p className="crm-empty-state-sub">Aucun suivi prévu dans les 30 prochains jours. Bon travail !</p>
-          </div>
-        </div>
-      ) : (
-        <CalendarClient
-          overdue={overdue}
-          today={todayFu}
-          upcomingByDate={upcomingByDate}
-        />
-      )}
+      <CalendarClient
+        followUps={followUps}
+        googleEvents={google.events}
+        googleConnected={google.connected}
+        googleError={google.error}
+      />
     </main>
   );
+}
+
+async function fetchGoogleCalendarEvents(
+  accessToken: string | null,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<{ connected: boolean; error: string | null; events: CalendarGoogleEvent[] }> {
+  if (!accessToken) return { connected: false, error: null, events: [] };
+  const params = new URLSearchParams({
+    timeMin: windowStart.toISOString(),
+    timeMax: windowEnd.toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "120",
+  });
+  try {
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      next: { revalidate: 0 },
+    });
+    if (!response.ok) return { connected: true, error: `Google Calendar: ${response.status}`, events: [] };
+    const json = await response.json() as {
+      items?: Array<{
+        id: string;
+        summary?: string;
+        start?: { dateTime?: string; date?: string };
+        end?: { dateTime?: string; date?: string };
+        htmlLink?: string;
+        location?: string;
+      }>;
+    };
+    const events = (json.items ?? [])
+      .map((event) => ({
+        id: event.id,
+        title: event.summary ?? "Sans titre",
+        starts_at: event.start?.dateTime ?? `${event.start?.date ?? ""}T00:00:00`,
+        ends_at: event.end?.dateTime ?? (event.end?.date ? `${event.end.date}T00:00:00` : null),
+        html_link: event.htmlLink ?? null,
+        location: event.location ?? null,
+      }))
+      .filter((event) => event.starts_at !== "T00:00:00");
+    return { connected: true, error: null, events };
+  } catch (err) {
+    return { connected: true, error: err instanceof Error ? err.message : "Google Calendar indisponible", events: [] };
+  }
 }
