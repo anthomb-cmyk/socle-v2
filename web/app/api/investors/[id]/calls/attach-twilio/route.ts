@@ -59,6 +59,13 @@ async function listRecordings(callSid: string): Promise<TwilioRecording[]> {
   return list.recordings ?? [];
 }
 
+async function listAccountRecordingsForCall(callSid: string): Promise<TwilioRecording[]> {
+  type RecListResp = { recordings: TwilioRecording[] };
+  const params = new URLSearchParams({ CallSid: callSid });
+  const list = await twilioGet<RecListResp>(`/Recordings.json?${params.toString()}`);
+  return list.recordings ?? [];
+}
+
 async function listChildCalls(callSid: string): Promise<TwilioCall[]> {
   type CallListResp = { calls: TwilioCall[] };
   const params = new URLSearchParams({ ParentCallSid: callSid });
@@ -83,9 +90,22 @@ async function findRecordingForCall(call: TwilioCall): Promise<{
     console.warn("[attach-twilio] couldn't list child calls", err);
   }
 
+  if (call.parent_call_sid) {
+    try {
+      const siblings = await listChildCalls(call.parent_call_sid);
+      relatedCalls.push(...siblings);
+      for (const sibling of siblings) callSids.add(sibling.sid);
+    } catch (err) {
+      console.warn("[attach-twilio] couldn't list sibling calls", err);
+    }
+  }
+
   for (const candidateCallSid of callSids) {
     try {
-      const recordings = await listRecordings(candidateCallSid);
+      const recordings = [
+        ...await listRecordings(candidateCallSid),
+        ...await listAccountRecordingsForCall(candidateCallSid),
+      ];
       if (recordings[0]) {
         return {
           recording: { callSid: candidateCallSid, recording: recordings[0] },

@@ -36,6 +36,10 @@ type Call = {
   started_at: string | null;
   recorded_at: string | null;
   created_at: string;
+  raw?: {
+    recording_source_call_sid?: string | null;
+    related_calls?: Array<{ sid?: string | null }>;
+  } | null;
 };
 
 type Deal = {
@@ -321,6 +325,8 @@ function CallCard({
   const [editing, setEditing] = useState(false);
   const [summary, setSummary] = useState(call.summary ?? "");
   const [outcome, setOutcome] = useState(call.outcome ?? "");
+  const [retrying, setRetrying] = useState(false);
+  const [retryErr, setRetryErr] = useState<string | null>(null);
 
   async function save() {
     await fetch(`/api/investors/${investorId}/calls/${call.id}`, {
@@ -335,6 +341,25 @@ function CallCard({
     if (!confirm("Supprimer cet appel ?")) return;
     await fetch(`/api/investors/${investorId}/calls/${call.id}`, { method: "DELETE" });
     onChange();
+  }
+  async function retryTranscript() {
+    if (!call.twilio_call_sid) return;
+    setRetrying(true);
+    setRetryErr(null);
+    try {
+      const r = await fetch(`/api/investors/${investorId}/calls/attach-twilio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_sid: call.twilio_call_sid }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error ?? "Erreur");
+      onChange();
+    } catch (e) {
+      setRetryErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetrying(false);
+    }
   }
 
   return (
@@ -376,6 +401,22 @@ function CallCard({
         )}
         {call.transcript_status === "failed" && (
           <div className="text-sm text-red-500">La transcription a échoué.</div>
+        )}
+        {call.transcript_status === "skipped" && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <span>Aucun enregistrement Twilio trouvé pour cet appel pour le moment.</span>
+            {call.twilio_call_sid && (
+              <button
+                type="button"
+                onClick={retryTranscript}
+                disabled={retrying}
+                className="rounded-md bg-amber-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {retrying ? "Recherche…" : "Réessayer la transcription"}
+              </button>
+            )}
+            {retryErr && <span className="text-red-600">{retryErr}</span>}
+          </div>
         )}
         {call.transcript && (
           <pre className="text-sm whitespace-pre-wrap font-sans bg-zinc-50 rounded-lg p-3 border border-zinc-200">
@@ -461,7 +502,7 @@ function DealsTab({ investorId }: { investorId: string }) {
           onClick={() => setShowNew((v) => !v)}
           className="text-sm border border-zinc-300 rounded-lg px-3 py-1.5 hover:bg-zinc-50"
         >
-          {showNew ? "Annuler" : "+ Nouveau deal"}
+          {showNew ? "Annuler" : "+ Lier un deal"}
         </button>
       </div>
       {showNew && (
@@ -492,6 +533,7 @@ function NewDealForm({
   investorId: string;
   onCreated: () => void;
 }) {
+  const [mode, setMode] = useState<"pipeline" | "manual">("pipeline");
   const [form, setForm] = useState({
     deal_name: "",
     stage: "prospect",
@@ -503,21 +545,19 @@ function NewDealForm({
   });
   const [pipelineQuery, setPipelineQuery] = useState("");
   const [pipelineDeals, setPipelineDeals] = useState<PipelineDeal[]>([]);
+  const [selectedPipelineDeal, setSelectedPipelineDeal] = useState<PipelineDeal | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const q = pipelineQuery.trim();
-    if (q.length < 2) {
-      setPipelineDeals([]);
-      return;
-    }
 
     const timer = window.setTimeout(async () => {
       setPipelineLoading(true);
       try {
-        const r = await fetch(`/api/deals?q=${encodeURIComponent(q)}&limit=20`);
+        const query = q ? `?q=${encodeURIComponent(q)}&limit=20` : "?limit=20";
+        const r = await fetch(`/api/deals${query}`);
         const j = await r.json();
         if (j.ok) {
           setPipelineDeals(
@@ -530,9 +570,10 @@ function NewDealForm({
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [pipelineQuery]);
+  }, [mode, pipelineQuery]);
 
   function selectPipelineDeal(deal: PipelineDeal) {
+    setSelectedPipelineDeal(deal);
     setForm((prev) => ({
       ...prev,
       pipeline_deal_id: deal.id,
@@ -540,6 +581,11 @@ function NewDealForm({
     }));
     setPipelineQuery(pipelineDealLabel(deal));
     setPipelineDeals([]);
+  }
+  function clearPipelineDeal() {
+    setSelectedPipelineDeal(null);
+    setForm((prev) => ({ ...prev, pipeline_deal_id: "", deal_name: mode === "pipeline" ? "" : prev.deal_name }));
+    setPipelineQuery("");
   }
 
   async function submit(e: React.FormEvent) {
@@ -570,14 +616,93 @@ function NewDealForm({
       onSubmit={submit}
       className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 space-y-3"
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-1 text-sm">
+        <button
+          type="button"
+          onClick={() => setMode("pipeline")}
+          className={`rounded-md px-3 py-1.5 ${mode === "pipeline" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
+        >
+          Lier un deal pipeline
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode("manual");
+            clearPipelineDeal();
+          }}
+          className={`rounded-md px-3 py-1.5 ${mode === "manual" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
+        >
+          Créer sans pipeline
+        </button>
+      </div>
+
+      {mode === "pipeline" && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
+          <div className="relative">
+            <input
+              value={pipelineQuery}
+              onChange={(e) => {
+                setPipelineQuery(e.target.value);
+                setSelectedPipelineDeal(null);
+                setForm((prev) => ({ ...prev, pipeline_deal_id: "", deal_name: "" }));
+              }}
+              placeholder="Chercher par nom, adresse ou contact du deal"
+              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+            />
+            {pipelineLoading && <div className="mt-2 text-sm text-zinc-400">Recherche des deals actifs…</div>}
+            {!pipelineLoading && !selectedPipelineDeal && pipelineDeals.length > 0 && (
+              <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-zinc-200 bg-white">
+                {pipelineDeals.map((deal) => (
+                  <button
+                    key={deal.id}
+                    type="button"
+                    onClick={() => selectPipelineDeal(deal)}
+                    className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-zinc-50"
+                  >
+                    <span className="font-medium text-zinc-900">{deal.title}</span>
+                    <span className="ml-2 text-zinc-500">{deal.address ?? "Sans adresse"}</span>
+                    <span className="ml-2 text-xs uppercase text-zinc-400">{deal.stage}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!pipelineLoading && !selectedPipelineDeal && pipelineDeals.length === 0 && (
+              <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500">
+                Aucun deal actif trouvé.
+              </div>
+            )}
+          </div>
+          {selectedPipelineDeal && (
+            <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-emerald-950">{selectedPipelineDeal.title}</div>
+                <div className="text-emerald-800">
+                  {[selectedPipelineDeal.address, selectedPipelineDeal.units ? `${selectedPipelineDeal.units} portes` : null, selectedPipelineDeal.stage].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearPipelineDeal}
+                className="text-xs font-medium text-emerald-900 hover:text-emerald-950"
+              >
+                Changer
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "manual" && (
         <input
-          required={!form.pipeline_deal_id}
+          required={mode === "manual"}
           value={form.deal_name}
           onChange={(e) => setForm({ ...form, deal_name: e.target.value })}
-          placeholder={form.pipeline_deal_id ? "Nom du deal (prérempli)" : "Nom du deal *"}
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+          placeholder="Nom du deal *"
+          className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
         />
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
         <select
           value={form.stage}
           onChange={(e) => setForm({ ...form, stage: e.target.value })}
@@ -587,63 +712,20 @@ function NewDealForm({
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
-      </div>
-      <div className="relative">
-        <input
-          value={pipelineQuery}
-          onChange={(e) => {
-            setPipelineQuery(e.target.value);
-            setForm((prev) => ({ ...prev, pipeline_deal_id: "" }));
-          }}
-          placeholder="Rechercher un deal actif du pipeline"
-          className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        {form.pipeline_deal_id && (
-          <button
-            type="button"
-            onClick={() => {
-              setForm((prev) => ({ ...prev, pipeline_deal_id: "" }));
-              setPipelineQuery("");
-            }}
-            className="absolute right-2 top-2 text-xs text-zinc-500 hover:text-zinc-800"
-          >
-            Effacer
-          </button>
-        )}
-        {!form.pipeline_deal_id && (pipelineLoading || pipelineDeals.length > 0) && (
-          <div className="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white shadow-lg overflow-hidden">
-            {pipelineLoading && <div className="px-3 py-2 text-sm text-zinc-400">Recherche…</div>}
-            {!pipelineLoading && pipelineDeals.map((deal) => (
-              <button
-                key={deal.id}
-                type="button"
-                onClick={() => selectPipelineDeal(deal)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
-              >
-                <span className="font-medium text-zinc-900">{deal.title}</span>
-                <span className="ml-2 text-zinc-500">{deal.address ?? "Sans adresse"}</span>
-                <span className="ml-2 text-xs uppercase text-zinc-400">{deal.stage}</span>
-              </button>
-            ))}
-            {!pipelineLoading && pipelineDeals.length === 0 && pipelineQuery.trim().length >= 2 && (
-              <div className="px-3 py-2 text-sm text-zinc-400">Aucun deal actif trouvé.</div>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="grid grid-cols-3 gap-3">
         <input
           type="number"
           value={form.ticket_size_cad}
           onChange={(e) => setForm({ ...form, ticket_size_cad: e.target.value })}
-          placeholder="Ticket (CAD)"
+          placeholder="Ticket investisseur (CAD)"
           className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
         />
+      </div>
+      <div className="grid grid-cols-3 gap-3">
         <input
           type="date"
           value={form.expected_close_at}
           onChange={(e) => setForm({ ...form, expected_close_at: e.target.value })}
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+          className="col-span-2 border border-zinc-300 rounded-lg px-3 py-2 text-sm"
         />
         <input
           type="number"
@@ -666,10 +748,10 @@ function NewDealForm({
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || (mode === "pipeline" && !form.pipeline_deal_id)}
           className="bg-zinc-900 text-white text-sm rounded-lg px-3 py-2 disabled:opacity-50"
         >
-          {busy ? "Création…" : "Créer"}
+          {busy ? "Création…" : mode === "pipeline" ? "Lier à l'investisseur" : "Créer"}
         </button>
       </div>
     </form>
