@@ -156,6 +156,64 @@ export default function PhoneReviewClient({
       return null;
     }
 
+    function normalizeName(value: string): string {
+      return value
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^\p{L}0-9]+/gu, " ")
+        .trim();
+    }
+
+    function namesOverlap(left: string, right: string): boolean {
+      const leftTokens = normalizeName(left).split(/\s+/).filter((token) => token.length >= 4);
+      const rightTokens = new Set(normalizeName(right).split(/\s+/).filter((token) => token.length >= 4));
+      return leftTokens.some((token) => rightTokens.has(token));
+    }
+
+    function hasReqOwnerMatch(c: PhoneCandidate): boolean {
+      const mainOwner = (c.leads?.contacts?.full_name ?? c.leads?.contacts?.company_name ?? "").trim();
+      const ownerNames = [...new Set([mainOwner, ...(c.co_owner_names ?? [])].map((name) => name.trim()).filter(Boolean))];
+      return (c.req_director_names ?? []).some((directorName) =>
+        ownerNames.some((ownerName) => namesOverlap(ownerName, directorName)),
+      );
+    }
+
+    function sourceSummary(c: PhoneCandidate): { verdict: "✓" | "✗" | "?"; reason: string } | null {
+      if (c.openclaw_verdict === "unlikely_match" || c.initial_confidence < 25) return null;
+
+      const source = c.source_label || c.stage;
+
+      if (source === "cross_property") {
+        return { verdict: "?", reason: "Source CRM: déjà vu ailleurs — comparer" };
+      }
+      if (source === "req_address_lookup") {
+        return hasReqOwnerMatch(c)
+          ? { verdict: "?", reason: "REQ: admin co-propriétaire lié — vérifier" }
+          : { verdict: "?", reason: "REQ: adresse entreprise liée — vérifier" };
+      }
+      if (source === "name_postal_directory") {
+        return { verdict: "?", reason: "Annuaire nom+postal — confirmer adresse" };
+      }
+      if (source === "reverse_address_lookup" || source === "reverse_address") {
+        return { verdict: "?", reason: "Adresse web trouvée — éviter locataire" };
+      }
+      if (source === "company_website") {
+        return { verdict: "?", reason: "Site entreprise — confirmer lien proprio" };
+      }
+      if (source === "pages_jaunes_business") {
+        return { verdict: "?", reason: "Annuaire entreprise — vérifier propriétaire" };
+      }
+      if (source === "req_phone") {
+        return { verdict: "✓", reason: "Téléphone déclaré au REQ — confirmer entité" };
+      }
+      if (source === "twilio_caller_name") {
+        return { verdict: "?", reason: "Nom d'appelant Twilio — recouper" };
+      }
+
+      return null;
+    }
+
     const result: Record<string, string> = {};
     for (const c of initialCandidates) {
       const conf = c.initial_confidence;
@@ -171,6 +229,12 @@ export default function PhoneReviewClient({
       const signal = detectSignal(c);
       if (signal) {
         result[c.id] = `${signal.verdict} ${signal.reason}`;
+        continue;
+      }
+
+      const sourceSignal = sourceSummary(c);
+      if (sourceSignal) {
+        result[c.id] = `${sourceSignal.verdict} ${sourceSignal.reason}`;
         continue;
       }
 
@@ -230,6 +294,7 @@ export default function PhoneReviewClient({
       phone: c.phone_e164 ?? c.phone_raw,
       candidateName: c.candidate_name,
       candidateAddress: c.candidate_address,
+      sourceLabel: c.source_label,
       sourceUrl: c.source_url,
       snippet: c.snippet,
       reviewReason: c.review_reason,
@@ -237,6 +302,8 @@ export default function PhoneReviewClient({
       openclawVerdict: c.openclaw_verdict,
       openclawReasoning: c.openclaw_reasoning,
       matchedOn: c.matched_on,
+      coOwnerNames: c.co_owner_names,
+      reqDirectorNames: c.req_director_names,
       confidence: c.initial_confidence,
     }));
     fetch("/api/phone-review/summaries", {

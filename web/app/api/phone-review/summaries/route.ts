@@ -15,13 +15,14 @@ export const maxDuration = 30;
 
 const SYSTEM = `Tu es un assistant pour un CRM immobilier québécois (acquisitions multi-logements). Le réviseur doit décider en 5 secondes par ligne.
 
-TA TÂCHE: pour chaque candidat, identifie LE SIGNAL SPÉCIFIQUE qui explique pourquoi OpenClaw n'a pas auto-attaché ce numéro, puis donne UN VERDICT opinioné. Le réviseur veut savoir EXACTEMENT ce qui cloche, pas une description neutre.
+TA TÂCHE: pour chaque candidat, identifie LE SIGNAL SPÉCIFIQUE et LE TYPE DE SOURCE qui expliquent pourquoi le juge IA/pipeline n'a pas auto-attaché ce numéro, puis donne UN VERDICT opinioné. Le réviseur veut savoir EXACTEMENT d'où vient le numéro et ce qui manque, pas une description neutre.
 
 Format EXACT: "<verdict> <raison>"
 - verdict = "✓" (approuver), "✗" (refuser), ou "?" (vérifier manuellement)
 - raison = UNE phrase française ≤ 14 mots, qui pointe LE SIGNAL spécifique (pas un résumé vague)
 
 CHERCHE CES SIGNAUX EN PRIORITÉ (lis le snippet/preuve mot par mot):
+0. source_label=cross_property → source interne CRM: numéro déjà vu sur un autre contact/propriété du même nom. Ne dis jamais "Brave" ou "web" pour ce cas → ?
 1. Le snippet contient "Fax:", "Télécopieur", ou ce numéro est listé comme fax → FAX détecté → ✗
 2. Le snippet/candidate_address mentionne "résidence", "CHSLD", "RPA", "manoir", "centre" → établissement → ✗
 3. candidate_name a un nom de famille COMPLÈTEMENT différent du proprio → nom étranger → ✗
@@ -31,6 +32,9 @@ CHERCHE CES SIGNAUX EN PRIORITÉ (lis le snippet/preuve mot par mot):
 7. URL est un annuaire public (canada411, 411.ca, pagesjaunes, b2bhint, registre.ccq) → annuaire → ✓ si nom concorde, ? sinon
 8. URL semble commerciale/non-liée et nom proprio absent → tiers → ✗ ou ?
 9. Plusieurs numéros différents pour la même propriété → ambiguïté → ?
+10. source_label=req_address_lookup + administrateur REQ correspond à un co-propriétaire → adresse REQ + admin co-proprio → ?
+11. source_label=req_address_lookup sans admin co-proprio visible → adresse REQ liée, nom à recouper → ?
+12. source_label=company_website ou pages_jaunes_business → source entreprise: approuver seulement si l'entreprise appartient au proprio → ?
 
 INTERDICTIONS STRICTES:
 - ❌ JAMAIS "vérification nécessaire/requise" sans préciser le signal AVANT
@@ -47,6 +51,9 @@ Exemples bons (signal spécifique extrait des données):
 - "? Code postal H3G1J1 seul, nom absent du snippet — vérifier"
 - "? Site corporate, aucun lien direct au proprio — vérifier"
 - "? Deux numéros différents pour cette propriété — comparer"
+- "? Source CRM déjà vue pour André Barnabe — comparer"
+- "? REQ: admin co-propriétaire lié — vérifier"
+- "? REQ: adresse entreprise liée, nom absent — vérifier"
 
 Exemples mauvais (à NE PAS reproduire):
 - "Numéros de téléphone différents, vérification nécessaire" (quel signal? lequel rejeter?)
@@ -63,6 +70,7 @@ type CandidateInput = {
   phone: string;
   candidateName: string | null;
   candidateAddress: string | null;
+  sourceLabel: string | null;
   sourceUrl: string | null;
   snippet: string | null;
   reviewReason: string | null;
@@ -70,6 +78,8 @@ type CandidateInput = {
   openclawVerdict: string | null;
   openclawReasoning: string | null;
   matchedOn: string | null;
+  coOwnerNames?: string[];
+  reqDirectorNames?: string[];
   confidence: number;
 };
 
@@ -93,7 +103,10 @@ export async function POST(request: Request) {
     parts.push(`Proprio: ${c.ownerName}`);
     parts.push(`Prop: ${c.address}`);
     parts.push(`Tél candidat: ${c.phone} (confiance ${c.confidence}%)`);
+    if (c.sourceLabel)       parts.push(`Source technique: ${c.sourceLabel}`);
     if (c.matchedOn)        parts.push(`Type de match: ${c.matchedOn}`);
+    if (c.coOwnerNames?.length) parts.push(`Tous propriétaires liés: ${c.coOwnerNames.join("; ")}`);
+    if (c.reqDirectorNames?.length) parts.push(`Administrateurs REQ: ${c.reqDirectorNames.join("; ")}`);
     if (c.candidateName)    parts.push(`Nom dans source: "${c.candidateName}"`);
     if (c.candidateAddress) parts.push(`Adresse dans source: "${c.candidateAddress}"`);
     if (c.sourceUrl) {
