@@ -1,10 +1,5 @@
 "use client";
 // LeadBriefingCard — displays the AI-generated French briefing for a lead.
-//
-// Style follows the established panel pattern from PhoneReviewEvidencePanel:
-// --so-bg-2 background, --so-accent left border, crm-card border radius.
-// Emoji used as plain text label (no design-system emoji restriction found in
-// codebase; all other components use emoji freely, e.g. 🔥 in QueueLeadList).
 
 import { useState } from "react";
 
@@ -58,46 +53,16 @@ export default function LeadBriefingCard({ leadId, initialText, initialGenerated
   }
 
   return (
-    <div
-      style={{
-        background: "var(--so-bg-2, #fafaf7)",
-        border: "1px solid var(--crm-card-border, #E8E3DA)",
-        borderLeft: "4px solid var(--so-accent, var(--crm-gold, #C9A84C))",
-        borderRadius: 10,
-        padding: "14px 16px",
-        marginBottom: 16,
-      }}
-    >
+    <div className="briefing">
       {/* Header row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 10,
-          gap: 8,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 15 }}>📋</span>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: "var(--crm-text, #1A1A1A)",
-              letterSpacing: "-0.1px",
-            }}
-          >
+      <div className="briefing__h" style={{ justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <Icon name="clipboard" />
+          <span className="briefing__h__t">
             Briefing
           </span>
           {generatedAt && (
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--crm-text3, #A0A0A0)",
-                fontStyle: "italic",
-              }}
-            >
+            <span className="briefing__time">
               — Mis à jour {relativeTime(generatedAt)}
             </span>
           )}
@@ -106,20 +71,8 @@ export default function LeadBriefingCard({ leadId, initialText, initialGenerated
           type="button"
           onClick={handleRegen}
           disabled={loading}
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            padding: "4px 10px",
-            borderRadius: 6,
-            border: "1px solid var(--crm-gold-border, #E9D9AA)",
-            background: loading
-              ? "var(--crm-bg-alt, #F5F2ED)"
-              : "var(--crm-gold-light, #F5EDD6)",
-            color: "var(--crm-amber, #B7791F)",
-            cursor: loading ? "not-allowed" : "pointer",
-            transition: "background 0.15s",
-            whiteSpace: "nowrap",
-          }}
+          className="btn btn--sm"
+          style={{ whiteSpace: "nowrap", opacity: loading ? 0.55 : 1 }}
         >
           {loading ? "Génération…" : "Régénérer"}
         </button>
@@ -139,15 +92,7 @@ export default function LeadBriefingCard({ leadId, initialText, initialGenerated
       )}
 
       {text ? (
-        <p
-          style={{
-            margin: 0,
-            fontSize: 13,
-            lineHeight: 1.65,
-            color: "var(--crm-text, #1A1A1A)",
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <p className="briefing__body" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
           {text}
         </p>
       ) : (
@@ -163,5 +108,16 @@ export default function LeadBriefingCard({ leadId, initialText, initialGenerated
         </p>
       )}
     </div>
+  );
+}
+
+function Icon({ name, size = 15 }: { name: string; size?: number }) {
+  const paths: Record<string, React.ReactNode> = {
+    clipboard: <path d="M9 5h6M9 3h6a2 2 0 0 1 2 2h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1a2 2 0 0 1 2-2zM9 11h6M9 15h4" />,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name]}
+    </svg>
   );
 }
