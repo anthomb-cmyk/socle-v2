@@ -30,6 +30,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/admin/enrichment",  label: "Enrichissement",       icon: "enrichment",  adminOnly: true  },
   { href: "/follow-ups",        label: "Suivis",               icon: "followups"                     },
   { href: "/calendar",          label: "Calendrier",           icon: "calendar"                      },
+  { href: "/investisseurs",     label: "Investisseurs",        icon: "investors",   adminOnly: true  },
   { href: "/map",               label: "Carte",                icon: "map"                           },
 ];
 
@@ -407,6 +408,8 @@ function NavIcon({ name, small }: { name: string; small?: boolean }) {
     health:      "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z",
     properties:  "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
     contacts:    "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
+    // Briefcase — capital partners / LPs
+    investors:   "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
   };
   return (
     <svg
