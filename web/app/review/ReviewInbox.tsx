@@ -28,12 +28,15 @@ export type ReviewVelocity = {
 type Props = {
   initialItems: ReviewItemVm[];
   proposedCount: number;
+  phoneReviewCount: number;
+  commandCount: number;
+  processedCount: number;
   velocity: ReviewVelocity;
 };
 
 type Action = "approve" | "defer" | "reject";
 
-export default function ReviewInbox({ initialItems, proposedCount, velocity }: Props) {
+export default function ReviewInbox({ initialItems, proposedCount, phoneReviewCount, commandCount, processedCount, velocity }: Props) {
   const [items, setItems] = useState(initialItems);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -98,13 +101,16 @@ export default function ReviewInbox({ initialItems, proposedCount, velocity }: P
           Hot sellers <span className="rev-tab__c">{items.length}</span>
         </button>
         <button type="button" className="rev-tab">
+          Téléphones à réviser <span className="rev-tab__c">{phoneReviewCount}</span>
+        </button>
+        <button type="button" className="rev-tab">
+          Commandes Telegram <span className="rev-tab__c">{commandCount}</span>
+        </button>
+        <button type="button" className="rev-tab">
           Actions proposées <span className="rev-tab__c">{proposedCount}</span>
         </button>
         <button type="button" className="rev-tab">
-          Urgents <span className="rev-tab__c">{urgentCount}</span>
-        </button>
-        <button type="button" className="rev-tab">
-          Élevés <span className="rev-tab__c">{highCount}</span>
+          Traités · 7 j <span className="rev-tab__c">{processedCount}</span>
         </button>
       </div>
 
@@ -170,6 +176,7 @@ export default function ReviewInbox({ initialItems, proposedCount, velocity }: P
             <div className="rev-breakdown">
               <BreakdownRow label="Urgents" value={urgentCount} dot="red" />
               <BreakdownRow label="Élevés" value={highCount} dot="amber" />
+              <BreakdownRow label="Téléphones" value={phoneReviewCount} dot="purple" />
               <BreakdownRow label="Actions proposées" value={proposedCount} dot="purple" />
               <BreakdownRow label="Total en attente" value={items.length + proposedCount} total />
             </div>

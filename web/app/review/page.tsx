@@ -18,7 +18,7 @@ export default async function ReviewPage() {
 
   const [reviewRes, proposedRes, resolvedRes] = await Promise.all([
     sb.from("review_items")
-      .select("id, source_id, title, summary, urgency, created_at, lead_id")
+      .select("id, source_kind, source_id, title, summary, urgency, created_at, lead_id")
       .eq("status", "open")
       .order("created_at", { ascending: false }),
     sb.from("proposed_actions")
@@ -33,7 +33,7 @@ export default async function ReviewPage() {
   ]);
 
   const rawReviews = (reviewRes.data ?? []) as Array<{
-    id: string; source_id: string | null; title: string; summary: string | null;
+    id: string; source_kind: string; source_id: string | null; title: string; summary: string | null;
     urgency: string; created_at: string; lead_id: string | null;
   }>;
 
@@ -92,6 +92,9 @@ export default async function ReviewPage() {
   const urgentCount = reviews.filter((r) => r.urgency === "urgent").length;
   const totalPending = reviews.length + proposed.length;
   const velocity = buildVelocity((resolvedRes.data ?? []) as Array<{ created_at: string; resolved_at: string | null }>);
+  const phoneReviewCount = reviews.filter((r) => r.source_kind === "phone_review").length;
+  const commandCount = reviews.filter((r) => r.source_kind === "command_clarification").length;
+  const processedCount = ((resolvedRes.data ?? []) as Array<unknown>).length;
 
   return (
     <main className="rev-main">
@@ -106,12 +109,19 @@ export default async function ReviewPage() {
           </div>
         </div>
         <div className="rev-page-head__actions">
-          <Link href="/leads" className="btn"><Icon name="arrowLeft" /> Leads</Link>
-          <Link href="/import" className="btn btn--primary">Import</Link>
+          <Link href="/admin/users" className="btn"><Icon name="message" /> Telegram</Link>
+          <Link href="/review" className="btn btn--primary">Tout traiter</Link>
         </div>
       </div>
 
-      <ReviewInbox initialItems={reviewItems} proposedCount={proposed.length} velocity={velocity} />
+      <ReviewInbox
+        initialItems={reviewItems}
+        proposedCount={proposed.length}
+        phoneReviewCount={phoneReviewCount}
+        commandCount={commandCount}
+        processedCount={processedCount}
+        velocity={velocity}
+      />
 
       <section className="rev-proposed-panel">
         <div className="rev-section-head">
@@ -139,6 +149,7 @@ function Icon({ name, size = 14 }: { name: string; size?: number }) {
     arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
     flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" />,
     alert: <path d="M12 9v4M12 17h.01M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z" />,
+    message: <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
