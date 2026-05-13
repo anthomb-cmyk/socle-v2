@@ -2,11 +2,33 @@
 
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
-import DealWorkspaceClient, { type Deal, type DealDocument } from "./DealWorkspaceClient";
+import DealWorkspaceClient, { type Deal, type DealDossier, type DealDocument } from "./DealWorkspaceClient";
 import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntry";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+type ActivityRecord = {
+  leadId?: string;
+  lead_id?: string;
+  submissionId?: string;
+  submission_id?: string;
+  callLogId?: string | null;
+  call_log_id?: string | null;
+};
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function idsFromActivities(activities: unknown) {
+  const rows = Array.isArray(activities) ? activities as ActivityRecord[] : [];
+  return {
+    leadIds: uniqueStrings(rows.map((row) => row.leadId ?? row.lead_id)),
+    submissionIds: uniqueStrings(rows.map((row) => row.submissionId ?? row.submission_id)),
+    callLogIds: uniqueStrings(rows.map((row) => row.callLogId ?? row.call_log_id)),
+  };
+}
 
 export default async function DealWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,11 +46,96 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
 
   if (!deal) notFound();
 
+  const { leadIds: activityLeadIds, submissionIds: activitySubmissionIds, callLogIds: activityCallLogIds } =
+    idsFromActivities((deal as { activities?: unknown }).activities);
+
+  const submissionsById = new Map<string, DealDossier["submissions"][number]>();
+  if (activitySubmissionIds.length > 0) {
+    const { data: submissions } = await sb
+      .from("lead_submissions")
+      .select("id,lead_id,call_log_id,outcome,seller_interest_level,timeline,motivation,asking_price,property_info,condition_notes,objections,best_callback_time,caller_summary,recommended_action,status,created_at")
+      .in("id", activitySubmissionIds);
+    for (const row of (submissions ?? []) as DealDossier["submissions"]) {
+      submissionsById.set(row.id, row);
+    }
+  }
+
+  const leadIds = uniqueStrings([
+    ...activityLeadIds,
+    ...Array.from(submissionsById.values()).map((row) => row.lead_id),
+  ]);
+  const callLogIds = uniqueStrings([
+    ...activityCallLogIds,
+    ...Array.from(submissionsById.values()).map((row) => row.call_log_id),
+  ]);
+
+  if (leadIds.length > 0) {
+    const { data: recentSubmissions } = await sb
+      .from("lead_submissions")
+      .select("id,lead_id,call_log_id,outcome,seller_interest_level,timeline,motivation,asking_price,property_info,condition_notes,objections,best_callback_time,caller_summary,recommended_action,status,created_at")
+      .in("lead_id", leadIds)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of (recentSubmissions ?? []) as DealDossier["submissions"]) {
+      submissionsById.set(row.id, row);
+    }
+  }
+
+  const refreshedLeadIds = uniqueStrings([
+    ...leadIds,
+    ...Array.from(submissionsById.values()).map((row) => row.lead_id),
+  ]);
+  const refreshedCallLogIds = uniqueStrings([
+    ...callLogIds,
+    ...Array.from(submissionsById.values()).map((row) => row.call_log_id),
+  ]);
+
+  const [leadRowsRes, callRowsByLeadRes, callRowsByIdRes] = await Promise.all([
+    refreshedLeadIds.length > 0
+      ? sb
+          .from("leads_view")
+          .select("lead_id,contact_id,property_id,address,city,num_units,evaluation_total,full_name,company_name,best_phone,status,priority,last_contacted_at,next_action_at")
+          .in("lead_id", refreshedLeadIds)
+      : Promise.resolve({ data: [], error: null }),
+    refreshedLeadIds.length > 0
+      ? sb
+          .from("call_logs")
+          .select("id,outcome,notes,summary,recorded_at,duration_sec,recording_url,transcript_status,transcript,lead_id")
+          .in("lead_id", refreshedLeadIds)
+          .order("recorded_at", { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [], error: null }),
+    refreshedCallLogIds.length > 0
+      ? sb
+          .from("call_logs")
+          .select("id,outcome,notes,summary,recorded_at,duration_sec,recording_url,transcript_status,transcript,lead_id")
+          .in("id", refreshedCallLogIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const callRowsById = new Map<string, DealDossier["callLogs"][number]>();
+  for (const row of [
+    ...((callLogs ?? []) as DealDossier["callLogs"]),
+    ...((callRowsByLeadRes.data ?? []) as DealDossier["callLogs"]),
+    ...((callRowsByIdRes.data ?? []) as DealDossier["callLogs"]),
+  ]) {
+    callRowsById.set(row.id, row);
+  }
+
+  const dossier: DealDossier = {
+    leads: (leadRowsRes.data ?? []) as DealDossier["leads"],
+    submissions: Array.from(submissionsById.values()).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
+    callLogs: Array.from(callRowsById.values())
+      .sort((a, b) => Date.parse(b.recorded_at ?? "") - Date.parse(a.recorded_at ?? ""))
+      .slice(0, 20),
+  };
+
   return (
     <DealWorkspaceClient
       deal={deal as unknown as Deal}
       documents={(docs ?? []) as unknown as DealDocument[]}
-      callHistory={(callLogs ?? []) as unknown as HistoryRow[]}
+      callHistory={dossier.callLogs as unknown as HistoryRow[]}
+      dossier={dossier}
     />
   );
 }

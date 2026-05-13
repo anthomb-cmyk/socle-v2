@@ -108,6 +108,7 @@ export default function CallWorkspace({
   // happy path (we own the lock) and on RLS-denied lookups.
   const [lockedBy, setLockedBy] = useState<{ name: string; sinceISO: string } | null>(null);
   const activeCallLogId = useRef<string | null>(null);
+  const latestOutcomeCallLogId = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Outcome catalogs (4 logical groups) ─────────────────────────────────
@@ -305,6 +306,7 @@ export default function CallWorkspace({
     });
     const j = await r.json();
     if (!j.ok) { setError(j.error); setBusy(false); return; }
+    latestOutcomeCallLogId.current = j.data?.callLogId ?? activeCallLogId.current ?? null;
 
     if (ESCALATING.has(outcome)) {
       setSubmitForm(outcome);
@@ -346,6 +348,7 @@ export default function CallWorkspace({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         leadId,
+        callLogId: latestOutcomeCallLogId.current ?? activeCallLogId.current ?? null,
         outcome: submitForm,
         sellerInterestLevel: interest,
         timeline,

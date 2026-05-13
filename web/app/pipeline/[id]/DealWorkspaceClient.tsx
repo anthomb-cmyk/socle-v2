@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import TwilioCallStatePanel, { type CallState } from "@/app/calls/[leadId]/components/TwilioCallStatePanel";
 import CallHistoryPanel from "@/app/calls/[leadId]/CallHistoryPanel";
 import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntry";
@@ -37,6 +36,47 @@ export type Deal = {
   updated_at: string;
 };
 
+export type DealDossier = {
+  leads: Array<{
+    lead_id: string;
+    contact_id: string | null;
+    property_id: string | null;
+    address: string | null;
+    city: string | null;
+    num_units: number | null;
+    evaluation_total: number | null;
+    full_name: string | null;
+    company_name: string | null;
+    best_phone: string | null;
+    status: string | null;
+    priority: number | null;
+    last_contacted_at: string | null;
+    next_action_at: string | null;
+  }>;
+  submissions: Array<{
+    id: string;
+    lead_id: string;
+    call_log_id: string | null;
+    outcome: string | null;
+    seller_interest_level: string | null;
+    timeline: string | null;
+    motivation: string | null;
+    asking_price: number | null;
+    property_info: string | null;
+    condition_notes: string | null;
+    objections: string | null;
+    best_callback_time: string | null;
+    caller_summary: string | null;
+    recommended_action: string | null;
+    status: string | null;
+    created_at: string;
+  }>;
+  callLogs: Array<HistoryRow & {
+    lead_id?: string | null;
+    summary?: string | null;
+  }>;
+};
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const STAGE_ORDER = ["prospection","analyse","offre","due_diligence","financement","cloture","abandonne"];
 const STAGE_LABELS: Record<string, string> = {
@@ -69,6 +109,25 @@ function formatCAD(n: number | null): string {
 }
 function formatDate(s: string): string {
   return new Date(s).toLocaleString("fr-CA", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function formatMaybeDate(s: string | null): string {
+  return s ? formatDate(s) : "—";
+}
+function timelineLabel(value: string | null) {
+  const labels: Record<string, string> = {
+    immediate: "immédiat",
+    "3_months": "3 mois",
+    "6_months": "6 mois",
+    no_rush: "pas pressé",
+    unknown: "inconnu",
+  };
+  return value ? labels[value] ?? value : "—";
+}
+function excerpt(text: string | null | undefined, max = 520) {
+  if (!text) return "—";
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "—";
+  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
 }
 
 // ── Stage Progress Bar ────────────────────────────────────────────────────────
@@ -355,19 +414,126 @@ function ActivityLog({ activities, onAdd }: { activities: Activity[]; onAdd: (te
   );
 }
 
+function DossierBeforeCall({
+  deal,
+  documents,
+  dossier,
+}: {
+  deal: Deal;
+  documents: DealDocument[];
+  dossier: DealDossier;
+}) {
+  const lead = dossier.leads[0] ?? null;
+  const submission = dossier.submissions[0] ?? null;
+  const callLog = dossier.callLogs.find((row) => row.summary || row.notes || row.transcript) ?? null;
+  const owner = deal.contact_name ?? lead?.full_name ?? lead?.company_name ?? "—";
+  const leadAddress = [lead?.address, lead?.city].filter(Boolean).join(", ");
+  const address = (deal.address ?? leadAddress) || "—";
+
+  return (
+    <section style={{ background: "#fff", border: "1px solid #D6B56D", borderRadius: 16, padding: "20px 22px", boxShadow: "0 14px 34px rgba(58, 45, 24, 0.06)" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "1.8px", textTransform: "uppercase", color: "#9A6B13", marginBottom: 6 }}>
+            Dossier avant appel Anthony
+          </div>
+          <h2 style={{ margin: 0, fontSize: 24, lineHeight: 1.12, color: "#17130D" }}>{deal.title}</h2>
+        </div>
+        <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, color: "#5C4320", background: "#F7E9C6", border: "1px solid #E1C47A", borderRadius: 999, padding: "6px 10px" }}>
+          {dossier.callLogs.length} appel{dossier.callLogs.length > 1 ? "s" : ""} lié{dossier.callLogs.length > 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+        <DossierFactCard
+          title="Bâtiment"
+          rows={[
+            ["Adresse", address],
+            ["Unités", (deal.units ?? lead?.num_units) != null ? String(deal.units ?? lead?.num_units) : "—"],
+            ["Évaluation", lead?.evaluation_total != null ? formatCAD(lead.evaluation_total) : "—"],
+            ["Prix demandé", formatCAD(deal.asking_price ?? submission?.asking_price ?? null)],
+          ]}
+        />
+        <DossierFactCard
+          title="Vendeur"
+          rows={[
+            ["Nom", owner],
+            ["Téléphone", deal.contact_phone ?? lead?.best_phone ?? "—"],
+            ["Motivation", submission?.motivation ?? "—"],
+            ["Délai", timelineLabel(submission?.timeline ?? null)],
+          ]}
+        />
+        <DossierFactCard
+          title="Données ajoutées"
+          rows={[
+            ["Submissions", String(dossier.submissions.length)],
+            ["Transcripts", String(dossier.callLogs.filter((row) => row.transcript).length)],
+            ["Documents", String(documents.length)],
+            ["Dernier appel", formatMaybeDate(callLog?.recorded_at ?? null)],
+          ]}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 12, marginTop: 12 }}>
+        <EvidenceCard
+          title="Notes du transcript et appels"
+          body={excerpt(callLog?.summary ?? callLog?.notes ?? callLog?.transcript)}
+          footer={callLog?.outcome ? `Outcome: ${callLog.outcome}` : undefined}
+        />
+        <EvidenceCard
+          title="Notes caller"
+          body={excerpt(submission?.caller_summary ?? deal.notes_vendeur ?? deal.notes_deal)}
+          footer={submission?.created_at ? `Soumis le ${formatDate(submission.created_at)}` : undefined}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DossierFactCard({ title, rows }: { title: string; rows: Array<[string, string]> }) {
+  return (
+    <div style={{ background: "#FBFAF7", border: "1px solid #ECE3D4", borderRadius: 12, padding: "14px" }}>
+      <div style={{ fontSize: 11, fontWeight: 900, color: "#7B6B58", letterSpacing: "1.2px", textTransform: "uppercase", marginBottom: 10 }}>
+        {title}
+      </div>
+      <dl style={{ display: "grid", gap: 8, margin: 0 }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 8 }}>
+            <dt style={{ fontSize: 11, color: "#8A8074", textTransform: "uppercase", letterSpacing: "0.7px" }}>{label}</dt>
+            <dd style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#24201A", overflowWrap: "anywhere" }}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function EvidenceCard({ title, body, footer }: { title: string; body: string; footer?: string }) {
+  return (
+    <div style={{ background: "#FFFDF8", border: "1px solid #ECE3D4", borderRadius: 12, padding: "14px" }}>
+      <div style={{ fontSize: 11, fontWeight: 900, color: "#7B6B58", letterSpacing: "1.2px", textTransform: "uppercase", marginBottom: 8 }}>
+        {title}
+      </div>
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "#302A22" }}>{body}</p>
+      {footer && <div style={{ marginTop: 10, fontSize: 11, color: "#9A6B13", fontWeight: 800 }}>{footer}</div>}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DealWorkspaceClient({
   deal: initialDeal,
   documents,
   callHistory,
+  dossier,
 }: {
   deal: Deal;
   documents: DealDocument[];
   callHistory: HistoryRow[];
+  dossier: DealDossier;
 }) {
   const [deal, setDeal]     = useState<Deal>(initialDeal);
   const [saving, setSaving] = useState(false);
-  const router              = useRouter();
 
   // ── Twilio call state (mirrors CallWorkspace.tsx pattern) ────────────────
   const [callState, setCallState]   = useState<CallState>("idle");
@@ -475,7 +641,6 @@ export default function DealWorkspaceClient({
   }, [patch]);
 
   const temp  = TEMP_CONFIG[deal.temperature] ?? TEMP_CONFIG.tiede;
-  const color = STAGE_COLORS[deal.stage] ?? "#6B7280";
 
   return (
     <div style={{ padding: "0 0 60px" }}>
@@ -509,6 +674,7 @@ export default function DealWorkspaceClient({
 
         {/* ── LEFT COLUMN ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <DossierBeforeCall deal={deal} documents={documents} dossier={dossier} />
 
           {/* Notes deal */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
@@ -709,7 +875,7 @@ export default function DealWorkspaceClient({
 
           {/* Next action */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 10 }}>⚡ Prochaine action</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 10 }}>Prochaine action</div>
             <EditableField
               label="Action à faire"
               value={deal.next_action}

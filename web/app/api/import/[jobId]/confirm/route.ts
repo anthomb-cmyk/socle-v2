@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { commitImport } from "@/lib/import-commit";
 import { runEnrichmentPipeline } from "@/lib/enrichment/pipeline";
+import { autoAssignCallableLeads } from "@/lib/leads/auto-assign";
 import { processNextBatch } from "@/lib/queue/worker";
 import type { ParseResult } from "@/lib/role-parser/types";
 import type { LeadContext } from "@/lib/enrichment/types";
@@ -85,6 +86,27 @@ export async function POST(request: Request, ctx: { params: Promise<{ jobId: str
     },
     result: counts,
   });
+
+  if (counts.leads_created > 0) {
+    try {
+      await autoAssignCallableLeads(admin, {
+        importJobId: jobId,
+        assignedBy: user.id,
+        limit: 500,
+      });
+    } catch (err) {
+      console.error("[import-confirm] auto-assign failed:", err instanceof Error ? err.message : String(err));
+      await admin.from("automation_events").insert({
+        source: "web_app",
+        event_type: "leads_auto_assigned",
+        status: "failed",
+        related_import_id: jobId,
+        triggered_by: user.id,
+        payload: { importJobId: jobId, limit: 500 },
+        error_message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   // If no immediate auto-enrichment was requested, still kick the queue once so
   // newly-imported no-phone leads are not stuck behind an old scheduled backlog.

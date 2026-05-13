@@ -39,10 +39,20 @@ export async function GET(request: Request) {
     else query = query.eq("assigned_to", assignedTo);
   }
 
+  if (importJobId) {
+    const { data: importLeadRows, error: importLeadErr } = await sb
+      .from("leads")
+      .select("id")
+      .eq("source_import_job_id", importJobId)
+      .limit(1000);
+    if (importLeadErr) return NextResponse.json({ ok: false, error: importLeadErr.message }, { status: 500 });
+    const importLeadIds = (importLeadRows ?? []).map((row: { id: string }) => row.id);
+    query = query.in("lead_id", importLeadIds.length > 0 ? importLeadIds : ["00000000-0000-0000-0000-000000000000"]);
+  }
+
   if (city) query = query.ilike("city", `%${city}%`);
   if (status) query = query.eq("status", status);
   if (campaignId) query = query.eq("campaign_id", campaignId);
-  if (importJobId) query = query.eq("source_import_job_id", importJobId);
   if (hasPhone === "1") query = query.not("best_phone", "is", null);
   if (q) query = query.or(`address.ilike.%${q}%,full_name.ilike.%${q}%,company_name.ilike.%${q}%`);
 

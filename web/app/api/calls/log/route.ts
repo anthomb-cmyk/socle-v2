@@ -162,9 +162,13 @@ export async function POST(request: Request) {
     await sb.from("follow_ups").insert({
       lead_id:     body.leadId,
       assigned_to: user.id,
+      created_by:  user.id,
       due_at:      dueAt,
-      status:      "open",
-      notes:       body.notes ?? null,
+      status:      "pending",
+      note:        body.notes ?? "Rappel demandé par le vendeur.",
+      source:      "caller_callback",
+      sync_status: "disabled",
+      sync_target: "none",
     });
   }
 
