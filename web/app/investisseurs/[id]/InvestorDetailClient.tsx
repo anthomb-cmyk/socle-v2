@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import Link from "next/link";
 
 type Investor = {
@@ -83,6 +84,17 @@ type Note = {
   updated_at: string;
 };
 
+type Counts = {
+  deals: number | null;
+  negotiating: number | null;
+  calls: number | null;
+  notes: number | null;
+  callsThisMonth: number | null;
+  lastCall: Call | null;
+};
+
+type TabKey = "deals" | "calls" | "notes" | "criteria";
+
 const STAGE_LABELS: Record<string, string> = {
   prospect: "Prospect",
   discussing: "En discussion",
@@ -95,23 +107,36 @@ const STAGE_LABELS: Record<string, string> = {
 
 function fmtMoney(n: number | null): string {
   if (n == null) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M$`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k$`;
-  return `${n}$`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  return `$${n}`;
 }
+
+function fmtMoneyLong(n: number | null): string {
+  if (n == null) return "—";
+  return new Intl.NumberFormat("fr-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
 function fmtDuration(sec: number | null): string {
   if (!sec) return "—";
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}m ${s}s`;
 }
+
 function fmtDate(d: string | null): string {
   if (!d) return "—";
   return new Date(d).toLocaleString("fr-CA", { dateStyle: "medium", timeStyle: "short" });
 }
+
 function shortSid(sid: string | null): string {
   return sid ? `${sid.slice(0, 14)}…` : "—";
 }
+
 function pipelineDealLabel(deal: PipelineDeal): string {
   return [
     deal.title,
@@ -121,79 +146,165 @@ function pipelineDealLabel(deal: PipelineDeal): string {
   ].filter(Boolean).join(" · ");
 }
 
+function splitTags(value: string | null): string[] {
+  return (value ?? "")
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export default function InvestorDetailClient({
   initialInvestor,
 }: {
   initialInvestor: Investor;
 }) {
   const [investor, setInvestor] = useState<Investor>(initialInvestor);
-  const [tab, setTab] = useState<"calls" | "deals" | "notes" | "edit">("calls");
+  const [tab, setTab] = useState<TabKey>("deals");
+  const [counts, setCounts] = useState<Counts>({
+    deals: null,
+    negotiating: null,
+    calls: null,
+    notes: null,
+    callsThisMonth: null,
+    lastCall: null,
+  });
+
+  const reloadCounts = useCallback(async () => {
+    const [dealsRes, callsRes, notesRes] = await Promise.all([
+      fetch(`/api/investors/${investor.id}/deals`),
+      fetch(`/api/investors/${investor.id}/calls`),
+      fetch(`/api/investors/${investor.id}/notes`),
+    ]);
+    const [dealsJson, callsJson, notesJson] = await Promise.all([
+      dealsRes.json(),
+      callsRes.json(),
+      notesRes.json(),
+    ]);
+
+    const deals = dealsJson.ok ? (dealsJson.data as Deal[]) : [];
+    const calls = callsJson.ok ? (callsJson.data as Call[]) : [];
+    const notes = notesJson.ok ? (notesJson.data as Note[]) : [];
+    const now = new Date();
+
+    setCounts({
+      deals: deals.length,
+      negotiating: deals.filter((deal) => ["discussing", "loi", "due_diligence", "financing"].includes(deal.stage)).length,
+      calls: calls.length,
+      notes: notes.length,
+      callsThisMonth: calls.filter((call) => {
+        const date = call.started_at ?? call.created_at;
+        if (!date) return false;
+        const parsed = new Date(date);
+        return parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear();
+      }).length,
+      lastCall: calls[0] ?? null,
+    });
+  }, [investor.id]);
+
+  useEffect(() => {
+    reloadCounts();
+  }, [reloadCounts]);
 
   return (
-    <main className="socle-page">
-      <header>
-        <Link href={"/investisseurs" as never} className="btn btn--ghost btn--sm">
-          <Icon name="chevronLeft" />Investisseurs
-        </Link>
-        <section className="investor-hero">
-          <div className="investor-hero__avatar">{initials(investor.full_name)}</div>
-          <div className="investor-hero__body">
-            <div className="investor-hero__pills">
-              <InvestorStatus status={investor.status} />
-              <span className="pill pill--brand">Co-invest LP</span>
-            </div>
-          <h1 className="investor-hero__name">{investor.full_name}</h1>
-          {investor.firm_name && (
-            <div className="investor-hero__firm">{investor.firm_name}{investor.city && <> · <em>{investor.city}</em></>}</div>
-          )}
-          <div className="investor-hero__contact">
-            {investor.email && <a href={`mailto:${investor.email}`}><Icon name="mail" />{investor.email}</a>}
-            {investor.phone_e164 && <a href={`tel:${investor.phone_e164.replace(/\D/g, "")}`} className="mono"><Icon name="phone" />{investor.phone_e164}</a>}
-            {investor.source && <span>Source · {investor.source}</span>}
+    <main className="invd-main">
+      <div className="invd-topbar">
+        <div className="invd-crumbs">
+          <Link href={"/investisseurs" as never}>Investisseurs</Link>
+          <span className="invd-crumbs__sep">/</span>
+          <span>{investor.full_name}</span>
+        </div>
+        <div className="invd-topbar__nav">
+          <Link href={"/investisseurs" as never} className="btn">
+            <Icon name="chevronLeft" /> Retour
+          </Link>
+        </div>
+      </div>
+
+      <section className="invd-hero">
+        <div className="invd-hero__avatar">{initials(investor.full_name)}</div>
+        <div className="invd-hero__body">
+          <div className="invd-hero__pills">
+            <InvestorStatus status={investor.status} />
+            {investor.source ? <span className="pill pill--brand">{investor.source}</span> : null}
           </div>
+          <h1 className="invd-hero__name">{investor.full_name}</h1>
+          <div className="invd-hero__firm">
+            {investor.firm_name ?? "—"}
+            {investor.city ? <> · <em>{investor.city}</em></> : null}
           </div>
-          <div className="socle-head-actions">
-            <button className="btn btn--primary" type="button">Trouver un deal</button>
-            <button className="btn" type="button">Lier un deal</button>
+          <div className="invd-hero__contact">
+            {investor.email ? (
+              <a href={`mailto:${investor.email}`}>
+                <Icon name="mail" /> {investor.email}
+              </a>
+            ) : (
+              <span><Icon name="mail" /> —</span>
+            )}
+            {investor.phone_e164 ? (
+              <a href={`tel:${investor.phone_e164.replace(/\D/g, "")}`}>
+                <Icon name="phone" /> <span className="mono">{investor.phone_e164}</span>
+              </a>
+            ) : (
+              <span><Icon name="phone" /> —</span>
+            )}
+            <span><Icon name="message" /> Telegram —</span>
+          </div>
+        </div>
+        <div className="invd-hero__acts">
+          <button className="btn" type="button" onClick={() => setTab("deals")}>
+            <Icon name="trending" /> Deals
+          </button>
+          <button className="btn btn--gold" type="button" onClick={() => setTab("criteria")}>
+            <Icon name="plus" /> Critères
+          </button>
+        </div>
+      </section>
+
+      <SummaryGrid investor={investor} counts={counts} />
+
+      <div className="invd-grid">
+        <section className="invd-panel">
+          <nav className="invd-tabs-row" aria-label="Sections investisseur">
+            {(
+              [
+                ["deals", "Deals", counts.deals],
+                ["calls", "Appels", counts.calls],
+                ["notes", "Notes", counts.notes],
+                ["criteria", "Critères", null],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`invd-tab ${tab === key ? "invd-tab--active" : ""}`}
+              >
+                {label}
+                {count != null ? <span className="invd-tab__c">{count}</span> : null}
+              </button>
+            ))}
+          </nav>
+          <div className="invd-panel__body">
+            {tab === "deals" && <DealsTab investorId={investor.id} onChanged={reloadCounts} />}
+            {tab === "calls" && <CallsTab investorId={investor.id} onChanged={reloadCounts} />}
+            {tab === "notes" && <NotesTab investorId={investor.id} onChanged={reloadCounts} />}
+            {tab === "criteria" && (
+              <EditTab investor={investor} onSaved={(next) => setInvestor(next)} />
+            )}
           </div>
         </section>
-        <SummaryGrid investor={investor} />
-      </header>
 
-      <nav className="tabs">
-        {(
-          [
-            ["calls", "Appels"],
-            ["deals", "Deals"],
-            ["notes", "Notes"],
-            ["edit", "Modifier"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`tab ${tab === key ? "tab--active" : ""}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {tab === "calls" && <CallsTab investorId={investor.id} />}
-      {tab === "deals" && <DealsTab investorId={investor.id} />}
-      {tab === "notes" && <NotesTab investorId={investor.id} />}
-      {tab === "edit" && (
-        <EditTab
-          investor={investor}
-          onSaved={(next) => setInvestor(next)}
-        />
-      )}
+        <aside className="invd-aside">
+          <CriteriaPanel investor={investor} onEdit={() => setTab("criteria")} />
+          <MatchingPanel investor={investor} />
+          <LastTouch call={counts.lastCall} />
+        </aside>
+      </div>
     </main>
   );
 }
 
-function SummaryGrid({ investor }: { investor: Investor }) {
+function SummaryGrid({ investor, counts }: { investor: Investor; counts: Counts }) {
   const ticket =
     investor.ticket_size_min_cad && investor.ticket_size_max_cad
       ? `${fmtMoney(investor.ticket_size_min_cad)} – ${fmtMoney(investor.ticket_size_max_cad)}`
@@ -202,27 +313,159 @@ function SummaryGrid({ investor }: { investor: Investor }) {
       : investor.ticket_size_min_cad
       ? `≥ ${fmtMoney(investor.ticket_size_min_cad)}`
       : "—";
+
+  const capitalSub =
+    investor.capital_available_cad && investor.ticket_size_max_cad
+      ? `${Math.round((investor.capital_available_cad / investor.ticket_size_max_cad) * 100)}% du ticket max`
+      : "—";
+
   return (
-    <div className="kpi-strip">
-      <Stat hero label="Capital dispo" value={fmtMoney(investor.capital_available_cad)} />
-      <Stat label="Ticket" value={ticket} />
-      <Stat label="Focus" value={investor.asset_class_focus ?? "—"} />
-      <Stat label="Géographie" value={investor.preferred_geography ?? "—"} />
-      <Stat label="Email" value={investor.email ?? "—"} />
-      <Stat label="Téléphone" value={investor.phone_e164 ?? "—"} />
-      <Stat label="Ville" value={investor.city ?? "—"} />
-      <Stat label="Source" value={investor.source ?? "—"} />
+    <div className="invd-kpi-strip">
+      <Stat hero label="Capital disponible" value={fmtMoney(investor.capital_available_cad)} sub={capitalSub} />
+      <Stat label="Ticket" value={ticket} sub="par transaction" />
+      <Stat label="Deals liés" value={counts.deals == null ? "—" : String(counts.deals)} sub={`${counts.negotiating ?? "—"} en cours`} />
+      <Stat label="Appels" value={counts.calls == null ? "—" : String(counts.calls)} sub={`${counts.callsThisMonth ?? "—"} ce mois`} />
+      <Stat criteria label="Focus actif" value={investor.asset_class_focus ?? "—"} sub={investor.asset_class_focus ? "Critère enregistré" : "Critère manquant"} />
     </div>
   );
 }
 
-function Stat({ label, value, hero }: { label: string; value: string; hero?: boolean }) {
+function Stat({ label, value, sub, hero, criteria }: { label: string; value: string; sub?: string; hero?: boolean; criteria?: boolean }) {
   return (
-    <div className={`ki ${hero ? "ki--hero" : ""}`}>
-      <div className="ki__l">{label}</div>
-      <div className="ki__v">{value}</div>
+    <div className={`invd-ki ${hero ? "invd-ki--hero" : ""} ${criteria ? "invd-ki--criteria" : ""}`}>
+      <div className="invd-ki__l">{label}</div>
+      <div className="invd-ki__v">{value}</div>
+      {sub ? <div className="invd-ki__sub">{sub}</div> : null}
     </div>
   );
+}
+
+function CriteriaPanel({ investor, onEdit }: { investor: Investor; onEdit: () => void }) {
+  const geos = splitTags(investor.preferred_geography);
+  return (
+    <div className="invd-panel invd-criteria-card">
+      <div className="invd-panel__head">
+        <div className="invd-panel__t">Critères d&apos;investissement</div>
+        <button className="btn btn--sm" type="button" onClick={onEdit}>
+          <Icon name="edit" /> Modifier
+        </button>
+      </div>
+      <CritRow label="Capital total" value={<span className="mono">{fmtMoneyLong(investor.capital_available_cad)}</span>} />
+      <CritRow label="Ticket min" value={<span className="mono">{fmtMoneyLong(investor.ticket_size_min_cad)}</span>} />
+      <CritRow label="Ticket max" value={<span className="mono">{fmtMoneyLong(investor.ticket_size_max_cad)}</span>} />
+      <CritRow
+        label="Géographie"
+        value={
+          geos.length ? (
+            <div className="invd-crit-tags">
+              {geos.map((geo) => <span key={geo} className="invd-crit-tags__tag">{geo}</span>)}
+            </div>
+          ) : "—"
+        }
+      />
+      <CritRow label="Focus actif" value={investor.asset_class_focus ?? "—"} />
+      <CritRow label="Source" value={investor.source ?? "—"} />
+    </div>
+  );
+}
+
+function CritRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="invd-crit-row">
+      <div className="invd-crit-row__l">{label}</div>
+      <div className="invd-crit-row__v">{value}</div>
+    </div>
+  );
+}
+
+function MatchingPanel({ investor }: { investor: Investor }) {
+  const [deals, setDeals] = useState<PipelineDeal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const r = await fetch("/api/deals?limit=100");
+      const j = await r.json();
+      if (active) {
+        setDeals(j.ok ? (j.data as PipelineDeal[]) : []);
+        setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const matches = useMemo(() => {
+    return deals
+      .map((deal) => ({ deal, score: computeMatchScore(investor, deal) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }, [deals, investor]);
+
+  return (
+    <div className="invd-panel invd-match-card">
+      <div className="invd-panel__head">
+        <div className="invd-panel__t">Deals qui matchent</div>
+        <span className="pill pill--brand">{loading ? "—" : `${matches.length} trouvés`}</span>
+      </div>
+      {loading ? <div className="invd-empty">Chargement…</div> : null}
+      {!loading && matches.length === 0 ? <div className="invd-empty">—</div> : null}
+      {matches.map(({ deal, score }) => {
+        const equity = estimatedEquity(deal);
+        return (
+          <Link key={deal.id} href={`/pipeline/${deal.id}` as never} className="invd-match">
+            <div className={`invd-match__score ${score < 85 ? "invd-match__score--mid" : ""}`}>
+              {score}<span className="invd-match__score__l">MATCH</span>
+            </div>
+            <div>
+              <div className="invd-match__t">{deal.title}</div>
+              <div className="invd-match__sub">
+                {[deal.units ? `${deal.units} log.` : null, deal.contact_name, deal.stage].filter(Boolean).join(" · ") || "—"}
+              </div>
+              <div className="invd-match__data">
+                {[fmtMoney(deal.offer_price ?? deal.asking_price), `MEP ${fmtMoney(equity)}`, deal.address ?? "—"].join(" · ")}
+              </div>
+            </div>
+          </Link>
+        );
+      })}
+      <div className="invd-muted">Score calculé via géographie + ticket overlap.</div>
+    </div>
+  );
+}
+
+function LastTouch({ call }: { call: Call | null }) {
+  return (
+    <div className="invd-last-touch">
+      <div className="invd-last-touch__icon"><Icon name="phone" /></div>
+      <div>
+        <div className="invd-last-touch__t">Dernier appel</div>
+        <div className="invd-last-touch__sub">{call?.summary ?? call?.outcome ?? "—"}</div>
+      </div>
+      <span className="invd-last-touch__time">{call ? fmtDate(call.started_at ?? call.created_at) : "—"}</span>
+    </div>
+  );
+}
+
+function computeMatchScore(investor: Investor, deal: PipelineDeal): number {
+  const geos = splitTags(investor.preferred_geography).map((geo) => geo.toLowerCase());
+  const haystack = `${deal.address ?? ""} ${deal.title ?? ""}`.toLowerCase();
+  const geoScore = geos.length > 0 && geos.some((geo) => haystack.includes(geo)) ? 45 : 0;
+
+  const equity = estimatedEquity(deal);
+  const min = investor.ticket_size_min_cad ?? 0;
+  const max = investor.ticket_size_max_cad ?? investor.capital_available_cad ?? 0;
+  const ticketScore = equity != null && max > 0 && equity >= min && equity <= max ? 45 : 0;
+  const focusScore = investor.asset_class_focus && deal.units != null ? 10 : 0;
+
+  return geoScore + ticketScore + focusScore;
+}
+
+function estimatedEquity(deal: PipelineDeal): number | null {
+  const price = deal.offer_price ?? deal.asking_price;
+  return price == null ? null : Math.round(price * 0.2);
 }
 
 function initials(name: string): string {
@@ -241,7 +484,7 @@ function InvestorStatus({ status }: { status: string }) {
 }
 
 function Icon({ name, size = 14 }: { name: string; size?: number }) {
-  const paths: Record<string, React.ReactNode> = {
+  const paths: Record<string, ReactNode> = {
     arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
     chevronLeft: <path d="M15 18l-6-6 6-6" />,
     mail: <path d="M4 6h16v12H4zM4 7l8 6 8-6" />,
@@ -249,12 +492,16 @@ function Icon({ name, size = 14 }: { name: string; size?: number }) {
     check: <path d="M20 6L9 17l-5-5" />,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
     map: <path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3zM9 3v15M15 6v15" />,
+    message: <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3H13a8.5 8.5 0 0 1 8 8v.5z" />,
+    trending: <path d="M3 17l6-6 4 4 8-8M14 7h7v7" />,
+    plus: <path d="M12 4v16M4 12h16" />,
+    edit: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
+    trash: <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />,
   };
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{paths[name]}</svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-// ── Calls tab ──────────────────────────────────────────────────────────────
-function CallsTab({ investorId }: { investorId: string }) {
+function CallsTab({ investorId, onChanged }: { investorId: string; onChanged: () => void }) {
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAttach, setShowAttach] = useState(false);
@@ -266,9 +513,8 @@ function CallsTab({ investorId }: { investorId: string }) {
     setLoading(false);
     if (j.ok) setCalls(j.data);
   }, [investorId]);
-  useEffect(() => { reload(); }, [reload]);
 
-  // Auto-refresh while any transcript is processing
+  useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
     const processing = calls.some((c) => c.transcript_status === "processing");
     if (!processing) return;
@@ -277,46 +523,29 @@ function CallsTab({ investorId }: { investorId: string }) {
   }, [calls, reload]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setShowAttach((v) => !v)}
-          className="text-sm border border-zinc-300 rounded-lg px-3 py-1.5 hover:bg-zinc-50"
-        >
-          {showAttach ? "Annuler" : "+ Rattacher un appel Twilio"}
+    <div className="invd-stack">
+      <div className="invd-panel__head">
+        <div className="invd-panel__t">Appels investisseur</div>
+        <button type="button" onClick={() => setShowAttach((v) => !v)} className="btn btn--sm">
+          {showAttach ? "Annuler" : "Rattacher un appel Twilio"}
         </button>
       </div>
-      {showAttach && (
-        <AttachTwilio investorId={investorId} onAttached={() => { setShowAttach(false); reload(); }} />
-      )}
-
-      {loading && <div className="text-zinc-400 text-sm p-4">Chargement…</div>}
-      {!loading && calls.length === 0 && (
-        <div className="text-zinc-400 text-sm p-8 bg-white rounded-2xl border border-zinc-200 text-center">
-          Aucun appel pour cet investisseur.
-        </div>
-      )}
-
+      {showAttach && <AttachTwilio investorId={investorId} onAttached={() => { setShowAttach(false); reload(); onChanged(); }} />}
+      {loading && <div className="invd-empty">Chargement…</div>}
+      {!loading && calls.length === 0 && <div className="invd-empty">Aucun appel pour cet investisseur.</div>}
       {calls.map((call) => (
-        <CallCard key={call.id} call={call} investorId={investorId} onChange={reload} />
+        <CallCard key={call.id} call={call} investorId={investorId} onChange={() => { reload(); onChanged(); }} />
       ))}
     </div>
   );
 }
 
-function AttachTwilio({
-  investorId,
-  onAttached,
-}: {
-  investorId: string;
-  onAttached: () => void;
-}) {
+function AttachTwilio({ investorId, onAttached }: { investorId: string; onAttached: () => void }) {
   const [sid, setSid] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
@@ -342,38 +571,19 @@ function AttachTwilio({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex gap-2 items-center"
-    >
-      <input
-        value={sid}
-        onChange={(e) => setSid(e.target.value)}
-        placeholder="CA… Call SID ou RE… Recording SID"
-        className="flex-1 border border-zinc-300 rounded-lg px-3 py-2 text-sm font-mono"
-        required
-      />
-      <button
-        type="submit"
-        disabled={busy || !sid}
-        className="bg-zinc-900 text-white text-sm rounded-lg px-3 py-2 disabled:opacity-50"
-      >
-        {busy ? "Rattachement…" : "Rattacher + transcrire"}
-      </button>
-      {err && <div className="text-sm text-red-600">{err}</div>}
+    <form onSubmit={submit} className="invd-form">
+      <input value={sid} onChange={(e) => setSid(e.target.value)} placeholder="CA… Call SID ou RE… Recording SID" className="invd-field mono" required />
+      {err ? <div className="invd-danger">{err}</div> : null}
+      <div className="invd-inline-actions">
+        <button type="submit" disabled={busy || !sid} className="btn btn--primary">
+          {busy ? "Rattachement…" : "Rattacher + transcrire"}
+        </button>
+      </div>
     </form>
   );
 }
 
-function CallCard({
-  call,
-  investorId,
-  onChange,
-}: {
-  call: Call;
-  investorId: string;
-  onChange: () => void;
-}) {
+function CallCard({ call, investorId, onChange }: { call: Call; investorId: string; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [summary, setSummary] = useState(call.summary ?? "");
   const [outcome, setOutcome] = useState(call.outcome ?? "");
@@ -390,11 +600,13 @@ function CallCard({
     setEditing(false);
     onChange();
   }
+
   async function remove() {
     if (!confirm("Supprimer cet appel ?")) return;
     await fetch(`/api/investors/${investorId}/calls/${call.id}`, { method: "DELETE" });
     onChange();
   }
+
   async function retryTranscript() {
     if (!call.twilio_call_sid) return;
     setRetrying(true);
@@ -414,7 +626,8 @@ function CallCard({
       setRetrying(false);
     }
   }
-  async function attachRecordingSid(e: React.FormEvent) {
+
+  async function attachRecordingSid(e: FormEvent) {
     e.preventDefault();
     if (!recordingSid.trim()) return;
     setRetrying(true);
@@ -437,141 +650,66 @@ function CallCard({
   }
 
   return (
-    <article className="bg-white rounded-2xl border border-zinc-200 p-4">
-      <header className="flex items-center gap-2 text-sm">
-        <span className="text-xs uppercase tracking-wide rounded px-1.5 py-0.5 bg-zinc-100">
-          {call.direction ?? "manuel"}
-        </span>
-        <span className="text-zinc-500">{fmtDate(call.started_at ?? call.created_at)}</span>
-        <span className="text-zinc-400">·</span>
-        <span className="text-zinc-500">{fmtDuration(call.duration_sec)}</span>
-        {call.twilio_call_sid && (
-          <span className="text-xs font-mono text-zinc-400 ml-2">{call.twilio_call_sid.slice(0, 14)}…</span>
-        )}
-        <button
-          type="button"
-          onClick={() => setEditing((v) => !v)}
-          className="ml-auto text-xs text-zinc-500 hover:text-zinc-800"
-        >
+    <article className="invd-call-card">
+      <header className="invd-call-card__head">
+        <span className="pill pill--review">{call.direction ?? "manuel"}</span>
+        <span>{fmtDate(call.started_at ?? call.created_at)}</span>
+        <span>{fmtDuration(call.duration_sec)}</span>
+        <span className="mono">{shortSid(call.twilio_call_sid)}</span>
+        <button type="button" onClick={() => setEditing((v) => !v)} className="btn btn--sm">
           {editing ? "Annuler" : "Modifier"}
         </button>
-        <button
-          type="button"
-          onClick={remove}
-          className="text-xs text-red-500 hover:text-red-700"
-        >
-          Supprimer
+        <button type="button" onClick={remove} className="btn btn--sm">
+          <Icon name="trash" /> Supprimer
         </button>
       </header>
 
-      {/* Transcript */}
-      <div className="mt-3">
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">
-          Transcription{" "}
-          <span className="ml-2 normal-case text-zinc-400">({call.transcript_status ?? "—"})</span>
-        </div>
-        {call.transcript_status === "processing" && (
-          <div className="text-sm text-zinc-400 italic">Whisper traite l&apos;enregistrement…</div>
-        )}
-        {call.transcript_status === "failed" && (
-          <div className="text-sm text-red-500">La transcription a échoué.</div>
-        )}
-        {call.transcript_status === "skipped" && (
-          <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>Aucun enregistrement trouvé automatiquement pour {shortSid(call.twilio_call_sid)}.</span>
-              {call.twilio_call_sid && (
-                <button
-                  type="button"
-                  onClick={retryTranscript}
-                  disabled={retrying}
-                  className="rounded-md bg-amber-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
-                >
+      <div>
+        <div className="invd-label">Transcription <span className="invd-muted">({call.transcript_status ?? "—"})</span></div>
+        {call.transcript_status === "processing" ? <div className="invd-muted">Whisper traite l&apos;enregistrement…</div> : null}
+        {call.transcript_status === "failed" ? <div className="invd-danger">La transcription a échoué.</div> : null}
+        {call.transcript_status === "skipped" ? (
+          <form onSubmit={attachRecordingSid} className="invd-form">
+            <div>Aucun enregistrement trouvé automatiquement pour {shortSid(call.twilio_call_sid)}.</div>
+            <input value={recordingSid} onChange={(e) => setRecordingSid(e.target.value)} placeholder="Recording SID RE…" className="invd-field mono" />
+            <div className="invd-inline-actions">
+              {call.twilio_call_sid ? (
+                <button type="button" onClick={retryTranscript} disabled={retrying} className="btn btn--sm">
                   {retrying ? "Recherche…" : "Réessayer"}
                 </button>
-              )}
-            </div>
-            <form onSubmit={attachRecordingSid} className="flex flex-wrap gap-2">
-              <input
-                value={recordingSid}
-                onChange={(e) => setRecordingSid(e.target.value)}
-                placeholder="Coller un Recording SID RE… depuis Twilio"
-                className="min-w-72 flex-1 rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono text-zinc-900"
-              />
-              <button
-                type="submit"
-                disabled={retrying || !recordingSid.trim()}
-                className="rounded-md bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-              >
+              ) : null}
+              <button type="submit" disabled={retrying || !recordingSid.trim()} className="btn btn--primary">
                 Transcrire ce recording
               </button>
-            </form>
-            {retryErr && <span className="text-red-600">{retryErr}</span>}
-          </div>
-        )}
-        {call.transcript && (
-          <pre className="text-sm whitespace-pre-wrap font-sans bg-zinc-50 rounded-lg p-3 border border-zinc-200">
-            {call.transcript}
-          </pre>
-        )}
-        {!call.transcript && call.transcript_status === "completed" && (
-          <div className="text-sm text-zinc-400 italic">
-            (transcription vide — silence ou audio inintelligible)
-          </div>
-        )}
+            </div>
+            {retryErr ? <span className="invd-danger">{retryErr}</span> : null}
+          </form>
+        ) : null}
+        {call.transcript ? <pre className="invd-pre">{call.transcript}</pre> : null}
+        {!call.transcript && call.transcript_status === "completed" ? <div className="invd-muted">(transcription vide)</div> : null}
       </div>
 
-      {/* Summary + outcome */}
-      <div className="grid grid-cols-2 gap-3 mt-3">
+      <div className="invd-call-card__section">
         <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Résumé</div>
-          {editing ? (
-            <textarea
-              rows={3}
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            />
-          ) : (
-            <div className="text-sm text-zinc-700">
-              {call.summary ?? <span className="text-zinc-400">—</span>}
-            </div>
-          )}
+          <div className="invd-label">Résumé</div>
+          {editing ? <textarea rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} className="invd-field" /> : <div>{call.summary ?? "—"}</div>}
         </div>
         <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Résultat</div>
-          {editing ? (
-            <input
-              value={outcome}
-              onChange={(e) => setOutcome(e.target.value)}
-              placeholder="intéressé, à rappeler, passé…"
-              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            />
-          ) : (
-            <div className="text-sm text-zinc-700">
-              {call.outcome ?? <span className="text-zinc-400">—</span>}
-            </div>
-          )}
+          <div className="invd-label">Résultat</div>
+          {editing ? <input value={outcome} onChange={(e) => setOutcome(e.target.value)} className="invd-field" /> : <div>{call.outcome ?? "—"}</div>}
         </div>
       </div>
 
-      {editing && (
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            onClick={save}
-            className="bg-zinc-900 text-white text-sm rounded-lg px-3 py-1.5"
-          >
-            Enregistrer
-          </button>
+      {editing ? (
+        <div className="invd-inline-actions">
+          <button type="button" onClick={save} className="btn btn--primary">Enregistrer</button>
         </div>
-      )}
+      ) : null}
     </article>
   );
 }
 
-// ── Deals tab ──────────────────────────────────────────────────────────────
-function DealsTab({ investorId }: { investorId: string }) {
+function DealsTab({ investorId, onChanged }: { investorId: string; onChanged: () => void }) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -583,60 +721,28 @@ function DealsTab({ investorId }: { investorId: string }) {
     setLoading(false);
     if (j.ok) setDeals(j.data);
   }, [investorId]);
+
   useEffect(() => { reload(); }, [reload]);
 
   return (
-    <div className="lead-grid" style={{ padding: 0 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          onClick={() => setShowNew((v) => !v)}
-          className="btn"
-        >
-          {showNew ? "Annuler" : "Lier un deal"}
+    <div>
+      <div className="invd-panel__head">
+        <div className="invd-panel__t">Pipeline · {loading ? "—" : deals.length} deals partagés</div>
+        <button type="button" onClick={() => setShowNew((v) => !v)} className="btn btn--sm">
+          <Icon name="plus" /> {showNew ? "Annuler" : "Lier un deal"}
         </button>
       </div>
-      {showNew && (
-        <NewDealForm
-          investorId={investorId}
-          onCreated={() => { setShowNew(false); reload(); }}
-        />
-      )}
-
-      {loading && <div className="crm-empty-state">Chargement…</div>}
-      {!loading && deals.length === 0 && (
-        <div className="crm-empty-state card">
-          Aucun deal pour cet investisseur.
-        </div>
-      )}
-
-      {deals.map((d) => (
-        <DealCard key={d.id} deal={d} investorId={investorId} onChange={reload} />
-      ))}
+      <div className="invd-deals">
+        {showNew ? <NewDealForm investorId={investorId} onCreated={() => { setShowNew(false); reload(); onChanged(); }} /> : null}
+        {loading ? <div className="invd-empty">Chargement…</div> : null}
+        {!loading && deals.length === 0 ? <div className="invd-empty">Aucun deal pour cet investisseur.</div> : null}
+        {deals.map((deal) => <DealCard key={deal.id} deal={deal} investorId={investorId} onChange={() => { reload(); onChanged(); }} />)}
       </div>
-      <aside className="match-panel">
-        <div className="panel__h">
-          <div className="panel__t">Matching</div>
-          <span className="pill pill--brand">{deals.length} liés</span>
-        </div>
-        <div className="outcome-list">
-          <button className="out-btn out-btn--pos" type="button"><span className="out-btn__i"><Icon name="check" /></span>Ticket compatible</button>
-          <button className="out-btn out-btn--neu" type="button"><span className="out-btn__i"><Icon name="map" /></span>Géographie cible</button>
-          <button className="out-btn out-btn--neg" type="button"><span className="out-btn__i"><Icon name="clock" /></span>À relancer</button>
-        </div>
-      </aside>
     </div>
   );
 }
 
-function NewDealForm({
-  investorId,
-  onCreated,
-}: {
-  investorId: string;
-  onCreated: () => void;
-}) {
+function NewDealForm({ investorId, onCreated }: { investorId: string; onCreated: () => void }) {
   const [mode, setMode] = useState<"pipeline" | "manual">("pipeline");
   const [form, setForm] = useState({
     deal_name: "",
@@ -656,43 +762,34 @@ function NewDealForm({
 
   useEffect(() => {
     const q = pipelineQuery.trim();
-
     const timer = window.setTimeout(async () => {
       setPipelineLoading(true);
       try {
         const query = q ? `?q=${encodeURIComponent(q)}&limit=20` : "?limit=20";
         const r = await fetch(`/api/deals${query}`);
         const j = await r.json();
-        if (j.ok) {
-          setPipelineDeals(
-            (j.data as PipelineDeal[]).filter((deal) => !["cloture", "abandonne"].includes(deal.stage)),
-          );
-        }
+        if (j.ok) setPipelineDeals((j.data as PipelineDeal[]).filter((deal) => !["cloture", "abandonne"].includes(deal.stage)));
       } finally {
         setPipelineLoading(false);
       }
     }, 250);
-
     return () => window.clearTimeout(timer);
-  }, [mode, pipelineQuery]);
+  }, [pipelineQuery]);
 
   function selectPipelineDeal(deal: PipelineDeal) {
     setSelectedPipelineDeal(deal);
-    setForm((prev) => ({
-      ...prev,
-      pipeline_deal_id: deal.id,
-      deal_name: prev.deal_name || deal.title,
-    }));
+    setForm((prev) => ({ ...prev, pipeline_deal_id: deal.id, deal_name: prev.deal_name || deal.title }));
     setPipelineQuery(pipelineDealLabel(deal));
     setPipelineDeals([]);
   }
+
   function clearPipelineDeal() {
     setSelectedPipelineDeal(null);
     setForm((prev) => ({ ...prev, pipeline_deal_id: "", deal_name: mode === "pipeline" ? "" : prev.deal_name }));
     setPipelineQuery("");
   }
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
@@ -715,146 +812,53 @@ function NewDealForm({
       setBusy(false);
     }
   }
+
   return (
-    <form
-      onSubmit={submit}
-      className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 space-y-3"
-    >
-      <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-1 text-sm">
-        <button
-          type="button"
-          onClick={() => setMode("pipeline")}
-          className={`rounded-md px-3 py-1.5 ${mode === "pipeline" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
-        >
-          Lier un deal pipeline
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("manual");
-            clearPipelineDeal();
-          }}
-          className={`rounded-md px-3 py-1.5 ${mode === "manual" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}
-        >
-          Créer sans pipeline
-        </button>
+    <form onSubmit={submit} className="invd-form">
+      <div className="invd-hero__pills">
+        <button type="button" onClick={() => setMode("pipeline")} className={`pill ${mode === "pipeline" ? "pill--ready" : "pill--review"}`}>Deal pipeline</button>
+        <button type="button" onClick={() => { setMode("manual"); clearPipelineDeal(); }} className={`pill ${mode === "manual" ? "pill--ready" : "pill--review"}`}>Sans pipeline</button>
       </div>
 
-      {mode === "pipeline" && (
-        <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
-          <div className="relative">
-            <input
-              value={pipelineQuery}
-              onChange={(e) => {
-                setPipelineQuery(e.target.value);
-                setSelectedPipelineDeal(null);
-                setForm((prev) => ({ ...prev, pipeline_deal_id: "", deal_name: "" }));
-              }}
-              placeholder="Chercher par nom, adresse ou contact du deal"
-              className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-            />
-            {pipelineLoading && <div className="mt-2 text-sm text-zinc-400">Recherche des deals actifs…</div>}
-            {!pipelineLoading && !selectedPipelineDeal && pipelineDeals.length > 0 && (
-              <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-zinc-200 bg-white">
-                {pipelineDeals.map((deal) => (
-                  <button
-                    key={deal.id}
-                    type="button"
-                    onClick={() => selectPipelineDeal(deal)}
-                    className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-zinc-50"
-                  >
-                    <span className="font-medium text-zinc-900">{deal.title}</span>
-                    <span className="ml-2 text-zinc-500">{deal.address ?? "Sans adresse"}</span>
-                    <span className="ml-2 text-xs uppercase text-zinc-400">{deal.stage}</span>
-                  </button>
-                ))}
+      {mode === "pipeline" ? (
+        <div className="invd-stack">
+          <input value={pipelineQuery} onChange={(e) => { setPipelineQuery(e.target.value); setSelectedPipelineDeal(null); setForm((prev) => ({ ...prev, pipeline_deal_id: "", deal_name: "" })); }} placeholder="Chercher par nom, adresse ou contact du deal" className="invd-field" />
+          {pipelineLoading ? <div className="invd-muted">Recherche des deals actifs…</div> : null}
+          {!pipelineLoading && !selectedPipelineDeal && pipelineDeals.map((deal) => (
+            <button key={deal.id} type="button" onClick={() => selectPipelineDeal(deal)} className="invd-match">
+              <div className="invd-match__score invd-match__score--mid"><Icon name="check" /></div>
+              <div>
+                <div className="invd-match__t">{deal.title}</div>
+                <div className="invd-match__sub">{[deal.address, deal.units ? `${deal.units} portes` : null, deal.stage].filter(Boolean).join(" · ") || "—"}</div>
               </div>
-            )}
-            {!pipelineLoading && !selectedPipelineDeal && pipelineDeals.length === 0 && (
-              <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500">
-                Aucun deal actif trouvé.
-              </div>
-            )}
-          </div>
-          {selectedPipelineDeal && (
-            <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-              <div className="min-w-0 flex-1">
-                <div className="font-medium text-emerald-950">{selectedPipelineDeal.title}</div>
-                <div className="text-emerald-800">
-                  {[selectedPipelineDeal.address, selectedPipelineDeal.units ? `${selectedPipelineDeal.units} portes` : null, selectedPipelineDeal.stage].filter(Boolean).join(" · ")}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={clearPipelineDeal}
-                className="text-xs font-medium text-emerald-900 hover:text-emerald-950"
-              >
-                Changer
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {mode === "manual" && (
-        <input
-          required={mode === "manual"}
-          value={form.deal_name}
-          onChange={(e) => setForm({ ...form, deal_name: e.target.value })}
-          placeholder="Nom du deal *"
-          className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <select
-          value={form.stage}
-          onChange={(e) => setForm({ ...form, stage: e.target.value })}
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        >
-          {Object.entries(STAGE_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
+            </button>
           ))}
+          {!pipelineLoading && !selectedPipelineDeal && pipelineDeals.length === 0 ? <div className="invd-empty">Aucun deal actif trouvé.</div> : null}
+          {selectedPipelineDeal ? (
+            <div className="invd-empty">
+              {selectedPipelineDeal.title} · {selectedPipelineDeal.address ?? "—"}
+              <button type="button" onClick={clearPipelineDeal} className="btn btn--sm">Changer</button>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <input required value={form.deal_name} onChange={(e) => setForm({ ...form, deal_name: e.target.value })} placeholder="Nom du deal" className="invd-field" />
+      )}
+
+      <div className="invd-form__grid">
+        <select value={form.stage} onChange={(e) => setForm({ ...form, stage: e.target.value })} className="invd-field">
+          {Object.entries(STAGE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <input
-          type="number"
-          value={form.ticket_size_cad}
-          onChange={(e) => setForm({ ...form, ticket_size_cad: e.target.value })}
-          placeholder="Ticket investisseur (CAD)"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
+        <input type="number" value={form.ticket_size_cad} onChange={(e) => setForm({ ...form, ticket_size_cad: e.target.value })} placeholder="Ticket investisseur CAD" className="invd-field" />
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        <input
-          type="date"
-          value={form.expected_close_at}
-          onChange={(e) => setForm({ ...form, expected_close_at: e.target.value })}
-          className="col-span-2 border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          min="0"
-          max="100"
-          value={form.probability_pct}
-          onChange={(e) => setForm({ ...form, probability_pct: e.target.value })}
-          placeholder="Probabilité %"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
+      <div className="invd-form__grid invd-form__grid--3">
+        <input type="date" value={form.expected_close_at} onChange={(e) => setForm({ ...form, expected_close_at: e.target.value })} className="invd-field" />
+        <input type="number" min="0" max="100" value={form.probability_pct} onChange={(e) => setForm({ ...form, probability_pct: e.target.value })} placeholder="Probabilité %" className="invd-field" />
+        <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" className="invd-field" />
       </div>
-      <textarea
-        rows={2}
-        value={form.notes}
-        onChange={(e) => setForm({ ...form, notes: e.target.value })}
-        placeholder="Notes"
-        className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-      />
-      {err && <div className="text-sm text-red-600">{err}</div>}
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={busy || (mode === "pipeline" && !form.pipeline_deal_id)}
-          className="bg-zinc-900 text-white text-sm rounded-lg px-3 py-2 disabled:opacity-50"
-        >
+      {err ? <div className="invd-danger">{err}</div> : null}
+      <div className="invd-inline-actions">
+        <button type="submit" disabled={busy || (mode === "pipeline" && !form.pipeline_deal_id)} className="btn btn--primary">
           {busy ? "Création…" : mode === "pipeline" ? "Lier à l'investisseur" : "Créer"}
         </button>
       </div>
@@ -862,17 +866,10 @@ function NewDealForm({
   );
 }
 
-function DealCard({
-  deal,
-  investorId,
-  onChange,
-}: {
-  deal: Deal;
-  investorId: string;
-  onChange: () => void;
-}) {
+function DealCard({ deal, investorId, onChange }: { deal: Deal; investorId: string; onChange: () => void }) {
   const [stage, setStage] = useState(deal.stage);
   const pipeline = deal.pipeline_deal;
+  const equity = pipeline ? estimatedEquity(pipeline) : null;
 
   async function updateStage(next: string) {
     setStage(next);
@@ -883,6 +880,7 @@ function DealCard({
     });
     onChange();
   }
+
   async function remove() {
     if (!confirm("Supprimer ce deal ?")) return;
     await fetch(`/api/investors/${investorId}/deals/${deal.id}`, { method: "DELETE" });
@@ -890,82 +888,54 @@ function DealCard({
   }
 
   return (
-    <article className="deal-card">
-      <header className="deal-card__head">
-        <select
-          value={stage}
-          onChange={(e) => updateStage(e.target.value)}
-          className="deal-stage-select"
-          aria-label="Stade du deal"
-        >
-          {Object.entries(STAGE_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
+    <article className="invd-deal-card">
+      <header className="invd-deal-card__head">
+        <select value={stage} onChange={(e) => updateStage(e.target.value)} className="invd-deal-stage-select" aria-label="Stade du deal">
+          {Object.entries(STAGE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h3 className="deal-card__title">{deal.deal_name}</h3>
-          {pipeline && (
-            <div className="deal-card__title__sub">
-              {[pipeline.address, pipeline.units ? `${pipeline.units} logements` : null].filter(Boolean).join(" · ")}
-            </div>
-          )}
+        <div>
+          <h3 className="invd-deal-card__title">{deal.deal_name}</h3>
+          {pipeline ? <div className="invd-deal-card__title__sub">{[pipeline.address, pipeline.units ? `${pipeline.units} logements` : null].filter(Boolean).join(" · ")}</div> : null}
         </div>
-        <span className="deal-card__temp">{pipeline?.temperature ?? "Tiède"}{pipeline?.priority ? ` · ${pipeline.priority}` : ""}</span>
+        <span className="invd-deal-card__temp">{[pipeline?.temperature, pipeline?.priority].filter(Boolean).join(" · ") || "—"}</span>
       </header>
 
-      {pipeline && (
-        <div className="deal-card__price-row">
-          <DealStat label="Adresse" value={pipeline.address ?? "—"} />
-          <DealStat label="Portes" value={pipeline.units != null ? String(pipeline.units) : "—"} />
-          <DealStat label="Prix demandé" value={fmtMoney(pipeline.asking_price)} />
-          <DealStat label="Offre" value={fmtMoney(pipeline.offer_price)} />
-          <DealStat label="Stade pipeline" value={pipeline.stage} />
-          <DealStat label="Température" value={pipeline.temperature ?? "—"} />
-          <DealStat label="Priorité" value={pipeline.priority ?? "—"} />
-          <DealStat label="Ticket invest." value={fmtMoney(deal.ticket_size_cad)} />
-        </div>
-      )}
-
-      <div className="deal-card__body">
-        <div className="deal-card__contact">
-          <div className="deal-card__notes-h">Contact vendeur</div>
-          <div className="deal-card__contact__name">{pipeline?.contact_name ?? "—"}</div>
-          <div className="deal-card__contact__data mono">
-            {[pipeline?.contact_phone, pipeline?.contact_email].filter(Boolean).join(" · ") || "—"}
-          </div>
-        </div>
-        <div>
-          {pipeline?.next_action && (
-            <>
-              <div className="deal-card__notes-h">Prochaine action</div>
-              <p className="deal-card__notes">{pipeline.next_action}</p>
-            </>
-          )}
-
-          {pipeline?.notes_deal && (
-            <>
-              <div className="deal-card__notes-h" style={{ marginTop: 14 }}>Notes du deal</div>
-              <p className="deal-card__notes">{pipeline.notes_deal}</p>
-            </>
-          )}
-
-          {pipeline?.notes_vendeur && (
-            <>
-              <div className="deal-card__notes-h" style={{ marginTop: 14 }}>Notes vendeur</div>
-              <p className="deal-card__notes">{pipeline.notes_vendeur}</p>
-            </>
-          )}
-          {deal.notes && <p className="deal-card__notes">{deal.notes}</p>}
-        </div>
+      <div className="invd-deal-card__price-row">
+        <DealStat label="Prix demandé" value={fmtMoney(pipeline?.asking_price ?? null)} />
+        <DealStat label="Notre offre" value={fmtMoney(pipeline?.offer_price ?? null)} />
+        <DealStat label="Mise de fonds" value={fmtMoney(equity)} />
+        <DealStat label="Ticket investisseur" value={fmtMoney(deal.ticket_size_cad)} />
       </div>
 
-      <footer className="deal-card__foot" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="invd-deal-card__body">
+        <div className="invd-deal-card__contact">
+          <div className="invd-deal-card__contact__avatar">{initials(pipeline?.contact_name ?? "—")}</div>
+          <div>
+            <div className="invd-deal-card__contact__name">{pipeline?.contact_name ?? "—"}</div>
+            <div className="invd-deal-card__contact__role">Vendeur</div>
+          </div>
+          <div className="invd-deal-card__contact__data">
+            <span>{pipeline?.contact_phone ?? "—"}</span>
+            <span>{pipeline?.contact_email ?? "—"}</span>
+          </div>
+        </div>
+
+        <DealNotes title="Notes du deal" body={pipeline?.notes_deal ?? deal.notes} />
+        <DealNotes title="Notes vendeur" body={pipeline?.notes_vendeur ?? null} />
+        {pipeline?.next_action ? <DealNotes title="Prochaine action" body={pipeline.next_action} /> : null}
+      </div>
+
+      <footer className="invd-deal-card__foot">
         {pipeline ? (
-          <Link href={`/pipeline/${pipeline.id}` as never}>Ouvrir le deal pipeline <Icon name="arrowRight" /></Link>
-        ) : <span className="socle-muted">Deal manuel</span>}
-        <button onClick={remove} type="button" className="btn btn--ghost btn--sm">
-          Supprimer
-        </button>
+          <Link href={`/pipeline/${pipeline.id}` as never}>
+            Ouvrir le deal pipeline <Icon name="arrowRight" />
+          </Link>
+        ) : <span className="invd-muted">Deal manuel</span>}
+        <div className="invd-deal-card__foot__menu">
+          <button onClick={remove} type="button" className="btn btn--sm">
+            <Icon name="trash" /> Supprimer
+          </button>
+        </div>
       </footer>
     </article>
   );
@@ -973,15 +943,23 @@ function DealCard({
 
 function DealStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="ki">
-      <div className="ki__l">{label}</div>
-      <div className="ki__v">{value}</div>
+    <div className="invd-dc-mini">
+      <div className="invd-dc-mini__l">{label}</div>
+      <div className={`invd-dc-mini__v ${value === "—" ? "invd-dc-mini__v--muted" : ""}`}>{value}</div>
     </div>
   );
 }
 
-// ── Notes tab ──────────────────────────────────────────────────────────────
-function NotesTab({ investorId }: { investorId: string }) {
+function DealNotes({ title, body }: { title: string; body: string | null | undefined }) {
+  return (
+    <div>
+      <div className="invd-deal-card__notes-h"><Icon name="edit" /> {title}</div>
+      <p className="invd-deal-card__notes">{body ?? "—"}</p>
+    </div>
+  );
+}
+
+function NotesTab({ investorId, onChanged }: { investorId: string; onChanged: () => void }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [body, setBody] = useState("");
@@ -994,9 +972,10 @@ function NotesTab({ investorId }: { investorId: string }) {
     setLoading(false);
     if (j.ok) setNotes(j.data);
   }, [investorId]);
+
   useEffect(() => { reload(); }, [reload]);
 
-  async function add(e: React.FormEvent) {
+  async function add(e: FormEvent) {
     e.preventDefault();
     if (!body.trim()) return;
     setBusy(true);
@@ -1008,73 +987,45 @@ function NotesTab({ investorId }: { investorId: string }) {
     setBody("");
     setBusy(false);
     reload();
+    onChanged();
   }
+
   async function remove(id: string) {
     if (!confirm("Supprimer cette note ?")) return;
     await fetch(`/api/investors/${investorId}/notes/${id}`, { method: "DELETE" });
     reload();
+    onChanged();
   }
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={add} className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
-        <textarea
-          rows={3}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Note libre (markdown OK)…"
-          className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <div className="flex justify-end">
-          <button
-            disabled={busy || !body.trim()}
-            type="submit"
-            className="bg-zinc-900 text-white text-sm rounded-lg px-3 py-1.5 disabled:opacity-50"
-          >
-            Ajouter
-          </button>
+    <div className="invd-stack">
+      <form onSubmit={add} className="invd-form">
+        <textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Note libre" className="invd-field" />
+        <div className="invd-inline-actions">
+          <button disabled={busy || !body.trim()} type="submit" className="btn btn--primary">Ajouter</button>
         </div>
       </form>
-
-      {loading && <div className="text-zinc-400 text-sm p-4">Chargement…</div>}
-      {!loading && notes.length === 0 && (
-        <div className="text-zinc-400 text-sm p-8 bg-white rounded-2xl border border-zinc-200 text-center">
-          Aucune note pour cet investisseur.
-        </div>
-      )}
-
-      {notes.map((n) => (
-        <article key={n.id} className="bg-white rounded-2xl border border-zinc-200 p-4">
-          <div className="flex items-center text-xs text-zinc-500 mb-2">
-            <span>{fmtDate(n.created_at)}</span>
-            <button
-              type="button"
-              onClick={() => remove(n.id)}
-              className="ml-auto text-red-500 hover:text-red-700"
-            >
-              Supprimer
-            </button>
+      {loading ? <div className="invd-empty">Chargement…</div> : null}
+      {!loading && notes.length === 0 ? <div className="invd-empty">Aucune note pour cet investisseur.</div> : null}
+      {notes.map((note) => (
+        <article key={note.id} className="invd-note-card">
+          <div className="invd-note-card__head">
+            <span>{fmtDate(note.created_at)}</span>
+            <button type="button" onClick={() => remove(note.id)} className="btn btn--sm"><Icon name="trash" /> Supprimer</button>
           </div>
-          <pre className="text-sm whitespace-pre-wrap font-sans">{n.body}</pre>
+          <pre className="invd-pre">{note.body}</pre>
         </article>
       ))}
     </div>
   );
 }
 
-// ── Edit tab ───────────────────────────────────────────────────────────────
-function EditTab({
-  investor,
-  onSaved,
-}: {
-  investor: Investor;
-  onSaved: (next: Investor) => void;
-}) {
+function EditTab({ investor, onSaved }: { investor: Investor; onSaved: (next: Investor) => void }) {
   const [form, setForm] = useState(investor);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function save(e: React.FormEvent) {
+  async function save(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
@@ -1099,108 +1050,38 @@ function EditTab({
   }
 
   return (
-    <form onSubmit={save} className="bg-white rounded-2xl border border-zinc-200 p-5 space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <input
-          value={form.full_name}
-          onChange={(e) => set("full_name", e.target.value)}
-          placeholder="Nom complet"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <input
-          value={form.firm_name ?? ""}
-          onChange={(e) => set("firm_name", e.target.value || null)}
-          placeholder="Firme"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
+    <form onSubmit={save} className="invd-form">
+      <div className="invd-panel__head">
+        <div className="invd-panel__t">Critères & modification</div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <input
-          value={form.email ?? ""}
-          onChange={(e) => set("email", e.target.value || null)}
-          placeholder="Email"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <input
-          value={form.phone_e164 ?? ""}
-          onChange={(e) => set("phone_e164", e.target.value || null)}
-          placeholder="+15145551234"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
+      <div className="invd-form__grid">
+        <input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="Nom complet" className="invd-field" />
+        <input value={form.firm_name ?? ""} onChange={(e) => set("firm_name", e.target.value || null)} placeholder="Firme" className="invd-field" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <input
-          value={form.city ?? ""}
-          onChange={(e) => set("city", e.target.value || null)}
-          placeholder="Ville"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <select
-          value={form.status}
-          onChange={(e) => set("status", e.target.value)}
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        >
+      <div className="invd-form__grid">
+        <input value={form.email ?? ""} onChange={(e) => set("email", e.target.value || null)} placeholder="Email" className="invd-field" />
+        <input value={form.phone_e164 ?? ""} onChange={(e) => set("phone_e164", e.target.value || null)} placeholder="+15145551234" className="invd-field" />
+      </div>
+      <div className="invd-form__grid">
+        <input value={form.city ?? ""} onChange={(e) => set("city", e.target.value || null)} placeholder="Ville" className="invd-field" />
+        <select value={form.status} onChange={(e) => set("status", e.target.value)} className="invd-field">
           <option value="prospect">Prospect</option>
           <option value="active">Actif</option>
           <option value="inactive">Inactif</option>
           <option value="lost">Perdu</option>
         </select>
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        <input
-          type="number"
-          value={form.capital_available_cad ?? ""}
-          onChange={(e) =>
-            set("capital_available_cad", e.target.value ? Number(e.target.value) : null)
-          }
-          placeholder="Capital dispo"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          value={form.ticket_size_min_cad ?? ""}
-          onChange={(e) =>
-            set("ticket_size_min_cad", e.target.value ? Number(e.target.value) : null)
-          }
-          placeholder="Ticket min"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          value={form.ticket_size_max_cad ?? ""}
-          onChange={(e) =>
-            set("ticket_size_max_cad", e.target.value ? Number(e.target.value) : null)
-          }
-          placeholder="Ticket max"
-          className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-        />
+      <div className="invd-form__grid invd-form__grid--3">
+        <input type="number" value={form.capital_available_cad ?? ""} onChange={(e) => set("capital_available_cad", e.target.value ? Number(e.target.value) : null)} placeholder="Capital dispo" className="invd-field" />
+        <input type="number" value={form.ticket_size_min_cad ?? ""} onChange={(e) => set("ticket_size_min_cad", e.target.value ? Number(e.target.value) : null)} placeholder="Ticket min" className="invd-field" />
+        <input type="number" value={form.ticket_size_max_cad ?? ""} onChange={(e) => set("ticket_size_max_cad", e.target.value ? Number(e.target.value) : null)} placeholder="Ticket max" className="invd-field" />
       </div>
-      <input
-        value={form.preferred_geography ?? ""}
-        onChange={(e) => set("preferred_geography", e.target.value || null)}
-        placeholder="Géographie préférée"
-        className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-      />
-      <input
-        value={form.asset_class_focus ?? ""}
-        onChange={(e) => set("asset_class_focus", e.target.value || null)}
-        placeholder="Focus actif"
-        className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-      />
-      <textarea
-        rows={4}
-        value={form.notes ?? ""}
-        onChange={(e) => set("notes", e.target.value || null)}
-        placeholder="Notes"
-        className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
-      />
-      {err && <div className="text-sm text-red-600">{err}</div>}
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={busy}
-          className="bg-zinc-900 text-white text-sm rounded-lg px-4 py-2 disabled:opacity-50"
-        >
+      <input value={form.preferred_geography ?? ""} onChange={(e) => set("preferred_geography", e.target.value || null)} placeholder="Géographie préférée" className="invd-field" />
+      <input value={form.asset_class_focus ?? ""} onChange={(e) => set("asset_class_focus", e.target.value || null)} placeholder="Focus actif" className="invd-field" />
+      <textarea rows={4} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value || null)} placeholder="Notes" className="invd-field" />
+      {err ? <div className="invd-danger">{err}</div> : null}
+      <div className="invd-inline-actions">
+        <button type="submit" disabled={busy} className="btn btn--primary">
           {busy ? "Enregistrement…" : "Enregistrer"}
         </button>
       </div>
