@@ -8727,29 +8727,26 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 .dealmap-canvas {
   position: sticky;
   top: 88px;
-  min-height: 580px;
+  min-height: 620px;
   border: 1px solid var(--border-soft);
   border-radius: 18px;
   overflow: hidden;
-  background:
-    linear-gradient(90deg, transparent 24%, var(--border-soft) 25%, transparent 26%),
-    linear-gradient(0deg, transparent 24%, var(--border-soft) 25%, transparent 26%),
-    var(--surface);
-  background-size: 52px 52px;
+  background: var(--surface);
   box-shadow: var(--sh-1);
 }
-.dealmap-canvas::after {
-  content: "Pipeline deals";
-  position: absolute;
-  right: 16px;
-  bottom: 14px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-3);
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 5px 8px;
+.dealmap-map-frame {
+  position: relative;
+  height: 620px;
+  min-height: 620px;
+  background: var(--bg-alt);
+}
+.dealmap-iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 620px;
+  border: 0;
+  filter: saturate(.92) contrast(.98);
 }
 .dealmap-canvas__legend {
   position: absolute;
@@ -8785,30 +8782,45 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 .dealmap-dot--hot { background: var(--red); }
 .dealmap-dot--warm { background: var(--gold); }
 .dealmap-dot--missing { background: var(--ink-3); }
-.dealmap-pin {
+.dealmap-selected {
   position: absolute;
-  left: var(--x);
-  top: var(--y);
-  transform: translate(-50%, -50%);
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 3px solid var(--surface);
-  box-shadow: 0 4px 16px oklch(0.2 0.02 80 / .18);
-  text-decoration: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 800;
-  color: #fff;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: oklch(1 0 0 / .92);
+  box-shadow: 0 14px 38px oklch(0.2 0.02 80 / .16);
+  backdrop-filter: blur(14px);
 }
-.dealmap-pin--hot { background: var(--red); }
-.dealmap-pin--warm { background: var(--gold); color: var(--ink); }
-.dealmap-pin--missing { background: var(--ink-3); }
-.dealmap-pin:hover {
-  z-index: 3;
-  transform: translate(-50%, -50%) scale(1.08);
+.dealmap-selected__label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.dealmap-selected h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.dealmap-selected p {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.dealmap-selected__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .dealmap-list {
   display: flex;
@@ -8853,11 +8865,24 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   padding: 14px 16px;
   border-top: 1px solid var(--border-soft);
   border-left: 3px solid var(--border-strong);
+  transition: background .16s ease, box-shadow .16s ease, border-color .16s ease;
 }
 .dealmap-card:first-child { border-top: 0; }
 .dealmap-card--chaud { border-left-color: var(--red); }
 .dealmap-card--tiede { border-left-color: var(--gold); }
-.dealmap-card__main { min-width: 0; }
+.dealmap-card--selected {
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px var(--gold-border);
+}
+.dealmap-card__select {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.dealmap-card__select:hover .dealmap-card__title { color: var(--gold-deep); }
 .dealmap-card__title {
   display: block;
   color: var(--ink);
@@ -8937,7 +8962,9 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 }
 @media (max-width: 1080px) {
   .dealmap-layout { grid-template-columns: 1fr; }
-  .dealmap-canvas { position: relative; top: auto; min-height: 420px; }
+  .dealmap-canvas { position: relative; top: auto; min-height: 480px; }
+  .dealmap-map-frame,
+  .dealmap-iframe { min-height: 480px; height: 480px; }
 }
 @media (max-width: 760px) {
   .dealmap-page { padding: 20px 16px 56px; }
@@ -8945,4 +8972,7 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   .dealmap-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dealmap-card { grid-template-columns: 1fr; }
   .dealmap-card__actions { align-items: center; }
+  .dealmap-selected { position: static; margin: 10px; align-items: flex-start; flex-direction: column; }
+  .dealmap-map-frame,
+  .dealmap-iframe { min-height: 440px; height: 440px; }
 }
