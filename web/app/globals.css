@@ -5730,6 +5730,8 @@ kbd.queue-kbd {
 .deal-card__notes-h { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
 .deal-card__notes { font-family: var(--serif); font-style: italic; line-height: 1.55; font-size: 14.5px; color: var(--ink); }
 .match-panel { background: var(--surface); border: 1px solid var(--border-soft); border-radius: 16px; padding: 18px; position: sticky; top: 76px; }
+.deals-cell { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--green); }
+.deals-cell__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 
 @media (max-width: 1200px) {
   .lead-grid { grid-template-columns: 1fr; }
