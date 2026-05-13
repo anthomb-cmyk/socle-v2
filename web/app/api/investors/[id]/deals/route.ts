@@ -17,7 +17,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const sb = createSupabaseAdminClient();
   const { data, error } = await sb
     .from("investor_deals")
-    .select("*, properties(id, address, city, num_units)")
+    .select("*, properties(id, address, city, num_units), pipeline_deal:deals(id, title, stage, address, units, asking_price, offer_price)")
     .eq("investor_id", id)
     .order("updated_at", { ascending: false });
 
@@ -32,8 +32,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const body = await req.json().catch(() => ({}));
 
   const deal_name = String(body.deal_name ?? "").trim();
-  if (!deal_name) {
-    return NextResponse.json({ ok: false, error: "deal_name est requis" }, { status: 400 });
+  const pipelineDealId = body.pipeline_deal_id ? String(body.pipeline_deal_id) : null;
+  if (!deal_name && !pipelineDealId) {
+    return NextResponse.json({ ok: false, error: "deal_name ou pipeline_deal_id est requis" }, { status: 400 });
   }
   const stage = String(body.stage ?? "prospect");
   if (!VALID_STAGES.includes(stage)) {
@@ -41,12 +42,30 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   const sb = createSupabaseAdminClient();
+  let pipelineDeal: { id: string; title: string; stage: string } | null = null;
+
+  if (pipelineDealId) {
+    const { data: deal, error: dealErr } = await sb
+      .from("deals")
+      .select("id, title, stage")
+      .eq("id", pipelineDealId)
+      .maybeSingle();
+
+    if (dealErr) return NextResponse.json({ ok: false, error: dealErr.message }, { status: 500 });
+    if (!deal) return NextResponse.json({ ok: false, error: "Deal pipeline introuvable" }, { status: 404 });
+    if (["cloture", "abandonne"].includes(deal.stage)) {
+      return NextResponse.json({ ok: false, error: "Le deal pipeline doit être actif" }, { status: 400 });
+    }
+    pipelineDeal = deal;
+  }
+
   const { data, error } = await sb
     .from("investor_deals")
     .insert({
       investor_id: id,
-      deal_name,
+      deal_name: pipelineDeal?.title ?? deal_name,
       stage,
+      pipeline_deal_id: pipelineDealId,
       property_id: body.property_id ?? null,
       ticket_size_cad: body.ticket_size_cad != null ? Number(body.ticket_size_cad) : null,
       expected_close_at: body.expected_close_at ?? null,
@@ -57,6 +76,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .select("id")
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ ok: false, error: "Ce deal pipeline est déjà lié à cet investisseur." }, { status: 409 });
+    }
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ ok: true, data: { id: data!.id } }, { status: 201 });
 }

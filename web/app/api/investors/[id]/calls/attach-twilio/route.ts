@@ -36,6 +36,11 @@ type TwilioRecording = {
   channels?: number;
 };
 
+type RecordingCandidate = {
+  callSid: string;
+  recording: TwilioRecording;
+};
+
 async function twilioGet<T>(path: string): Promise<T> {
   const { accountSid, authToken } = getTwilioConfig();
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}${path}`, {
@@ -46,6 +51,53 @@ async function twilioGet<T>(path: string): Promise<T> {
     throw new Error(`Twilio ${res.status}: ${text.slice(0, 240)}`);
   }
   return (await res.json()) as T;
+}
+
+async function listRecordings(callSid: string): Promise<TwilioRecording[]> {
+  type RecListResp = { recordings: TwilioRecording[] };
+  const list = await twilioGet<RecListResp>(`/Calls/${callSid}/Recordings.json`);
+  return list.recordings ?? [];
+}
+
+async function listChildCalls(callSid: string): Promise<TwilioCall[]> {
+  type CallListResp = { calls: TwilioCall[] };
+  const params = new URLSearchParams({ ParentCallSid: callSid });
+  const list = await twilioGet<CallListResp>(`/Calls.json?${params.toString()}`);
+  return list.calls ?? [];
+}
+
+async function findRecordingForCall(call: TwilioCall): Promise<{
+  recording: RecordingCandidate | null;
+  relatedCalls: TwilioCall[];
+}> {
+  const relatedCalls: TwilioCall[] = [];
+  const callSids = new Set<string>([call.sid]);
+
+  if (call.parent_call_sid) callSids.add(call.parent_call_sid);
+
+  try {
+    const children = await listChildCalls(call.sid);
+    relatedCalls.push(...children);
+    for (const child of children) callSids.add(child.sid);
+  } catch (err) {
+    console.warn("[attach-twilio] couldn't list child calls", err);
+  }
+
+  for (const candidateCallSid of callSids) {
+    try {
+      const recordings = await listRecordings(candidateCallSid);
+      if (recordings[0]) {
+        return {
+          recording: { callSid: candidateCallSid, recording: recordings[0] },
+          relatedCalls,
+        };
+      }
+    } catch (err) {
+      console.warn("[attach-twilio] couldn't list recordings", candidateCallSid, err);
+    }
+  }
+
+  return { recording: null, relatedCalls };
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -67,11 +119,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // ── 1. Check this SID isn't already attached somewhere ────────────────────
   const { data: existing } = await sb
     .from("investor_calls")
-    .select("id, investor_id")
+    .select("id, investor_id, transcript_status")
     .eq("twilio_call_sid", callSid)
     .maybeSingle();
 
-  if (existing) {
+  if (existing && existing.investor_id !== investorId) {
     return NextResponse.json(
       {
         ok: false,
@@ -80,6 +132,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       },
       { status: 409 },
     );
+  }
+  if (existing && ["processing", "completed"].includes(String(existing.transcript_status ?? ""))) {
+    return NextResponse.json({
+      ok: true,
+      data: {
+        id: existing.id,
+        twilio_call_sid: callSid,
+        transcript_status: existing.transcript_status,
+      },
+    });
   }
 
   // ── 2. Fetch call metadata from Twilio ────────────────────────────────────
@@ -91,25 +153,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok: false, error: `Twilio API: ${msg}` }, { status: 502 });
   }
 
-  // ── 3. Fetch recordings for that call ─────────────────────────────────────
-  type RecListResp = { recordings: TwilioRecording[] };
-  let recordings: TwilioRecording[] = [];
-  try {
-    const list = await twilioGet<RecListResp>(`/Calls/${callSid}/Recordings.json`);
-    recordings = list.recordings ?? [];
-  } catch (err) {
-    // Non-fatal — we'll still log the call without a recording
-    console.warn("[attach-twilio] couldn't list recordings", err);
-  }
-
-  const recording = recordings[0];
+  // ── 3. Fetch recordings for this call or related Twilio legs ──────────────
+  const recordingMatch = await findRecordingForCall(call);
+  const recording = recordingMatch.recording?.recording ?? null;
+  const recordingSourceCallSid = recordingMatch.recording?.callSid ?? null;
   const recordingSid = recording?.sid ?? null;
   // Bare URL (no extension) — transcribeTwilioRecording appends .mp3 as needed.
   const recordingUrl = recordingSid
     ? `https://api.twilio.com/2010-04-01/Accounts/${getTwilioConfig().accountSid}/Recordings/${recordingSid}`
     : null;
 
-  // ── 4. Insert investor_calls row ──────────────────────────────────────────
+  // ── 4. Insert or refresh investor_calls row ───────────────────────────────
   const duration = Number(call.duration ?? recording?.duration ?? 0) || null;
   const startedAt = call.start_time ?? null;
   const recordedAt = recording?.date_created ?? null;
@@ -120,9 +174,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     direction = call.direction.startsWith("outbound") ? "outbound" : "inbound";
   }
 
-  const { data: inserted, error: insErr } = await sb
-    .from("investor_calls")
-    .insert({
+  const callPayload = {
       investor_id: investorId,
       twilio_call_sid: callSid,
       parent_call_sid: call.parent_call_sid ?? null,
@@ -131,13 +183,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       recording_url: recordingUrl,
       recording_sid: recordingSid,
       transcript_status: recordingUrl ? "processing" : "skipped",
+      transcript: null,
       started_at: startedAt,
       recorded_at: recordedAt,
       logged_by: auth.user.id,
-      raw: { call, recording: recording ?? null } as Record<string, unknown>,
-    })
+      raw: {
+        call,
+        recording,
+        recording_source_call_sid: recordingSourceCallSid,
+        related_calls: recordingMatch.relatedCalls,
+      } as Record<string, unknown>,
+    };
+
+  const write = existing
+    ? sb
+        .from("investor_calls")
+        .update(callPayload)
+        .eq("id", existing.id)
+        .select("id")
+        .single()
+    : sb
+        .from("investor_calls")
+        .insert(callPayload)
     .select("id")
     .single();
+
+  const { data: inserted, error: insErr } = await write;
 
   if (insErr) {
     return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
@@ -173,6 +244,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         id: callRowId,
         twilio_call_sid: callSid,
         recording_sid: recordingSid,
+        recording_source_call_sid: recordingSourceCallSid,
         transcript_status: recordingUrl ? "processing" : "skipped",
         direction,
         duration_sec: duration,

@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 const UPDATABLE = [
-  "deal_name", "stage", "property_id", "ticket_size_cad",
+  "deal_name", "stage", "property_id", "pipeline_deal_id", "ticket_size_cad",
   "expected_close_at", "probability_pct", "notes",
 ] as const;
 

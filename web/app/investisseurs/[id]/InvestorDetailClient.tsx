@@ -43,12 +43,24 @@ type Deal = {
   deal_name: string;
   stage: string;
   property_id: string | null;
+  pipeline_deal_id: string | null;
   ticket_size_cad: number | null;
   expected_close_at: string | null;
   probability_pct: number | null;
   notes: string | null;
   updated_at: string;
   properties?: { id: string; address: string | null; city: string | null; num_units: number | null } | null;
+  pipeline_deal?: PipelineDeal | null;
+};
+
+type PipelineDeal = {
+  id: string;
+  title: string;
+  stage: string;
+  address: string | null;
+  units: number | null;
+  asking_price: number | null;
+  offer_price: number | null;
 };
 
 type Note = {
@@ -84,6 +96,14 @@ function fmtDuration(sec: number | null): string {
 function fmtDate(d: string | null): string {
   if (!d) return "—";
   return new Date(d).toLocaleString("fr-CA", { dateStyle: "medium", timeStyle: "short" });
+}
+function pipelineDealLabel(deal: PipelineDeal): string {
+  return [
+    deal.title,
+    deal.address,
+    deal.units ? `${deal.units} portes` : null,
+    deal.stage,
+  ].filter(Boolean).join(" · ");
 }
 
 export default function InvestorDetailClient({
@@ -475,13 +495,52 @@ function NewDealForm({
   const [form, setForm] = useState({
     deal_name: "",
     stage: "prospect",
+    pipeline_deal_id: "",
     ticket_size_cad: "",
     expected_close_at: "",
     probability_pct: "",
     notes: "",
   });
+  const [pipelineQuery, setPipelineQuery] = useState("");
+  const [pipelineDeals, setPipelineDeals] = useState<PipelineDeal[]>([]);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = pipelineQuery.trim();
+    if (q.length < 2) {
+      setPipelineDeals([]);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setPipelineLoading(true);
+      try {
+        const r = await fetch(`/api/deals?q=${encodeURIComponent(q)}&limit=20`);
+        const j = await r.json();
+        if (j.ok) {
+          setPipelineDeals(
+            (j.data as PipelineDeal[]).filter((deal) => !["cloture", "abandonne"].includes(deal.stage)),
+          );
+        }
+      } finally {
+        setPipelineLoading(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [pipelineQuery]);
+
+  function selectPipelineDeal(deal: PipelineDeal) {
+    setForm((prev) => ({
+      ...prev,
+      pipeline_deal_id: deal.id,
+      deal_name: prev.deal_name || deal.title,
+    }));
+    setPipelineQuery(pipelineDealLabel(deal));
+    setPipelineDeals([]);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -513,10 +572,10 @@ function NewDealForm({
     >
       <div className="grid grid-cols-2 gap-3">
         <input
-          required
+          required={!form.pipeline_deal_id}
           value={form.deal_name}
           onChange={(e) => setForm({ ...form, deal_name: e.target.value })}
-          placeholder="Nom du deal *"
+          placeholder={form.pipeline_deal_id ? "Nom du deal (prérempli)" : "Nom du deal *"}
           className="border border-zinc-300 rounded-lg px-3 py-2 text-sm"
         />
         <select
@@ -528,6 +587,49 @@ function NewDealForm({
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
+      </div>
+      <div className="relative">
+        <input
+          value={pipelineQuery}
+          onChange={(e) => {
+            setPipelineQuery(e.target.value);
+            setForm((prev) => ({ ...prev, pipeline_deal_id: "" }));
+          }}
+          placeholder="Rechercher un deal actif du pipeline"
+          className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm"
+        />
+        {form.pipeline_deal_id && (
+          <button
+            type="button"
+            onClick={() => {
+              setForm((prev) => ({ ...prev, pipeline_deal_id: "" }));
+              setPipelineQuery("");
+            }}
+            className="absolute right-2 top-2 text-xs text-zinc-500 hover:text-zinc-800"
+          >
+            Effacer
+          </button>
+        )}
+        {!form.pipeline_deal_id && (pipelineLoading || pipelineDeals.length > 0) && (
+          <div className="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white shadow-lg overflow-hidden">
+            {pipelineLoading && <div className="px-3 py-2 text-sm text-zinc-400">Recherche…</div>}
+            {!pipelineLoading && pipelineDeals.map((deal) => (
+              <button
+                key={deal.id}
+                type="button"
+                onClick={() => selectPipelineDeal(deal)}
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
+              >
+                <span className="font-medium text-zinc-900">{deal.title}</span>
+                <span className="ml-2 text-zinc-500">{deal.address ?? "Sans adresse"}</span>
+                <span className="ml-2 text-xs uppercase text-zinc-400">{deal.stage}</span>
+              </button>
+            ))}
+            {!pipelineLoading && pipelineDeals.length === 0 && pipelineQuery.trim().length >= 2 && (
+              <div className="px-3 py-2 text-sm text-zinc-400">Aucun deal actif trouvé.</div>
+            )}
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-3 gap-3">
         <input
@@ -619,6 +721,17 @@ function DealCard({
         </button>
       </header>
       <div className="mt-2 text-sm text-zinc-600 flex gap-4">
+        {deal.pipeline_deal && (
+          <span>
+            Pipeline :{" "}
+            <Link
+              href={`/pipeline/${deal.pipeline_deal.id}` as never}
+              className="text-zinc-900 underline"
+            >
+              {deal.pipeline_deal.title}
+            </Link>
+          </span>
+        )}
         {deal.properties && (
           <span>
             Propriété :{" "}
