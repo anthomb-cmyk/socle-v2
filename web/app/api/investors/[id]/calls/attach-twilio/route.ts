@@ -30,6 +30,7 @@ type TwilioCall = {
 
 type TwilioRecording = {
   sid: string;
+  call_sid?: string | null;
   uri: string;
   date_created?: string;
   duration?: string | number | null;
@@ -64,6 +65,10 @@ async function listAccountRecordingsForCall(callSid: string): Promise<TwilioReco
   const params = new URLSearchParams({ CallSid: callSid });
   const list = await twilioGet<RecListResp>(`/Recordings.json?${params.toString()}`);
   return list.recordings ?? [];
+}
+
+async function getRecording(recordingSid: string): Promise<TwilioRecording> {
+  return twilioGet<TwilioRecording>(`/Recordings/${recordingSid}.json`);
 }
 
 async function listChildCalls(callSid: string): Promise<TwilioCall[]> {
@@ -126,22 +131,48 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id: investorId } = await ctx.params;
 
   const body = await req.json().catch(() => ({}));
-  const callSid = String(body.call_sid ?? "").trim();
-  if (!/^CA[0-9a-f]{32}$/i.test(callSid)) {
+  const rawCallSid = String(body.call_sid ?? "").trim();
+  const rawRecordingSid = String(body.recording_sid ?? "").trim();
+  const callSidFromBody = /^CA[0-9a-f]{32}$/i.test(rawCallSid) ? rawCallSid : null;
+  const recordingSidFromBody = /^RE[0-9a-f]{32}$/i.test(rawRecordingSid || rawCallSid) ? (rawRecordingSid || rawCallSid) : null;
+
+  if (!callSidFromBody && !recordingSidFromBody) {
     return NextResponse.json(
-      { ok: false, error: "call_sid invalide (doit ressembler à CA…)" },
+      { ok: false, error: "SID invalide (doit ressembler à CA… ou RE…)" },
       { status: 400 },
     );
   }
 
   const sb = createSupabaseAdminClient();
 
+  let callSid = callSidFromBody;
+  let manualRecording: TwilioRecording | null = null;
+  if (recordingSidFromBody) {
+    try {
+      manualRecording = await getRecording(recordingSidFromBody);
+      callSid = callSid ?? manualRecording.call_sid ?? null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ ok: false, error: `Twilio Recording API: ${msg}` }, { status: 502 });
+    }
+  }
+
   // ── 1. Check this SID isn't already attached somewhere ────────────────────
-  const { data: existing } = await sb
-    .from("investor_calls")
-    .select("id, investor_id, transcript_status")
-    .eq("twilio_call_sid", callSid)
-    .maybeSingle();
+  const existingByCall = callSid
+    ? await sb
+        .from("investor_calls")
+        .select("id, investor_id, transcript_status")
+        .eq("twilio_call_sid", callSid)
+        .maybeSingle()
+    : { data: null };
+  const existingByRecording = recordingSidFromBody
+    ? await sb
+        .from("investor_calls")
+        .select("id, investor_id, transcript_status")
+        .eq("recording_sid", recordingSidFromBody)
+        .maybeSingle()
+    : { data: null };
+  const existing = existingByCall.data ?? existingByRecording.data ?? null;
 
   if (existing && existing.investor_id !== investorId) {
     return NextResponse.json(
@@ -165,18 +196,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   // ── 2. Fetch call metadata from Twilio ────────────────────────────────────
-  let call: TwilioCall;
-  try {
-    call = await twilioGet<TwilioCall>(`/Calls/${callSid}.json`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: `Twilio API: ${msg}` }, { status: 502 });
+  let call: TwilioCall | null = null;
+  if (callSid) {
+    try {
+      call = await twilioGet<TwilioCall>(`/Calls/${callSid}.json`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ ok: false, error: `Twilio API: ${msg}` }, { status: 502 });
+    }
   }
 
   // ── 3. Fetch recordings for this call or related Twilio legs ──────────────
-  const recordingMatch = await findRecordingForCall(call);
-  const recording = recordingMatch.recording?.recording ?? null;
-  const recordingSourceCallSid = recordingMatch.recording?.callSid ?? null;
+  const recordingMatch = call && !manualRecording
+    ? await findRecordingForCall(call)
+    : { recording: null, relatedCalls: [] as TwilioCall[] };
+  const recording = manualRecording ?? recordingMatch.recording?.recording ?? null;
+  const recordingSourceCallSid = manualRecording?.call_sid ?? recordingMatch.recording?.callSid ?? null;
   const recordingSid = recording?.sid ?? null;
   // Bare URL (no extension) — transcribeTwilioRecording appends .mp3 as needed.
   const recordingUrl = recordingSid
@@ -184,20 +219,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     : null;
 
   // ── 4. Insert or refresh investor_calls row ───────────────────────────────
-  const duration = Number(call.duration ?? recording?.duration ?? 0) || null;
-  const startedAt = call.start_time ?? null;
+  const duration = Number(call?.duration ?? recording?.duration ?? 0) || null;
+  const startedAt = call?.start_time ?? null;
   const recordedAt = recording?.date_created ?? null;
 
   // Normalize direction: Twilio uses "inbound" / "outbound-api" / "outbound-dial"
   let direction: "inbound" | "outbound" | "manual" = "manual";
-  if (typeof call.direction === "string") {
+  if (typeof call?.direction === "string") {
     direction = call.direction.startsWith("outbound") ? "outbound" : "inbound";
   }
 
   const callPayload = {
       investor_id: investorId,
       twilio_call_sid: callSid,
-      parent_call_sid: call.parent_call_sid ?? null,
+      parent_call_sid: call?.parent_call_sid ?? null,
       direction,
       duration_sec: duration,
       recording_url: recordingUrl,

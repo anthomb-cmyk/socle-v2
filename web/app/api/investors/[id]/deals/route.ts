@@ -17,7 +17,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const sb = createSupabaseAdminClient();
   const { data, error } = await sb
     .from("investor_deals")
-    .select("*, properties(id, address, city, num_units), pipeline_deal:deals(id, title, stage, address, units, asking_price, offer_price)")
+    .select("*, properties(id, address, city, num_units), pipeline_deal:deals(id, title, stage, address, units, asking_price, offer_price, temperature, priority, contact_name, contact_phone, contact_email, next_action, notes_deal, notes_vendeur)")
     .eq("investor_id", id)
     .order("updated_at", { ascending: false });
 

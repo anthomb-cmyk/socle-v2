@@ -65,6 +65,14 @@ type PipelineDeal = {
   units: number | null;
   asking_price: number | null;
   offer_price: number | null;
+  temperature: string | null;
+  priority: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  next_action: string | null;
+  notes_deal: string | null;
+  notes_vendeur: string | null;
 };
 
 type Note = {
@@ -100,6 +108,9 @@ function fmtDuration(sec: number | null): string {
 function fmtDate(d: string | null): string {
   if (!d) return "—";
   return new Date(d).toLocaleString("fr-CA", { dateStyle: "medium", timeStyle: "short" });
+}
+function shortSid(sid: string | null): string {
+  return sid ? `${sid.slice(0, 14)}…` : "—";
 }
 function pipelineDealLabel(deal: PipelineDeal): string {
   return [
@@ -276,7 +287,11 @@ function AttachTwilio({
       const r = await fetch(`/api/investors/${investorId}/calls/attach-twilio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_sid: sid.trim() }),
+        body: JSON.stringify(
+          sid.trim().toUpperCase().startsWith("RE")
+            ? { recording_sid: sid.trim() }
+            : { call_sid: sid.trim() },
+        ),
       });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "Erreur");
@@ -297,7 +312,7 @@ function AttachTwilio({
       <input
         value={sid}
         onChange={(e) => setSid(e.target.value)}
-        placeholder="CA1690ea5f… (Twilio Call SID)"
+        placeholder="CA… Call SID ou RE… Recording SID"
         className="flex-1 border border-zinc-300 rounded-lg px-3 py-2 text-sm font-mono"
         required
       />
@@ -327,6 +342,7 @@ function CallCard({
   const [outcome, setOutcome] = useState(call.outcome ?? "");
   const [retrying, setRetrying] = useState(false);
   const [retryErr, setRetryErr] = useState<string | null>(null);
+  const [recordingSid, setRecordingSid] = useState("");
 
   async function save() {
     await fetch(`/api/investors/${investorId}/calls/${call.id}`, {
@@ -354,6 +370,27 @@ function CallCard({
       });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "Erreur");
+      onChange();
+    } catch (e) {
+      setRetryErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetrying(false);
+    }
+  }
+  async function attachRecordingSid(e: React.FormEvent) {
+    e.preventDefault();
+    if (!recordingSid.trim()) return;
+    setRetrying(true);
+    setRetryErr(null);
+    try {
+      const r = await fetch(`/api/investors/${investorId}/calls/attach-twilio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recording_sid: recordingSid.trim() }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error ?? "Erreur");
+      setRecordingSid("");
       onChange();
     } catch (e) {
       setRetryErr(e instanceof Error ? e.message : String(e));
@@ -403,18 +440,35 @@ function CallCard({
           <div className="text-sm text-red-500">La transcription a échoué.</div>
         )}
         {call.transcript_status === "skipped" && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            <span>Aucun enregistrement Twilio trouvé pour cet appel pour le moment.</span>
-            {call.twilio_call_sid && (
+          <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Aucun enregistrement trouvé automatiquement pour {shortSid(call.twilio_call_sid)}.</span>
+              {call.twilio_call_sid && (
+                <button
+                  type="button"
+                  onClick={retryTranscript}
+                  disabled={retrying}
+                  className="rounded-md bg-amber-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {retrying ? "Recherche…" : "Réessayer"}
+                </button>
+              )}
+            </div>
+            <form onSubmit={attachRecordingSid} className="flex flex-wrap gap-2">
+              <input
+                value={recordingSid}
+                onChange={(e) => setRecordingSid(e.target.value)}
+                placeholder="Coller un Recording SID RE… depuis Twilio"
+                className="min-w-72 flex-1 rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono text-zinc-900"
+              />
               <button
-                type="button"
-                onClick={retryTranscript}
-                disabled={retrying}
-                className="rounded-md bg-amber-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                type="submit"
+                disabled={retrying || !recordingSid.trim()}
+                className="rounded-md bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
-                {retrying ? "Recherche…" : "Réessayer la transcription"}
+                Transcrire ce recording
               </button>
-            )}
+            </form>
             {retryErr && <span className="text-red-600">{retryErr}</span>}
           </div>
         )}
@@ -768,6 +822,7 @@ function DealCard({
   onChange: () => void;
 }) {
   const [stage, setStage] = useState(deal.stage);
+  const pipeline = deal.pipeline_deal;
 
   async function updateStage(next: string) {
     setStage(next);
@@ -786,34 +841,46 @@ function DealCard({
 
   return (
     <article className="bg-white rounded-2xl border border-zinc-200 p-4">
-      <header className="flex items-center gap-2">
-        <h3 className="font-semibold">{deal.deal_name}</h3>
+      <header className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-lg leading-tight">{deal.deal_name}</h3>
+          {pipeline && (
+            <Link
+              href={`/pipeline/${pipeline.id}` as never}
+              className="mt-1 inline-block text-sm text-zinc-700 underline"
+            >
+              Ouvrir le deal pipeline
+            </Link>
+          )}
+        </div>
         <select
           value={stage}
           onChange={(e) => updateStage(e.target.value)}
-          className="ml-2 text-xs border border-zinc-300 rounded px-1.5 py-0.5"
+          className="text-xs border border-zinc-300 rounded px-1.5 py-1"
         >
           {Object.entries(STAGE_LABELS).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
-        <span className="ml-auto text-sm text-zinc-500">{fmtMoney(deal.ticket_size_cad)}</span>
         <button onClick={remove} type="button" className="text-xs text-red-500 hover:text-red-700">
           Supprimer
         </button>
       </header>
-      <div className="mt-2 text-sm text-zinc-600 flex gap-4">
-        {deal.pipeline_deal && (
-          <span>
-            Pipeline :{" "}
-            <Link
-              href={`/pipeline/${deal.pipeline_deal.id}` as never}
-              className="text-zinc-900 underline"
-            >
-              {deal.pipeline_deal.title}
-            </Link>
-          </span>
-        )}
+
+      {pipeline && (
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+          <DealStat label="Adresse" value={pipeline.address ?? "—"} />
+          <DealStat label="Portes" value={pipeline.units != null ? String(pipeline.units) : "—"} />
+          <DealStat label="Prix demandé" value={fmtMoney(pipeline.asking_price)} />
+          <DealStat label="Offre" value={fmtMoney(pipeline.offer_price)} />
+          <DealStat label="Stade pipeline" value={pipeline.stage} />
+          <DealStat label="Température" value={pipeline.temperature ?? "—"} />
+          <DealStat label="Priorité" value={pipeline.priority ?? "—"} />
+          <DealStat label="Ticket invest." value={fmtMoney(deal.ticket_size_cad)} />
+        </div>
+      )}
+
+      <div className="mt-3 text-sm text-zinc-600 flex flex-wrap gap-x-4 gap-y-2">
         {deal.properties && (
           <span>
             Propriété :{" "}
@@ -830,8 +897,48 @@ function DealCard({
         )}
         {deal.probability_pct != null && <span>Probabilité : {deal.probability_pct}%</span>}
       </div>
+
+      {pipeline && (pipeline.contact_name || pipeline.contact_phone || pipeline.contact_email) && (
+        <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
+          <div className="text-xs uppercase tracking-wide text-zinc-500">Contact vendeur</div>
+          <div className="mt-1 text-zinc-800">
+            {[pipeline.contact_name, pipeline.contact_phone, pipeline.contact_email].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+      )}
+
+      {pipeline?.next_action && (
+        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+          <div className="text-xs uppercase tracking-wide text-blue-700">Prochaine action</div>
+          <div className="mt-1">{pipeline.next_action}</div>
+        </div>
+      )}
+
+      {pipeline?.notes_deal && (
+        <div className="mt-3 text-sm">
+          <div className="text-xs uppercase tracking-wide text-zinc-500">Notes deal</div>
+          <p className="mt-1 whitespace-pre-wrap text-zinc-700">{pipeline.notes_deal}</p>
+        </div>
+      )}
+
+      {pipeline?.notes_vendeur && (
+        <div className="mt-3 text-sm">
+          <div className="text-xs uppercase tracking-wide text-zinc-500">Notes vendeur</div>
+          <p className="mt-1 whitespace-pre-wrap text-zinc-700">{pipeline.notes_vendeur}</p>
+        </div>
+      )}
+
       {deal.notes && <p className="mt-2 text-sm whitespace-pre-wrap">{deal.notes}</p>}
     </article>
+  );
+}
+
+function DealStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="mt-1 truncate text-zinc-900">{value}</div>
+    </div>
   );
 }
 
