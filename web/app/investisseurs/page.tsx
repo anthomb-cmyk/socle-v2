@@ -11,23 +11,28 @@ export default async function InvestorsPage() {
   if (role !== "admin") redirect("/leads");
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <header className="mb-6 flex items-center justify-between">
+    <main className="socle-page">
+      <header className="socle-page-head">
         <div>
-          <h1 className="text-2xl font-semibold">Investisseurs</h1>
-          <p className="text-sm text-zinc-500">
-            Partenaires capitaux, appels et deals en cours.
-          </p>
+          <div className="socle-crumb">Capital partners</div>
+          <h1 className="socle-title">Investisseurs</h1>
+          <p className="socle-sub">Partenaires capitaux, appels et deals en cours.</p>
         </div>
-        <nav className="flex gap-2 text-sm">
+        <nav className="socle-head-actions">
           <Link
             href={"/investisseurs/nouveau" as never}
-            className="border border-zinc-300 rounded-lg px-3 py-1.5 bg-zinc-900 text-white hover:bg-zinc-800"
+            className="btn btn--primary"
           >
-            + Nouvel investisseur
+            Nouvel investisseur
           </Link>
         </nav>
       </header>
+      <section className="kpi-strip">
+        <div className="ki ki--hero"><div className="ki__l">Portefeuille</div><div className="ki__v">Actif</div><div className="ki__sub">Capital relationnel</div></div>
+        <div className="ki"><div className="ki__l">Focus</div><div className="ki__v">Multi-résidentiel</div><div className="ki__sub">Québec</div></div>
+        <div className="ki"><div className="ki__l">Matching</div><div className="ki__v">Deals</div><div className="ki__sub">Pipeline synchronisé</div></div>
+        <div className="ki"><div className="ki__l">Cadence</div><div className="ki__v">Appels</div><div className="ki__sub">Notes et suivis</div></div>
+      </section>
       <InvestorsTable />
     </main>
   );
