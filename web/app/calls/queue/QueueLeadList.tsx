@@ -226,6 +226,31 @@ export default function QueueLeadList({
         t={t}
       />
 
+      {selectedItem && (
+        <button
+          type="button"
+          className="queue-focus-banner"
+          onClick={() => router.push(`/calls/${selectedItem.lead.lead_id}` as never)}
+        >
+          <span className="queue-focus-banner__icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="queue-focus-banner__body">
+            <span className="queue-focus-banner__k">Prochain appel</span>
+            <span className="queue-focus-banner__t">
+              {selectedItem.lead.full_name ?? selectedItem.lead.company_name ?? "—"}
+              {selectedItem.lead.city ? ` · ${selectedItem.lead.city}` : ""}
+              {selectedItem.lead.num_units != null ? ` · ${selectedItem.lead.num_units} log.` : ""}
+            </span>
+          </span>
+          <span className="queue-focus-banner__meta">
+            {selectedItem.formattedPhone ?? "—"}
+          </span>
+        </button>
+      )}
+
       <div className="queue-body">
         <QueueListCard
           items={filtered}
