@@ -1,7 +1,4 @@
 "use client";
-// V1-style left sidebar for Socle CRM V2.
-// Replaces the thin top nav with a full vertical sidebar.
-// Active nav items highlighted with gold/cream background (V1 pattern).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -199,18 +196,18 @@ export default function AppSidebar({
   }
 
   const sidebar = (
-    <div className="crm-sidebar-inner">
+    <div className="sb-inner">
       {/* ── Logo ── */}
-      <div className="crm-sidebar-logo">
-        <div className="crm-sidebar-logo-mark">S</div>
+      <div className="sb__brand">
+        <div className="sb__mark">S</div>
         <div>
-          <div className="crm-sidebar-logo-title">SOCLE</div>
-          <div className="crm-sidebar-logo-sub">ACQUISITIONS</div>
+          <div className="sb__brand__t1">SOCLE</div>
+          <div className="sb__brand__t2">ACQUISITIONS</div>
         </div>
       </div>
 
       {/* ── Primary nav ── */}
-      <nav className="crm-sidebar-nav">
+      <nav className="sb__group">
         {visiblePrimary.map((item) => {
           // Phase 7b: insert a "Module appels" section header above /calls/queue
           // for caller-tier users only. Admin sidebar is unchanged.
@@ -218,15 +215,15 @@ export default function AppSidebar({
           return (
             <div key={item.href} style={{ display: "contents" }}>
               {showCallerSectionHeader && (
-                <div className="crm-sidebar-section-label">{t.nav.callerSection}</div>
+                <div className="sb__sect">{t.nav.callerSection}</div>
               )}
               <Link
                 href={item.href as never}
-                className={`crm-sidebar-link${isActive(item.href) ? " crm-sidebar-link--active" : ""}`}
+                className={`sb__link${isActive(item.href) ? " sb__link--active" : ""}`}
                 onClick={() => setMobileOpen(false)}
               >
                 <NavIcon name={item.icon} />
-                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis">
+                <span className="sb__link__label">
                   {item.href === "/calls/queue"
                     ? t.nav.queue
                     : item.href === "/phone-review"
@@ -241,17 +238,17 @@ export default function AppSidebar({
 
         {isAdmin && (
           <>
-            <div className="crm-sidebar-divider" />
-            <div className="crm-sidebar-section-label">Administration</div>
+            <div className="sb__divider" />
+            <div className="sb__sect">Administration</div>
             {ADMIN_NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href as never}
-                className={`crm-sidebar-link crm-sidebar-link--sub${isActive(item.href) ? " crm-sidebar-link--active" : ""}`}
+                className={`sb__link sb__link--sub${isActive(item.href) ? " sb__link--active" : ""}`}
                 onClick={() => setMobileOpen(false)}
               >
                 <NavIcon name={item.icon} small />
-                <span>{item.label}</span>
+                <span className="sb__link__label">{item.label}</span>
               </Link>
             ))}
           </>
@@ -260,17 +257,11 @@ export default function AppSidebar({
 
       {/* ── New deal CTA ── */}
       {isAdmin && (
-        <div style={{ padding: "0 10px", marginBottom: 6 }}>
+        <div className="sb__cta-wrap">
           <Link
             href={"/pipeline" as never}
-            className="crm-sidebar-link"
+            className="sb__cta"
             onClick={() => setMobileOpen(false)}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              gap: 6, background: "var(--ink)", color: "var(--ink-inv)",
-              borderRadius: 10, padding: "9px 12px", fontWeight: 700,
-              fontSize: 12, textDecoration: "none", letterSpacing: "0.3px",
-            }}
           >
             <NavIcon name="pipeline" small />
             Nouveau deal
@@ -280,17 +271,17 @@ export default function AppSidebar({
 
       {/* ── Recent deals ── */}
       {isAdmin && recentDeals.length > 0 && (
-        <div className="crm-sidebar-recent">
-          <div className="crm-sidebar-section-label" style={{ marginBottom: 4 }}>Deals récents</div>
+        <div className="sb__recent">
+          <div className="sb__sect">Deals récents</div>
           {recentDeals.slice(0, 5).map((d) => (
             <Link
               key={d.id}
               href={`/pipeline/${d.id}` as never}
-              className="crm-sidebar-recent-item"
+              className="sb__recent-item"
               onClick={() => setMobileOpen(false)}
             >
-              <span className={`crm-sidebar-recent-dot${d.temperature === "chaud" ? " hot" : d.temperature === "tiede" ? " warm" : ""}`} />
-              <span className="crm-sidebar-recent-name">{d.title}</span>
+              <span className={`sb__recent-dot${d.temperature === "chaud" ? " sb__recent-dot--hot" : d.temperature === "tiede" ? " sb__recent-dot--warm" : ""}`} />
+              <span className="sb__recent-name">{d.title}</span>
             </Link>
           ))}
         </div>
@@ -298,8 +289,8 @@ export default function AppSidebar({
 
       {/* ── Recent leads ── */}
       {recentLeads.length > 0 && (
-        <div className="crm-sidebar-recent">
-          <div className="crm-sidebar-section-label" style={{ marginBottom: 4 }}>Leads récents</div>
+        <div className="sb__recent">
+          <div className="sb__sect">Leads récents</div>
           {recentLeads.slice(0, 6).map((l) => {
             const dot = priorityDot(l.priority, l.status);
             // Admin → /leads/[id] (full dossier). Caller → /calls/[id] (workspace).
@@ -310,11 +301,11 @@ export default function AppSidebar({
               <Link
                 key={l.lead_id}
                 href={href}
-                className="crm-sidebar-recent-item"
+                className="sb__recent-item"
                 onClick={() => setMobileOpen(false)}
               >
-                <span className={`crm-sidebar-recent-dot${dot ? ` ${dot}` : ""}`} />
-                <span className="crm-sidebar-recent-name">
+                <span className={`sb__recent-dot${dot ? ` sb__recent-dot--${dot}` : ""}`} />
+                <span className="sb__recent-name">
                   {l.full_name ?? l.company_name ?? "—"}
                 </span>
               </Link>
@@ -324,14 +315,14 @@ export default function AppSidebar({
       )}
 
       {/* spacer */}
-      <div style={{ flex: 1 }} />
+      <div className="sb__spacer" />
 
       {/* ── User card ── */}
-      <div className="crm-sidebar-user">
-        <div className="crm-sidebar-user-avatar">{initials}</div>
-        <div className="crm-sidebar-user-info">
-          <div className="crm-sidebar-user-name">{handle}</div>
-          <div className="crm-sidebar-user-role">{role}</div>
+      <div className="sb__user">
+        <div className="sb__user__avatar">{initials}</div>
+        <div className="sb__user__info">
+          <div className="sb__user__t">{handle}</div>
+          <div className="sb__user__r">{role}</div>
         </div>
         <LocaleToggle />
         <SignOutButton />
@@ -342,7 +333,7 @@ export default function AppSidebar({
   return (
     <>
       {/* Desktop sidebar — shown/hidden via CSS media query (not Tailwind) */}
-      <aside className="crm-sidebar">
+      <aside className="sb">
         {sidebar}
       </aside>
 
@@ -358,7 +349,7 @@ export default function AppSidebar({
           <span />
         </button>
         <div className="crm-mobile-logo">
-          <div className="crm-sidebar-logo-mark" style={{ width: 26, height: 26, fontSize: 11, borderRadius: 7 }}>S</div>
+          <div className="sb__mark sb__mark--mobile">S</div>
           <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: "0.14em", color: "var(--ink)" }}>SOCLE</span>
           <span style={{ fontWeight: 600, fontSize: 9, letterSpacing: "0.20em", color: "var(--gold-deep)" }}>ACQUISITIONS</span>
         </div>
@@ -375,7 +366,7 @@ export default function AppSidebar({
             className="crm-mobile-overlay"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="crm-sidebar crm-sidebar--mobile" style={{ display: "flex" }}>
+          <aside className="sb sb--mobile">
             {sidebar}
           </aside>
         </>
