@@ -24,6 +24,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/leads",             label: "Leads",                icon: "leads"                         },
   { href: "/calls/queue",       label: "File d'appels",        icon: "calls"                         },
   { href: "/quick-call",        label: "Appel rapide",         icon: "quickcall"                     },
+  { href: "/inbound-calls",     label: "Appels entrants",      icon: "calls",       adminOnly: true  },
   { href: "/phone-review",      label: "Téléphones à réviser", icon: "phone",       adminOnly: true  },
   { href: "/review",            label: "Revue",                icon: "review",      adminOnly: true  },
   { href: "/import",            label: "Import rôle",          icon: "import",      adminOnly: true  },

@@ -22,6 +22,7 @@ import { transcribeTwilioRecording } from "@/lib/transcribe";
 export async function POST(request: Request) {
   const url = new URL(request.url);
   const callLogId = url.searchParams.get("callLogId") ?? "";
+  const investorCallId = url.searchParams.get("investorCallId") ?? "";
 
   const form = await request.formData().catch(() => new FormData());
   const recordingStatus   = String(form.get("RecordingStatus") ?? "").trim();
@@ -43,14 +44,32 @@ export async function POST(request: Request) {
     if (data) logId = data.id as string;
   }
 
-  if (!logId) return new Response(null, { status: 204 });
+  let investorLogId = investorCallId;
+  if (!investorLogId && callSid) {
+    const { data } = await sb
+      .from("investor_calls")
+      .select("id")
+      .or(`twilio_call_sid.eq.${callSid},parent_call_sid.eq.${callSid}`)
+      .maybeSingle();
+    if (data) investorLogId = data.id as string;
+  }
+
+  if (!logId && !investorLogId) return new Response(null, { status: 204 });
 
   if (recordingStatus !== "completed" || !recordingUrl) {
     // Recording failed or absent — mark as failed and bail
-    await sb
-      .from("call_logs")
-      .update({ transcript_status: "failed" })
-      .eq("id", logId);
+    if (logId) {
+      await sb
+        .from("call_logs")
+        .update({ transcript_status: "failed" })
+        .eq("id", logId);
+    }
+    if (investorLogId) {
+      await sb
+        .from("investor_calls")
+        .update({ transcript_status: "failed" })
+        .eq("id", investorLogId);
+    }
     return new Response(null, { status: 204 });
   }
 
@@ -63,7 +82,19 @@ export async function POST(request: Request) {
   if (recordingDuration > 0) {
     updates.duration_sec = recordingDuration;
   }
-  await sb.from("call_logs").update(updates).eq("id", logId);
+  if (logId) await sb.from("call_logs").update(updates).eq("id", logId);
+  if (investorLogId) {
+    await sb
+      .from("investor_calls")
+      .update({
+        recording_url: recordingUrl,
+        recording_sid: recordingSid,
+        transcript_status: "processing",
+        duration_sec: recordingDuration > 0 ? recordingDuration : undefined,
+        recorded_at: new Date().toISOString(),
+      })
+      .eq("id", investorLogId);
+  }
 
   // ── Fire-and-forget transcription ──────────────────────────────────────
   // We respond 204 immediately so Twilio doesn't time out waiting for us.
@@ -71,19 +102,38 @@ export async function POST(request: Request) {
   (async () => {
     try {
       const transcript = await transcribeTwilioRecording(recordingUrl, recordingSid);
-      await sb
-        .from("call_logs")
-        .update({
-          transcript:        transcript || null,
-          transcript_status: "completed",
-        })
-        .eq("id", logId);
+      if (logId) {
+        await sb
+          .from("call_logs")
+          .update({
+            transcript:        transcript || null,
+            transcript_status: "completed",
+          })
+          .eq("id", logId);
+      }
+      if (investorLogId) {
+        await sb
+          .from("investor_calls")
+          .update({
+            transcript:        transcript || null,
+            transcript_status: "completed",
+          })
+          .eq("id", investorLogId);
+      }
     } catch (err) {
-      console.error("[twilio:recording] transcription failed", logId, err);
-      await sb
-        .from("call_logs")
-        .update({ transcript_status: "failed" })
-        .eq("id", logId);
+      console.error("[twilio:recording] transcription failed", logId || investorLogId, err);
+      if (logId) {
+        await sb
+          .from("call_logs")
+          .update({ transcript_status: "failed" })
+          .eq("id", logId);
+      }
+      if (investorLogId) {
+        await sb
+          .from("investor_calls")
+          .update({ transcript_status: "failed" })
+          .eq("id", investorLogId);
+      }
     }
   })();
 
