@@ -228,24 +228,25 @@ export default function QuickCallClient() {
   const normalized   = normalizePhone(phoneRaw);
 
   return (
-    <div style={{ padding: "0 0 60px" }}>
+    <div className="qc-page">
       {/* ── Header ── */}
-      <div style={{
-        borderBottom: "1px solid var(--crm-card-border, #E5E7EB)",
-        padding: "16px 24px",
-        background: "#fff",
-        position: "sticky", top: 0, zIndex: 10,
-      }}>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#111827" }}>
-          Appel rapide
-        </h1>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6B7280" }}>
-          Appelez un numéro inconnu, enregistrez la conversation et convertissez en lead.
-        </p>
+      <div className="qc-hero">
+        <div>
+          <div className="qc-hero__eyebrow">Poste d&apos;appel</div>
+          <h1 className="qc-hero__title">Appel rapide</h1>
+          <p className="qc-hero__sub">
+            Compose un numéro inconnu, note les faits importants, puis convertis seulement si ça devient un vrai lead.
+          </p>
+        </div>
+        <div className="qc-hero__status">
+          <span className={`qc-live-dot qc-live-dot--${callActive ? "on" : "off"}`} />
+          {callActive ? "appel en cours" : "prêt"}
+        </div>
       </div>
 
       {/* ── Body ── */}
-      <div style={{ padding: 24, maxWidth: 520, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="qc-grid">
+        <div className="qc-stack">
 
         {/* ── Phone input card ── */}
         <div style={{
@@ -537,6 +538,26 @@ export default function QuickCallClient() {
             Remplir le formulaire maintenant
           </button>
         )}
+        </div>
+
+        <aside className="qc-side">
+          <section className="qc-side-card">
+            <div className="qc-side-card__k">Pendant l&apos;appel</div>
+            <ul className="qc-checklist">
+              <li>Nom complet de l&apos;appelant</li>
+              <li>Adresse exacte du bâtiment</li>
+              <li>Nombre de logements</li>
+              <li>Motif de l&apos;appel ou intérêt réel</li>
+              <li>Prochaine action claire</li>
+            </ul>
+          </section>
+          <section className="qc-side-card qc-side-card--gold">
+            <div className="qc-side-card__k">Convertir en lead si</div>
+            <p className="qc-side-card__p">
+              Le contact donne une adresse, un contexte immobilier ou une intention exploitable. Sinon, garde seulement l&apos;historique d&apos;appel.
+            </p>
+          </section>
+        </aside>
       </div>
     </div>
   );

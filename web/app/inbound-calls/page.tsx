@@ -77,18 +77,31 @@ export default async function InboundCallsPage() {
     leads: call.lead_id ? leadsById.get(call.lead_id) ?? null : null,
   }));
 
+  const recognizedCount = calls.filter((call) => call.lead_id || call.contact_id || call.raw?.investor_id).length;
+  const unknownCount = calls.length - recognizedCount;
+  const withTranscriptCount = calls.filter((call) => call.transcript).length;
+
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Appels entrants</h1>
-        <p className="text-sm text-zinc-500">
-          Appels reçus sur Twilio. Les appels inconnus restent ici même sans lead ou investisseur lié.
-        </p>
+    <main className="ic-page">
+      <header className="ic-head">
+        <div>
+          <div className="ic-head__eyebrow">Twilio · inbound</div>
+          <h1 className="ic-head__title">Appels entrants</h1>
+          <p className="ic-head__sub">
+            Appels reçus sur les numéros Socle, avec reconnaissance contact/lead et transcription quand disponible.
+          </p>
+        </div>
+        <div className="ic-metrics">
+          <Metric label="Total" value={calls.length} />
+          <Metric label="Reconnus" value={recognizedCount} tone="green" />
+          <Metric label="Inconnus" value={unknownCount} tone="amber" />
+          <Metric label="Transcrits" value={withTranscriptCount} />
+        </div>
       </header>
 
-      <div className="space-y-3">
+      <div className="ic-list">
         {calls.length === 0 && (
-          <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-400">
+          <div className="ic-empty">
             Aucun appel entrant enregistré.
           </div>
         )}
@@ -112,21 +125,21 @@ function InboundCallCard({ call }: { call: InboundCall }) {
     caller === "+15145550000";
 
   return (
-    <article className="rounded-2xl border border-zinc-200 bg-white p-4">
-      <header className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+    <article className={`ic-card${!call.lead_id && !call.contact_id && !investorId ? " ic-card--unknown" : ""}`}>
+      <header className="ic-card__head">
+        <div className="ic-card__main">
+          <div className="ic-card__title-row">
             {isTest && (
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs uppercase tracking-wide text-blue-800">
+              <span className="ic-pill ic-pill--test">
                 test
               </span>
             )}
-            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs uppercase tracking-wide text-zinc-700">
+            <span className={`ic-pill ic-pill--${matchType === "unmatched" ? "unknown" : "known"}`}>
               {labelMatch(matchType)}
             </span>
-            <h2 className="font-semibold">{caller}</h2>
+            <h2 className="ic-card__caller">{caller}</h2>
           </div>
-          <div className="mt-1 text-sm text-zinc-500">
+          <div className="ic-card__meta">
             {formatLocalDateTime(call.recorded_at)}
             {" · "}
             {formatDuration(call.duration_sec)}
@@ -134,13 +147,13 @@ function InboundCallCard({ call }: { call: InboundCall }) {
             transcription: {call.transcript_status ?? "—"}
           </div>
         </div>
-        <div className="text-right text-xs font-mono text-zinc-400">
+        <div className="ic-card__sid">
           <div>{call.twilio_call_sid ?? "—"}</div>
           {call.recording_sid && <div>{call.recording_sid}</div>}
         </div>
       </header>
 
-      <div className="mt-4 grid gap-2 text-sm md:grid-cols-3">
+      <div className="ic-flow">
         <FlowStat label="Appelant" value={caller} help="La personne qui a composé le numéro Socle." />
         <FlowStat label="Numéro Socle appelé" value={socleNumber} help="Le numéro Twilio qui a reçu l'appel entrant." />
         <FlowStat
@@ -150,31 +163,31 @@ function InboundCallCard({ call }: { call: InboundCall }) {
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-3 text-sm">
+      <div className="ic-links">
         {call.lead_id && (
-          <Link href={`/leads/${call.lead_id}` as never} className="text-zinc-900 underline">
+          <Link href={`/leads/${call.lead_id}` as never} className="ic-link">
             Lead lié
           </Link>
         )}
         {call.contact_id && (
-          <Link href={`/contacts/${call.contact_id}` as never} className="text-zinc-900 underline">
+          <Link href={`/contacts/${call.contact_id}` as never} className="ic-link">
             {contactName || "Contact lié"}
           </Link>
         )}
         {investorId && (
-          <Link href={`/investisseurs/${investorId}` as never} className="text-zinc-900 underline">
+          <Link href={`/investisseurs/${investorId}` as never} className="ic-link">
             Investisseur lié
           </Link>
         )}
         {!call.lead_id && !call.contact_id && !investorId && (
-          <span className="text-amber-700">Aucun contact reconnu</span>
+          <span className="ic-unmatched">Aucun contact reconnu</span>
         )}
       </div>
 
       {call.transcript && (
-        <div className="mt-3">
-          <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Transcription</div>
-        <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3 whitespace-pre-wrap font-sans text-sm">
+        <div className="ic-transcript">
+          <div className="ic-transcript__label">Transcription</div>
+        <pre className="ic-transcript__body">
           {call.transcript}
         </pre>
         </div>
@@ -185,10 +198,19 @@ function InboundCallCard({ call }: { call: InboundCall }) {
 
 function FlowStat({ label, value, help }: { label: string; value: string; help: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="mt-1 font-medium text-zinc-900">{value}</div>
-      <div className="mt-1 text-xs text-zinc-500">{help}</div>
+    <div className="ic-flow-stat">
+      <div className="ic-flow-stat__label">{label}</div>
+      <div className="ic-flow-stat__value">{value}</div>
+      <div className="ic-flow-stat__help">{help}</div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: number; tone?: "green" | "amber" }) {
+  return (
+    <div className={`ic-metric${tone ? ` ic-metric--${tone}` : ""}`}>
+      <div className="ic-metric__label">{label}</div>
+      <div className="ic-metric__value">{value}</div>
     </div>
   );
 }
