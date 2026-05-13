@@ -16,6 +16,7 @@ type Investor = {
   ticket_size_max_cad: number | null;
   preferred_geography: string | null;
   asset_class_focus: string | null;
+  notes: string | null;
   updated_at: string;
   deals_count: number;
   active_deals_count: number;
@@ -86,6 +87,26 @@ function ticketFill(inv: Investor): { left: string; width: string } {
   return { left: `${left}%`, width: `${width}%` };
 }
 
+function combinedCriteria(inv: Investor): string {
+  return [inv.asset_class_focus, inv.notes].filter(Boolean).join(" ");
+}
+
+function strategyLabel(inv: Investor): string {
+  const text = combinedCriteria(inv);
+  if (/optim|value.?add|r[ée]no|stabilis|redresse|upside|densif/i.test(text)) return "Optimisation";
+  if (/long.?term|long terme|hold|conserver|patrimoine|cash.?flow/i.test(text)) return "Long terme";
+  return "—";
+}
+
+function yearsLabel(inv: Investor): string {
+  const matches = Array.from(combinedCriteria(inv).matchAll(/\b(19[4-9]\d|20[0-2]\d)(?:\s*(?:-|–|à|a|to)\s*(19[4-9]\d|20[0-2]\d))?\b/gi));
+  if (matches.length === 0) return "—";
+  return matches
+    .slice(0, 2)
+    .map((match) => (match[2] ? `${match[1]}–${match[2]}` : match[1]))
+    .join(", ");
+}
+
 export default function InvestorsTable() {
   const [items, setItems] = useState<Investor[]>([]);
   const [total, setTotal] = useState(0);
@@ -140,10 +161,10 @@ export default function InvestorsTable() {
       <div className="inv-table">
         <div className="inv-thead">
           <div>Investisseur</div>
-          <div>Firme</div>
-          <div>Capital dispo</div>
+          <div>Où il achète</div>
+          <div>Stratégie</div>
+          <div>Années</div>
           <div>Ticket</div>
-          <div>Focus &amp; géographie</div>
           <div>Deals</div>
           <div />
         </div>
@@ -157,6 +178,8 @@ export default function InvestorsTable() {
               const fill = ticketFill(inv);
               const focusTags = splitTags(inv.asset_class_focus);
               const geoTags = splitTags(inv.preferred_geography);
+              const strategy = strategyLabel(inv);
+              const years = yearsLabel(inv);
               return (
                 <div key={inv.id} className={`inv-tr${inv.status === "inactive" || inv.status === "lost" ? " inv-tr--muted" : ""}`}>
                   <div className="inv-who">
@@ -173,29 +196,26 @@ export default function InvestorsTable() {
                       </div>
                     </div>
                   </div>
-                  <div>
-                    <div className="inv-firm">{inv.firm_name ?? "—"}</div>
-                    <div className="inv-firm__sub">{inv.email ?? inv.phone_e164 ?? "—"}</div>
+                  <div className="inv-focus-tags">
+                    {geoTags.length === 0 ? (
+                      <span className="inv-focus-tag">—</span>
+                    ) : geoTags.map((tag) => <span key={`g-${tag}`} className="inv-focus-tag inv-focus-tag--geo">{tag}</span>)}
                   </div>
                   <div>
-                    <div className="inv-capital">{fmtMoney(inv.capital_available_cad)}</div>
-                    <div className="inv-capital__sub">{inv.capital_available_cad == null ? "—" : "disponible"}</div>
+                    <div className="inv-strategy">{strategy}</div>
+                    <div className="inv-firm__sub">
+                      {focusTags.length > 0 ? focusTags.slice(0, 2).join(" · ") : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="inv-years">{years}</div>
+                    <div className="inv-firm__sub">{years === "—" ? "non renseigné" : "cible explicite"}</div>
                   </div>
                   <div className="inv-ticket">
                     <div className="inv-ticket__range">{ticketLabel(inv)}</div>
                     <div className="inv-ticket__bar">
                       <div className="inv-ticket__bar__fill" style={{ left: fill.left, width: fill.width }} />
                     </div>
-                  </div>
-                  <div className="inv-focus-tags">
-                    {focusTags.length === 0 && geoTags.length === 0 ? (
-                      <span className="inv-focus-tag">—</span>
-                    ) : (
-                      <>
-                        {focusTags.map((tag) => <span key={`f-${tag}`} className="inv-focus-tag">{tag}</span>)}
-                        {geoTags.map((tag) => <span key={`g-${tag}`} className="inv-focus-tag inv-focus-tag--geo">{tag}</span>)}
-                      </>
-                    )}
                   </div>
                   <div>
                     <span className={`inv-deals-cell${inv.deals_count === 0 ? " inv-deals-cell--empty" : ""}`}>

@@ -22,6 +22,7 @@ type InvestorRow = {
   ticket_size_max_cad: number | null;
   preferred_geography: string | null;
   asset_class_focus: string | null;
+  notes: string | null;
   created_at?: string;
   updated_at: string;
 };
@@ -33,6 +34,9 @@ type InvestorSummaryRow = {
   capital_available_cad: number | null;
   ticket_size_min_cad: number | null;
   ticket_size_max_cad: number | null;
+  preferred_geography: string | null;
+  asset_class_focus: string | null;
+  notes: string | null;
 };
 
 type InvestorDealRow = {
@@ -63,7 +67,7 @@ export async function GET(request: Request) {
     .select(
       "id, full_name, firm_name, email, phone_e164, city, province, status, source, " +
       "capital_available_cad, ticket_size_min_cad, ticket_size_max_cad, " +
-      "preferred_geography, asset_class_focus, created_at, updated_at",
+      "preferred_geography, asset_class_focus, notes, created_at, updated_at",
       { count: "exact" },
     )
     .order("updated_at", { ascending: false })
@@ -71,9 +75,9 @@ export async function GET(request: Request) {
 
   if (status) query = query.eq("status", status);
   if (q) {
-    // Match against full_name or firm_name, case-insensitive.
+    // Match against profile and criteria fields, case-insensitive.
     const pattern = `%${q.replace(/[%_]/g, "")}%`;
-    query = query.or(`full_name.ilike.${pattern},firm_name.ilike.${pattern}`);
+    query = query.or(`full_name.ilike.${pattern},firm_name.ilike.${pattern},preferred_geography.ilike.${pattern},asset_class_focus.ilike.${pattern},notes.ilike.${pattern}`);
   }
 
   const [
@@ -87,7 +91,7 @@ export async function GET(request: Request) {
     sb.from("investor_calls").select("investor_id, created_at, started_at, recorded_at").order("created_at", { ascending: false }).limit(500),
     sb
       .from("investors")
-      .select("id, full_name, status, capital_available_cad, ticket_size_min_cad, ticket_size_max_cad"),
+      .select("id, full_name, status, capital_available_cad, ticket_size_min_cad, ticket_size_max_cad, preferred_geography, asset_class_focus, notes"),
   ]);
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

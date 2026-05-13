@@ -4,8 +4,11 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/sup
 import InvestorsTable from "./InvestorsTable";
 
 type InvestorSummary = {
-  capitalTotalCad: number;
-  ticketAverageCad: number | null;
+  topGeographies: string[];
+  strategyLabel: string | null;
+  strategyCount: number;
+  yearsLabel: string | null;
+  yearsCount: number;
   activeCount: number;
   prospectCount: number;
   inactiveCount: number;
@@ -16,13 +19,6 @@ type InvestorSummary = {
   lastCallInvestorName: string | null;
 };
 
-function formatMoney(n: number | null): string {
-  if (n == null) return "—";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
-  return `$${n.toLocaleString("fr-CA")}`;
-}
-
 function relativeDate(iso: string | null): string {
   if (!iso) return "—";
   const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -31,10 +27,30 @@ function relativeDate(iso: string | null): string {
   return `il y a ${diffDays}j`;
 }
 
+function splitTags(value: string | null): string[] {
+  if (!value) return [];
+  return value.split(/[,;|]/).map((part) => part.trim()).filter(Boolean);
+}
+
+function strategyFromText(text: string): string | null {
+  if (/optim|value.?add|r[ée]no|stabilis|redresse|upside|densif/i.test(text)) return "Optimisation";
+  if (/long.?term|long terme|hold|conserver|patrimoine|cash.?flow/i.test(text)) return "Long terme";
+  return null;
+}
+
+function yearsFromText(text: string): string | null {
+  const matches = Array.from(text.matchAll(/\b(19[4-9]\d|20[0-2]\d)(?:\s*(?:-|–|à|a|to)\s*(19[4-9]\d|20[0-2]\d))?\b/gi));
+  if (matches.length === 0) return null;
+  return matches
+    .slice(0, 2)
+    .map((match) => (match[2] ? `${match[1]}–${match[2]}` : match[1]))
+    .join(", ");
+}
+
 async function getInvestorSummary(): Promise<InvestorSummary> {
   const sb = createSupabaseAdminClient();
   const [investorsRes, dealsRes, callsRes] = await Promise.all([
-    sb.from("investors").select("id, full_name, status, capital_available_cad, ticket_size_min_cad, ticket_size_max_cad"),
+    sb.from("investors").select("id, full_name, status, preferred_geography, asset_class_focus, notes"),
     sb.from("investor_deals").select("investor_id, stage"),
     sb.from("investor_calls").select("investor_id, created_at, started_at, recorded_at").order("created_at", { ascending: false }).limit(1),
   ]);
@@ -43,18 +59,36 @@ async function getInvestorSummary(): Promise<InvestorSummary> {
   const deals = dealsRes.data ?? [];
   const lastCall = callsRes.data?.[0] ?? null;
   const negotiationStages = new Set(["discussing", "loi", "due_diligence", "financing"]);
-  const ticketValues = investors
-    .map((investor) => {
-      const min = Number(investor.ticket_size_min_cad) || 0;
-      const max = Number(investor.ticket_size_max_cad) || 0;
-      if (min > 0 && max > 0) return (min + max) / 2;
-      return max || min || 0;
-    })
-    .filter((value) => value > 0);
+  const geoCounts = new Map<string, number>();
+  const strategyCounts = new Map<string, number>();
+  let yearsCount = 0;
+  const yearsLabels: string[] = [];
+
+  for (const investor of investors) {
+    for (const geo of splitTags(investor.preferred_geography)) {
+      geoCounts.set(geo, (geoCounts.get(geo) ?? 0) + 1);
+    }
+    const combined = [investor.asset_class_focus, investor.notes].filter(Boolean).join(" ");
+    const strategy = strategyFromText(combined);
+    if (strategy) strategyCounts.set(strategy, (strategyCounts.get(strategy) ?? 0) + 1);
+    const years = yearsFromText(combined);
+    if (years) {
+      yearsCount += 1;
+      yearsLabels.push(years);
+    }
+  }
+  const topGeographies = Array.from(geoCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([geo]) => geo);
+  const topStrategy = Array.from(strategyCounts.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
 
   return {
-    capitalTotalCad: investors.reduce((sum, investor) => sum + (Number(investor.capital_available_cad) || 0), 0),
-    ticketAverageCad: ticketValues.length > 0 ? Math.round(ticketValues.reduce((sum, value) => sum + value, 0) / ticketValues.length) : null,
+    topGeographies,
+    strategyLabel: topStrategy?.[0] ?? null,
+    strategyCount: Array.from(strategyCounts.values()).reduce((sum, count) => sum + count, 0),
+    yearsLabel: yearsLabels[0] ?? null,
+    yearsCount,
     activeCount: investors.filter((investor) => investor.status === "active").length,
     prospectCount: investors.filter((investor) => investor.status === "prospect").length,
     inactiveCount: investors.filter((investor) => investor.status === "inactive").length,
@@ -81,7 +115,7 @@ export default async function InvestorsPage() {
           <div className="inv-page-head__crumb">Capital · partenaires</div>
           <h1 className="inv-page-head__t">Investisseurs</h1>
           <p className="inv-page-head__sub">
-            {summary.totalCount} partenaire{summary.totalCount !== 1 ? "s" : ""} · capital disponible pour les acquisitions
+            {summary.totalCount} partenaire{summary.totalCount !== 1 ? "s" : ""} · critères d’achat, zones et thèse d’investissement
           </p>
         </div>
         <nav className="inv-page-head__actions">
@@ -95,14 +129,23 @@ export default async function InvestorsPage() {
       </header>
       <section className="inv-portfolio">
         <div className="inv-pf">
-          <div className="inv-pf__l">Capital total dispo</div>
-          <div className="inv-pf__v">{formatMoney(summary.capitalTotalCad)}</div>
-          <div className="inv-pf__sub">somme des profils investisseurs</div>
+          <div className="inv-pf__l">Où il achète</div>
+          <div className="inv-pf__tags">
+            {summary.topGeographies.length > 0
+              ? summary.topGeographies.map((geo) => <span key={geo} className="inv-pf__tag">{geo}</span>)
+              : <span className="inv-pf__v inv-pf__v--small">—</span>}
+          </div>
+          <div className="inv-pf__sub">géographies préférées</div>
         </div>
         <div className="inv-pf">
-          <div className="inv-pf__l">Ticket moyen</div>
-          <div className="inv-pf__v">{formatMoney(summary.ticketAverageCad)}</div>
-          <div className="inv-pf__sub">moyenne min/max disponibles</div>
+          <div className="inv-pf__l">Thèse dominante</div>
+          <div className="inv-pf__v inv-pf__v--small">{summary.strategyLabel ?? "—"}</div>
+          <div className="inv-pf__sub">{summary.strategyCount} profil{summary.strategyCount !== 1 ? "s" : ""} renseigné{summary.strategyCount !== 1 ? "s" : ""}</div>
+        </div>
+        <div className="inv-pf">
+          <div className="inv-pf__l">Années ciblées</div>
+          <div className="inv-pf__v inv-pf__v--small">{summary.yearsLabel ?? "—"}</div>
+          <div className="inv-pf__sub">{summary.yearsCount} profil{summary.yearsCount !== 1 ? "s" : ""} avec années</div>
         </div>
         <div className="inv-pf">
           <div className="inv-pf__l">Actifs</div>
@@ -112,12 +155,7 @@ export default async function InvestorsPage() {
         <div className="inv-pf">
           <div className="inv-pf__l">Deals liés</div>
           <div className="inv-pf__v">{summary.dealsLinkedCount}</div>
-          <div className="inv-pf__sub">{summary.negotiatingDealsCount} en négociation</div>
-        </div>
-        <div className="inv-pf">
-          <div className="inv-pf__l">Dernier appel</div>
-          <div className="inv-pf__v inv-pf__v--small">{relativeDate(summary.lastCallAt)}</div>
-          <div className="inv-pf__sub">{summary.lastCallInvestorName ?? "—"}</div>
+          <div className="inv-pf__sub">{summary.negotiatingDealsCount} en négociation · appel {relativeDate(summary.lastCallAt)} {summary.lastCallInvestorName ? `· ${summary.lastCallInvestorName}` : ""}</div>
         </div>
       </section>
       <InvestorsTable />
