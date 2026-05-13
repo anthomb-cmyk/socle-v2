@@ -186,7 +186,7 @@ export async function POST(request: Request) {
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial answerOnBridge="true" timeout="20" record="record-from-answer-dual" recordingStatusCallback="${escapeXml(recordingCallbackUrl)}" recordingStatusCallbackMethod="POST">
+  <Dial answerOnBridge="true" timeout="45" record="record-from-answer-dual" recordingStatusCallback="${escapeXml(recordingCallbackUrl)}" recordingStatusCallbackMethod="POST">
     <Number statusCallback="${escapeXml(statusCallbackUrl)}" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${escapeXml(forwardTo)}</Number>
   </Dial>
 </Response>`;
