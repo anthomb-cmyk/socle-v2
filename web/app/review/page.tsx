@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import ProposedActionsList from "./ProposedActionsList";
 
@@ -27,10 +28,9 @@ export default async function ReviewPage() {
     urgency: string; created_at: string; lead_id: string | null;
   }>;
 
-  // Sort urgency-first: urgent → high → normal → low
   const urgencyOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
   const reviews = [...rawReviews].sort(
-    (a, b) => (urgencyOrder[a.urgency] ?? 9) - (urgencyOrder[b.urgency] ?? 9)
+    (a, b) => (urgencyOrder[a.urgency] ?? 9) - (urgencyOrder[b.urgency] ?? 9),
   );
 
   const proposed = (proposedRes.data ?? []) as Array<{
@@ -39,162 +39,159 @@ export default async function ReviewPage() {
     confidence: number | null; source: string; created_at: string;
   }>;
 
-  const urgentCount = reviews.filter(r => r.urgency === "urgent").length;
-  const highCount   = reviews.filter(r => r.urgency === "high").length;
+  const urgentCount = reviews.filter((r) => r.urgency === "urgent").length;
+  const highCount = reviews.filter((r) => r.urgency === "high").length;
+  const totalPending = reviews.length + proposed.length;
 
   return (
-    <main className="crm-page">
-
-      {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
+    <main className="rev-main">
+      <div className="rev-page-head">
         <div>
-          <h1 className="crm-page-title">Revue vendeurs</h1>
-          <p className="crm-page-sub">
-            {reviews.length === 0
+          <div className="rev-page-head__crumb">Inbox · décisions à prendre</div>
+          <h1 className="rev-page-head__t">Revue</h1>
+          <div className="rev-page-head__sub">
+            {reviews.length === 0 && proposed.length === 0
               ? "Boîte vide — aucun élément à traiter."
-              : <>{reviews.length} élément{reviews.length > 1 ? "s" : ""} ouvert{reviews.length > 1 ? "s" : ""}
-                  {urgentCount > 0 && <> · <strong style={{ color: "var(--crm-red)" }}>{urgentCount} urgent{urgentCount > 1 ? "s" : ""}</strong></>}
-                  {highCount > 0 && <> · <strong style={{ color: "var(--crm-amber)" }}>{highCount} élevé{highCount > 1 ? "s" : ""}</strong></>}
-                  {proposed.length > 0 && <> · {proposed.length} action{proposed.length > 1 ? "s" : ""} proposée{proposed.length > 1 ? "s" : ""}</>}
-                </>
-            }
-          </p>
+              : `${totalPending} en attente · ${urgentCount} urgent · ${proposed.length} action${proposed.length > 1 ? "s" : ""} proposée${proposed.length > 1 ? "s" : ""}`}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Link href="/leads" className="crm-btn">← Leads</Link>
-          <Link href="/import" className="crm-btn crm-btn-dark">Import</Link>
+        <div className="rev-page-head__actions">
+          <Link href="/leads" className="btn"><Icon name="arrowLeft" /> Leads</Link>
+          <Link href="/import" className="btn btn--primary">Import</Link>
         </div>
       </div>
 
-      {/* ── Two-column layout: review items + proposed actions ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, alignItems: "start" }}>
+      <div className="rev-tabs">
+        <button type="button" className={`rev-tab rev-tab--active ${urgentCount > 0 ? "rev-tab--alert" : ""}`}>
+          Éléments à traiter <span className="rev-tab__c">{reviews.length}</span>
+        </button>
+        <button type="button" className="rev-tab">
+          Actions proposées <span className="rev-tab__c">{proposed.length}</span>
+        </button>
+        <button type="button" className="rev-tab">
+          Urgents <span className="rev-tab__c">{urgentCount}</span>
+        </button>
+        <button type="button" className="rev-tab">
+          Élevés <span className="rev-tab__c">{highCount}</span>
+        </button>
+      </div>
 
-        {/* Left: review items */}
+      <div className="rev-grid">
         <section>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <span className="crm-section-label" style={{ margin: 0 }}>Éléments à traiter</span>
-            {reviews.length > 0 && (
-              <span style={{
-                fontSize: 10, fontWeight: 700, background: urgentCount > 0 ? "var(--crm-red-light)" : "var(--crm-bg-alt)",
-                color: urgentCount > 0 ? "var(--crm-red)" : "var(--crm-text2)",
-                border: `1px solid ${urgentCount > 0 ? "#FFCDD2" : "var(--crm-card-border)"}`,
-                borderRadius: 999, padding: "2px 9px",
-              }}>
-                {reviews.length}
-              </span>
-            )}
+          <div className="rev-section-head">
+            <span className="rev-section-title">Éléments à traiter</span>
+            {reviews.length > 0 ? <span className="pill pill--brand">{reviews.length}</span> : null}
           </div>
 
           {reviews.length === 0 ? (
-            <div className="crm-card">
-              <div className="crm-empty-state">
-                
-                <p className="crm-empty-state-title">Boîte vide</p>
-                <p className="crm-empty-state-sub">Aucun vendeur à traiter en ce moment. Beau travail !</p>
-              </div>
-            </div>
+            <EmptyCard title="Boîte vide" sub="Aucun vendeur à traiter en ce moment." />
           ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              {reviews.map(it => {
-                const isUrgent = it.urgency === "urgent";
-                const isHigh   = it.urgency === "high";
-                const borderColor = isUrgent ? "var(--crm-red)" : isHigh ? "var(--crm-amber)" : "var(--crm-card-border)";
-                const bgColor     = isUrgent ? "#FFF5F3" : isHigh ? "#FFFAF0" : "var(--crm-card)";
-
-                return (
-                  <li key={it.id} style={{
-                    background: bgColor,
-                    border: `1px solid ${isUrgent ? "#F9BFBB" : isHigh ? "#F6D7A4" : "var(--crm-card-border)"}`,
-                    borderLeft: `4px solid ${borderColor}`,
-                    borderRadius: 10,
-                    padding: "14px 18px",
-                    boxShadow: isUrgent ? "0 1px 4px rgba(192,57,43,0.10)" : "0 1px 2px rgba(0,0,0,0.03)",
-                  }}>
-                    {/* Title row */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 6 }}>
-                      <h3 style={{ fontWeight: 800, fontSize: 14, color: "var(--crm-text)", margin: 0, lineHeight: 1.3, flex: 1 }}>
-                        {it.title}
-                      </h3>
-                      <UrgencyPill urgency={it.urgency} />
+            <ul className="rev-list">
+              {reviews.map((item) => (
+                <li key={item.id} className={`rev-card ${item.urgency === "urgent" ? "rev-card--hot" : ""}`}>
+                  <div className="rev-card__head">
+                    <div className={`rev-card__icon ${item.urgency === "urgent" ? "rev-card__icon--hot" : "rev-card__icon--auto"}`}>
+                      <Icon name={item.urgency === "urgent" ? "flame" : "alert"} size={20} />
                     </div>
+                    <div className="rev-card__body">
+                      <h3 className="rev-card__t">{item.title}</h3>
+                      <div className="rev-card__sub">
+                        <UrgencyPill urgency={item.urgency} />
+                        {item.lead_id ? <span>Lead lié</span> : <span>Lead —</span>}
+                      </div>
+                    </div>
+                    <span className="rev-card__age">{formatDate(item.created_at)}</span>
+                  </div>
 
-                    {/* Summary */}
-                    {it.summary && (
-                      <p style={{
-                        fontSize: 13, color: "var(--crm-text2)", margin: "0 0 10px", lineHeight: 1.55,
-                        whiteSpace: "pre-wrap",
-                        overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical",
-                      }}>
-                        {it.summary}
-                      </p>
+                  <div className="rev-quote">{item.summary ?? "—"}</div>
+
+                  <div className="rev-card__acts">
+                    {item.lead_id ? (
+                      <Link href={`/leads/${item.lead_id}` as never} className="btn btn--primary">
+                        Ouvrir le lead <Icon name="arrowRight" />
+                      </Link>
+                    ) : (
+                      <span className="btn">Lead —</span>
                     )}
-
-                    {/* Footer row */}
-                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                      <span style={{ fontSize: 11, color: "var(--crm-text3)", fontWeight: 500 }}>
-                        {new Date(it.created_at).toLocaleString("fr-CA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      {it.lead_id && (
-                        <Link href={`/leads/${it.lead_id}` as never} className="crm-open-lead-link">
-                          Ouvrir le lead →
-                        </Link>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
         </section>
 
-        {/* Right: proposed actions */}
-        <section>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <span className="crm-section-label" style={{ margin: 0 }}>Actions proposées</span>
-            {proposed.length > 0 && (
-              <span style={{
-                fontSize: 10, fontWeight: 700, background: "var(--crm-bg-alt)",
-                color: "var(--crm-text2)", border: "1px solid var(--crm-card-border)",
-                borderRadius: 999, padding: "2px 9px",
-              }}>
-                {proposed.length}
-              </span>
+        <aside className="rev-aside">
+          <div className="rev-aside__card">
+            <div className="rev-aside__t">Vue d&apos;ensemble</div>
+            <div className="rev-breakdown">
+              <BreakdownRow label="Urgents" value={urgentCount} dot="red" />
+              <BreakdownRow label="Élevés" value={highCount} dot="amber" />
+              <BreakdownRow label="Actions proposées" value={proposed.length} dot="purple" />
+              <BreakdownRow label="Total en attente" value={totalPending} total />
+            </div>
+          </div>
+
+          <div className="rev-aside__card">
+            <div className="rev-aside__t">Actions proposées</div>
+            {proposed.length === 0 ? (
+              <EmptyCard title="Aucune action proposée" sub="—" compact />
+            ) : (
+              <ProposedActionsList initial={proposed} />
             )}
           </div>
-          {proposed.length === 0 ? (
-            <div className="crm-card">
-              <div className="crm-empty-state">
-                
-                <p className="crm-empty-state-title">Aucune action proposée</p>
-                <p className="crm-empty-state-sub">Les suggestions d&rsquo;automatisation apparaîtront ici.</p>
-              </div>
-            </div>
-          ) : (
-            <ProposedActionsList initial={proposed} />
-          )}
-        </section>
-
+        </aside>
       </div>
     </main>
   );
 }
 
-function UrgencyPill({ urgency }: { urgency: string }) {
-  const cfg: Record<string, { label: string; bg: string; color: string; border: string }> = {
-    urgent: { label: "Urgent",  bg: "var(--crm-red-light)",   color: "var(--crm-red)",   border: "#FFCDD2" },
-    high:   { label: "Élevé",   bg: "var(--crm-amber-light)", color: "var(--crm-amber)", border: "#F6D7A4" },
-    normal: { label: "Normal",  bg: "#F3F4F6",                color: "#4B5563",          border: "#E5E7EB" },
-    low:    { label: "Faible",  bg: "#F9FAFB",                color: "var(--crm-text3)", border: "#F3F4F6" },
-  };
-  const { label, bg, color, border } = cfg[urgency] ?? { label: urgency, bg: "#F3F4F6", color: "#4B5563", border: "#E5E7EB" };
+function EmptyCard({ title, sub, compact }: { title: string; sub: string; compact?: boolean }) {
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase",
-      background: bg, color, border: `1px solid ${border}`,
-      borderRadius: 7, padding: "3px 9px", flexShrink: 0,
-      whiteSpace: "nowrap",
-    }}>
-      {label}
-    </span>
+    <div className="rev-empty">
+      <p className="rev-empty__t">{title}</p>
+      <p className="rev-empty__sub">{compact ? "—" : sub}</p>
+    </div>
   );
+}
+
+function BreakdownRow({ label, value, dot, total }: { label: string; value: number; dot?: "red" | "amber" | "purple"; total?: boolean }) {
+  return (
+    <div className={`rev-br-row ${total ? "rev-br-row--total" : ""}`}>
+      <div className="rev-br-row__l">
+        {!total ? <span className={`rev-br-row__dot ${dot ? `rev-br-row__dot--${dot}` : ""}`} /> : null}
+        {label}
+      </div>
+      <span className="rev-br-row__v">{value}</span>
+    </div>
+  );
+}
+
+function UrgencyPill({ urgency }: { urgency: string }) {
+  const cfg: Record<string, { label: string; cls: string }> = {
+    urgent: { label: "Urgent", cls: "pill--hot" },
+    high: { label: "Élevé", cls: "pill--review" },
+    normal: { label: "Normal", cls: "pill--ready" },
+    low: { label: "Faible", cls: "pill--cold" },
+  };
+  const item = cfg[urgency] ?? { label: urgency, cls: "pill--cold" };
+  return <span className={`pill ${item.cls}`}><span className="pill__dot" />{item.label}</span>;
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString("fr-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function Icon({ name, size = 14 }: { name: string; size?: number }) {
+  const paths: Record<string, ReactNode> = {
+    arrowLeft: <path d="M19 12H5M11 18l-6-6 6-6" />,
+    arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+    flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" />,
+    alert: <path d="M12 9v4M12 17h.01M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z" />,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
