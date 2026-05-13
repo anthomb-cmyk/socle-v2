@@ -50,15 +50,15 @@ export default async function Home() {
     dashboardDeals, userMeta, costRowsMonth, costRows7d, monthHotSubmissions,
     teamUsers, teamCallRows, teamSubmissionRows,
   ] = await Promise.all([
-    sb.from("review_items").select("id", { count: "exact", head: true }).eq("status", "open"),
-    sb.from("review_items").select("id", { count: "exact", head: true }).eq("status", "open").eq("urgency", "urgent"),
-    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "new"),
-    sb.from("leads_view").select("lead_id", { count: "exact", head: true }).eq("status", "phone_verified"),
-    sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES).is("assigned_to", null),
-    sb.from("leads").select("id", { count: "exact", head: true }).in("status", ENRICHMENT_STATUSES),
-    sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES).not("assigned_to", "is", null),
-    sb.from("follow_ups").select("id", { count: "exact", head: true }).eq("status", "pending").lt("due_at", todayStart.toISOString()),
-    sb.from("follow_ups").select("id", { count: "exact", head: true }).eq("status", "pending").gte("due_at", todayStart.toISOString()).lt("due_at", todayEnd.toISOString()),
+    sb.from("review_items").select("id", { count: "planned", head: true }).eq("status", "open"),
+    sb.from("review_items").select("id", { count: "planned", head: true }).eq("status", "open").eq("urgency", "urgent"),
+    sb.from("leads").select("id", { count: "planned", head: true }).eq("status", "new"),
+    sb.from("leads_view").select("lead_id", { count: "planned", head: true }).eq("status", "phone_verified"),
+    sb.from("leads").select("id", { count: "planned", head: true }).in("status", CALLABLE_STATUSES).is("assigned_to", null),
+    sb.from("leads").select("id", { count: "planned", head: true }).in("status", ENRICHMENT_STATUSES),
+    sb.from("leads").select("id", { count: "planned", head: true }).in("status", CALLABLE_STATUSES).not("assigned_to", "is", null),
+    sb.from("follow_ups").select("id", { count: "planned", head: true }).eq("status", "pending").lt("due_at", todayStart.toISOString()),
+    sb.from("follow_ups").select("id", { count: "planned", head: true }).eq("status", "pending").gte("due_at", todayStart.toISOString()).lt("due_at", todayEnd.toISOString()),
     sb.from("import_jobs")
       .select("id,file_name,status,properties_created,leads_created,errors_count,created_at")
       .order("created_at", { ascending: false }).limit(5),
@@ -96,8 +96,8 @@ export default async function Home() {
     sb.from("lead_submissions")
       .select("id", { count: "planned", head: true })
       .or("outcome.eq.hot_seller,seller_interest_level.in.(hot,wants_offer)"),
-    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "meeting_set"),
-    sb.from("deals").select("id", { count: "exact", head: true }).eq("stage", "cloture"),
+    sb.from("leads").select("id", { count: "planned", head: true }).eq("status", "meeting_set"),
+    sb.from("deals").select("id", { count: "planned", head: true }).eq("stage", "cloture"),
     sb.from("deals")
       .select("id,title,stage,address,units,asking_price,temperature,updated_at")
       .not("stage", "in", '("cloture","abandonne")')

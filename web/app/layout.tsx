@@ -1,5 +1,6 @@
 import "./globals.css";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
+import { unstable_cache } from "next/cache";
 import AppSidebar from "@/components/app-sidebar";
 import ChatWidget from "@/components/chat-widget";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
@@ -34,6 +35,37 @@ type RecentDeal = {
   temperature: string;
 };
 
+const getCachedRecentLeads = unstable_cache(
+  async (userId: string, role: "admin" | "caller") => {
+    const sb = createSupabaseAdminClient();
+    let q = sb
+      .from("leads_view")
+      .select("lead_id,full_name,company_name,priority,status")
+      .order("updated_at", { ascending: false })
+      .limit(6);
+    if (role !== "admin") q = q.eq("assigned_to", userId);
+    const { data } = await q;
+    return (data ?? []) as RecentLead[];
+  },
+  ["layout-recent-leads"],
+  { revalidate: 60 },
+);
+
+const getCachedRecentDeals = unstable_cache(
+  async () => {
+    const sb = createSupabaseAdminClient();
+    const { data } = await sb
+      .from("deals")
+      .select("id,title,stage,temperature")
+      .not("stage", "in", '("cloture","abandonne")')
+      .order("updated_at", { ascending: false })
+      .limit(5);
+    return (data ?? []) as RecentDeal[];
+  },
+  ["layout-recent-deals"],
+  { revalidate: 60 },
+);
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   let userInfo: { id: string; email: string; role: "admin" | "caller" } | null = null;
   let recentLeads: RecentLead[] = [];
@@ -49,39 +81,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         role: (user.app_metadata?.role ?? "caller") as "admin" | "caller",
       };
 
-      // Fetch recent leads for sidebar recent-leads section
-      try {
-        const sb = createSupabaseAdminClient();
-        const q = sb
-          .from("leads_view")
-          .select("lead_id,full_name,company_name,priority,status")
-          .order("updated_at", { ascending: false })
-          .limit(6);
-        if (userInfo.role !== "admin") {
-          // All non-admin roles see only their assigned leads in the sidebar
-          q.eq("assigned_to", user.id);
-        }
-        const { data } = await q;
-        recentLeads = (data ?? []) as RecentLead[];
-      } catch {
-        // Non-critical — sidebar still renders without recent leads
-      }
-
-      // Fetch recent deals for sidebar (admin only)
-      if (userInfo.role === "admin") {
-        try {
-          const sbAdmin = createSupabaseAdminClient();
-          const { data: dealData } = await sbAdmin
-            .from("deals")
-            .select("id,title,stage,temperature")
-            .not("stage", "in", '("cloture","abandonne")')
-            .order("updated_at", { ascending: false })
-            .limit(5);
-          recentDeals = (dealData ?? []) as RecentDeal[];
-        } catch {
-          // Non-critical
-        }
-      }
+      const [recentLeadsResult, recentDealsResult] = await Promise.allSettled([
+        getCachedRecentLeads(user.id, userInfo.role),
+        userInfo.role === "admin" ? getCachedRecentDeals() : Promise.resolve([] as RecentDeal[]),
+      ]);
+      if (recentLeadsResult.status === "fulfilled") recentLeads = recentLeadsResult.value;
+      if (recentDealsResult.status === "fulfilled") recentDeals = recentDealsResult.value;
     }
   } catch {
     // No session — render without sidebar (login page, etc.)

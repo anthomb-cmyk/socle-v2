@@ -28,30 +28,30 @@ export default async function LeadsPage({
 
   const [totalRes, callableRes, unassignedRes, noPhoneRes, readyRes, reviewRes] = await Promise.all([
     isCaller
-      ? sb.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", user.id)
-      : sb.from("leads").select("id", { count: "exact", head: true }),
+      ? sb.from("leads").select("id", { count: "planned", head: true }).eq("assigned_to", user.id)
+      : sb.from("leads").select("id", { count: "planned", head: true }),
     isCaller
-      ? sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES).eq("assigned_to", user.id)
-      : sb.from("leads").select("id", { count: "exact", head: true }).in("status", CALLABLE_STATUSES),
+      ? sb.from("leads").select("id", { count: "planned", head: true }).in("status", CALLABLE_STATUSES).eq("assigned_to", user.id)
+      : sb.from("leads").select("id", { count: "planned", head: true }).in("status", CALLABLE_STATUSES),
     // Non assignés only meaningful for admins
     isCaller
       ? Promise.resolve({ count: 0 })
-      : sb.from("leads").select("id", { count: "exact", head: true })
+      : sb.from("leads").select("id", { count: "planned", head: true })
           .in("status", CALLABLE_STATUSES)
           .is("assigned_to", null),
     // Sans téléphone = callable leads with no verified phone in leads_view
     isCaller
-      ? sb.from("leads_view").select("lead_id", { count: "exact", head: true })
+      ? sb.from("leads_view").select("lead_id", { count: "planned", head: true })
           .in("status", CALLABLE_STATUSES)
           .eq("assigned_to", user.id)
           .is("best_phone", null)
-      : sb.from("leads_view").select("lead_id", { count: "exact", head: true })
+      : sb.from("leads_view").select("lead_id", { count: "planned", head: true })
           .in("status", CALLABLE_STATUSES)
           .is("best_phone", null),
     // For banner: ready_to_call count
-    sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),
+    sb.from("leads").select("id", { count: "planned", head: true }).eq("status", "ready_to_call"),
     // For banner: needs_anthony_review count
-    sb.from("phone_candidates").select("id", { count: "exact", head: true }).eq("candidate_status", "needs_anthony_review"),
+    sb.from("phone_candidates").select("id", { count: "planned", head: true }).eq("candidate_status", "needs_anthony_review"),
   ]);
 
   const stats = {

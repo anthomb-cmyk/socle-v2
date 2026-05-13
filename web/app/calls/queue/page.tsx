@@ -84,7 +84,7 @@ export default async function CallQueuePage({
   const [queueRes, hotSellersRes, locksRes] = await Promise.all([
     queueQuery,
     sb.from("review_items")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "planned", head: true })
       .eq("status", "open"),
     sb.from("call_locks")
       .select("lead_id")
@@ -127,7 +127,7 @@ export default async function CallQueuePage({
     const [unassignedRes, futureRes, missingPhoneRes] = await Promise.all([
       wantsUnassignedDiag
         ? sb.from("leads")
-            .select("id", { count: "exact", head: true })
+            .select("id", { count: "planned", head: true })
             .in("status", CALLABLE_STATUSES as unknown as string[])
             .is("assigned_to", null)
         : Promise.resolve({ count: 0 } as { count: number | null }),
@@ -135,14 +135,14 @@ export default async function CallQueuePage({
       // when scope filters to me.
       scope === "mine"
         ? sb.from("leads_view")
-            .select("lead_id", { count: "exact", head: true })
+            .select("lead_id", { count: "planned", head: true })
             .eq("assigned_to", user.id)
             .in("status", CALLABLE_STATUSES as unknown as string[])
             .gt("next_action_at", now)
         : Promise.resolve({ count: 0 } as { count: number | null }),
       scope === "mine"
         ? sb.from("leads_view")
-            .select("lead_id", { count: "exact", head: true })
+            .select("lead_id", { count: "planned", head: true })
             .eq("assigned_to", user.id)
             .in("status", CALLABLE_STATUSES as unknown as string[])
             .is("best_phone", null)
