@@ -6,6 +6,7 @@
 // gates it so admin sees a specific name and caller-tier falls back to the
 // localized "another caller" — a UUID is never exposed.
 import { useState, useEffect, useRef } from "react";
+import type React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLocale } from "@/components/locale-provider";
@@ -416,7 +417,7 @@ export default function CallWorkspace({
 
       <div className="cw-toolbar">
         <Link href="/calls/queue" className="cw-toolbar__back">
-          ← {t.workspace.backToQueue}
+          <Icon name="chevronLeft" /> {t.workspace.backToQueue}
         </Link>
         <button
           onClick={goNext}
@@ -528,4 +529,11 @@ export default function CallWorkspace({
       />
     </div>
   );
+}
+
+function Icon({ name, size = 14 }: { name: string; size?: number }) {
+  const paths: Record<string, React.ReactNode> = {
+    chevronLeft: <path d="M15 18l-6-6 6-6" />,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>{paths[name]}</svg>;
 }
