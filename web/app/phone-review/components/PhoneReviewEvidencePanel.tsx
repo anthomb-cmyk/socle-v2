@@ -67,44 +67,296 @@ function confidenceVariant(score: number): "high" | "mid" | "low" {
 
 // ── Which tool found this number? ─────────────────────────────────────────
 // Identifies the actual data source so the reviewer knows whether to trust it.
+type SourceInfo = {
+  key: string;
+  title: string;
+  toolName: string;
+  description: string;
+  searchStep: string;
+  foundStep: string;
+  proves: string[];
+  limits: string[];
+  action: string;
+  tone: Tone;
+};
+
+function sourceKey(c: PhoneCandidate): string {
+  return (c.source_label || c.stage || c.matched_on || "unknown").trim();
+}
+
+function getReqOwnerMatch(c: PhoneCandidate): string | null {
+  const contact = c.leads?.contacts;
+  const ownerName = (contact?.full_name ?? contact?.company_name ?? "").trim();
+  const allOwnerNames = [...new Set([ownerName, ...(c.co_owner_names ?? [])].map((name) => name.trim()).filter(Boolean))];
+  return (c.req_director_names ?? []).find((directorName) =>
+    allOwnerNames.some((name) => namesOverlap(name, directorName)),
+  ) ?? null;
+}
+
+function sourceHost(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function getSourceInfo(c: PhoneCandidate): SourceInfo {
+  const key = sourceKey(c);
+  const url = c.source_url ?? "";
+  const host = sourceHost(url);
+  const hostLabel = host ?? "web";
+  const reqOwnerMatch = getReqOwnerMatch(c);
+
+  if (key === "cross_property") {
+    return {
+      key,
+      title: "Source interne CRM",
+      toolName: "Source interne CRM — autre fiche Socle",
+      description: "Socle n'a pas prouvé ce numéro par une nouvelle page web dans cette recherche. Il l'a proposé parce qu'une autre fiche CRM avec un propriétaire/contact semblable avait déjà ce téléphone.",
+      searchStep: "Comparaison interne avec les autres contacts, propriétaires et propriétés déjà dans Socle",
+      foundStep: "Numéro déjà vu dans une autre fiche CRM",
+      proves: ["Socle a déjà vu ce numéro lié à un nom ou propriétaire semblable."],
+      limits: ["Ce n'est pas une preuve web fraîche pour cette propriété précise.", "Il faut comparer l'autre fiche avant de rendre ce lead appelable."],
+      action: "Approuver seulement si l'autre fiche est bien le même propriétaire ou la même entreprise.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "req_address_lookup") {
+    const reqMatchText = reqOwnerMatch
+      ? ` Le REQ montre aussi un administrateur (« ${reqOwnerMatch} ») qui correspond à un propriétaire lié.`
+      : " Le lien vient surtout de l'adresse REQ; le nom du propriétaire peut ne pas être visible dans la page web.";
+    return {
+      key,
+      title: "Adresse postale → entreprise REQ → téléphone",
+      toolName: "Recherche REQ par adresse postale",
+      description: `Socle a pris l'adresse postale du propriétaire, a trouvé une entreprise inscrite au REQ à cette adresse, puis a cherché le téléphone public de cette entreprise.${reqMatchText}`,
+      searchStep: `Adresse postale du propriétaire comparée aux entreprises du REQ${c.search_query ? ", puis recherche web par entreprise" : ""}`,
+      foundStep: `Entreprise REQ à l'adresse postale${host ? `, puis source web ${host}` : ""}`,
+      proves: reqOwnerMatch
+        ? [`Adresse REQ concordante avec l'adresse postale.`, `Administrateur REQ « ${reqOwnerMatch} » correspond à un propriétaire lié.`]
+        : ["Adresse REQ concordante avec l'adresse postale du propriétaire."],
+      limits: ["Le téléphone peut être celui de l'entreprise, pas forcément le cellulaire personnel du propriétaire.", "À vérifier si le nom affiché dans la source ne correspond pas au propriétaire principal."],
+      action: "Approuver si l'entreprise REQ appartient bien au propriétaire ou à un co-propriétaire.",
+      tone: reqOwnerMatch ? "success" : "warn",
+    };
+  }
+
+  if (key === "name_postal_directory") {
+    return {
+      key,
+      title: "Annuaire nom + code postal",
+      toolName: `Annuaire nom + postal — ${hostLabel}`,
+      description: "Socle a cherché le nom du propriétaire avec son code postal dans un annuaire public. C'est plus fort si le nom complet et l'adresse postale apparaissent ensemble.",
+      searchStep: "Recherche annuaire avec le nom du propriétaire et le code postal",
+      foundStep: `Résultat d'annuaire public${host ? ` sur ${host}` : ""}`,
+      proves: ["Un annuaire public associe ce nom ou ce code postal au numéro."],
+      limits: ["Un code postal seul ne prouve pas que c'est le bon propriétaire.", "Les annuaires peuvent contenir des homonymes ou d'anciennes adresses."],
+      action: "Approuver seulement si le nom et l'adresse concordent clairement.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "reverse_address_lookup" || key === "reverse_address") {
+    return {
+      key,
+      title: "Recherche inverse par adresse",
+      toolName: `Recherche inverse adresse — ${hostLabel}`,
+      description: "Socle est parti d'une adresse et a cherché quels commerces, pages ou annuaires y associent un téléphone.",
+      searchStep: "Recherche web avec l'adresse postale ou l'adresse de propriété",
+      foundStep: `Page trouvée par adresse${host ? ` sur ${host}` : ""}`,
+      proves: ["La source relie un téléphone à une adresse proche ou identique."],
+      limits: ["Une adresse peut pointer vers un locataire, un commerce ou une ancienne occupation.", "Le nom du propriétaire doit idéalement aussi apparaître."],
+      action: "Approuver seulement si la page relie clairement le propriétaire au numéro.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "pages_jaunes_business") {
+    return {
+      key,
+      title: "Annuaire entreprise",
+      toolName: `Pages Jaunes / annuaire entreprise — ${hostLabel}`,
+      description: "Socle a trouvé le téléphone sur une fiche d'entreprise. C'est utile quand l'entreprise appartient au propriétaire, mais risqué si c'est un commerce locataire.",
+      searchStep: "Recherche par nom d'entreprise ou propriétaire dans un annuaire",
+      foundStep: `Fiche d'entreprise${host ? ` sur ${host}` : ""}`,
+      proves: ["La source associe ce téléphone à une entreprise."],
+      limits: ["La fiche peut appartenir à un locataire ou à un tiers.", "Le propriétaire doit être lié à cette entreprise avant approbation."],
+      action: "Approuver seulement si l'entreprise est bien celle du propriétaire.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "company_website") {
+    return {
+      key,
+      title: "Site web d'entreprise",
+      toolName: `Site d'entreprise — ${hostLabel}`,
+      description: "Socle a trouvé le téléphone sur un site web d'entreprise. C'est bon si l'entreprise est celle du propriétaire ou d'un co-propriétaire.",
+      searchStep: "Recherche web par nom d'entreprise ou propriétaire",
+      foundStep: `Site d'entreprise${host ? ` (${host})` : ""}`,
+      proves: ["Le site publie ce téléphone pour l'entreprise trouvée."],
+      limits: ["Un site d'entreprise ne prouve pas à lui seul le lien avec la propriété.", "Il faut valider que l'entreprise appartient au propriétaire visé."],
+      action: "Approuver si le lien propriétaire ↔ entreprise est clair.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "req_phone") {
+    return {
+      key,
+      title: "Téléphone déclaré au REQ",
+      toolName: "REQ — Registraire des entreprises Québec",
+      description: "Le numéro vient d'une information déclarée au Registraire des entreprises du Québec pour l'entité liée.",
+      searchStep: "Lecture des informations officielles REQ",
+      foundStep: "Téléphone déclaré sur la fiche REQ",
+      proves: ["L'entreprise a déclaré ce téléphone dans une source officielle."],
+      limits: ["Le numéro peut être celui de l'entreprise plutôt qu'un numéro personnel.", "Il faut confirmer que l'entité REQ est bien celle du propriétaire."],
+      action: "Généralement approuvable si l'entité REQ correspond au propriétaire.",
+      tone: "success",
+    };
+  }
+
+  if (key === "twilio_caller_name") {
+    return {
+      key,
+      title: "Nom d'appelant Twilio",
+      toolName: "Twilio Lookup — nom d'appelant",
+      description: "Socle a demandé à Twilio le nom associé au numéro. C'est un indice utile, mais pas une preuve de propriété immobilière.",
+      searchStep: "Lookup téléphonique Twilio",
+      foundStep: "Nom d'appelant associé au numéro",
+      proves: ["Le réseau téléphonique associe un nom à ce numéro."],
+      limits: ["Le nom d'appelant peut être vieux, abrégé ou au nom d'une entreprise.", "Il ne relie pas directement le numéro à une propriété."],
+      action: "Utiliser comme indice secondaire, pas comme preuve principale.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "openclaw") {
+    return {
+      key,
+      title: "Recherche legacy OpenClaw",
+      toolName: "OpenClaw legacy",
+      description: "Recherche multi-sources approfondie de l'ancien pipeline. Utilise seulement le flux legacy quand ENRICHMENT_USE_LEGACY=true.",
+      searchStep: "Recherche multi-sources legacy",
+      foundStep: "Candidat retourné par OpenClaw",
+      proves: ["L'ancien vérificateur a trouvé une piste exploitable."],
+      limits: ["Le nouveau pipeline utilise maintenant le juge IA synchrone; vérifier les preuves affichées."],
+      action: "Approuver seulement si les preuves affichées concordent.",
+      tone: "neutral",
+    };
+  }
+
+  if (host?.includes("canada411") || host === "411.ca" || host?.includes("pagesjaunes") || host?.includes("yellowpages")) {
+    return {
+      key,
+      title: "Annuaire public",
+      toolName: `Annuaire public — ${host}`,
+      description: "Le numéro vient d'un annuaire téléphonique public. C'est fiable seulement si le nom du propriétaire et l'adresse concordent.",
+      searchStep: "Recherche dans un annuaire public",
+      foundStep: `Résultat d'annuaire sur ${host}`,
+      proves: ["L'annuaire associe ce numéro à un nom ou une adresse."],
+      limits: ["Les annuaires peuvent contenir des homonymes, d'anciennes adresses ou des entreprises locataires."],
+      action: "Approuver si nom et adresse concordent clairement.",
+      tone: "warn",
+    };
+  }
+
+  if (host?.includes("b2bhint")) {
+    return {
+      key,
+      title: "Annuaire d'entreprises",
+      toolName: "B2BHint",
+      description: "Annuaire d'entreprises canadiennes basé sur des sources publiques. Bon pour identifier une compagnie, mais à recouper pour un propriétaire personne physique.",
+      searchStep: "Recherche d'entreprise dans une source publique",
+      foundStep: "Fiche d'entreprise B2BHint",
+      proves: ["Une source publique associe l'entreprise à ce numéro."],
+      limits: ["Le lien avec le propriétaire doit être confirmé."],
+      action: "Approuver si l'entreprise est bien liée au propriétaire.",
+      tone: "warn",
+    };
+  }
+
+  if (host?.includes("registreentreprises") || host?.includes("req.gouv") || host?.includes("registreentreprise")) {
+    return {
+      key,
+      title: "Source officielle REQ",
+      toolName: "REQ — Registraire des entreprises Québec",
+      description: "Source officielle. Si le numéro y est listé, c'est l'entreprise qui l'a déclaré.",
+      searchStep: "Consultation d'une fiche REQ",
+      foundStep: "Information officielle déclarée au REQ",
+      proves: ["L'information vient du registre officiel."],
+      limits: ["Il faut confirmer que l'entité REQ est celle du propriétaire."],
+      action: "Approuver si l'entité correspond au propriétaire.",
+      tone: "success",
+    };
+  }
+
+  if (host?.includes("google.com/maps") || host?.includes("maps.google") || host?.includes("g.co")) {
+    return {
+      key,
+      title: "Profil d'établissement",
+      toolName: "Google Maps",
+      description: "Profil d'établissement Google. Risque élevé : c'est souvent le numéro du locataire ou du commerce, pas du propriétaire foncier.",
+      searchStep: "Recherche web ou Maps",
+      foundStep: "Profil d'établissement Google",
+      proves: ["Un établissement à cette adresse ou avec ce nom publie ce téléphone."],
+      limits: ["Peut être le locataire, pas le propriétaire."],
+      action: "Ne pas approuver sans lien clair avec le propriétaire.",
+      tone: "danger",
+    };
+  }
+
+  if (key === "address_search") {
+    return {
+      key,
+      title: "Recherche web par adresse",
+      toolName: `Recherche Brave — ${hostLabel}`,
+      description: "Recherche web par adresse postale. Le numéro a été extrait d'une page trouvée via Brave Search.",
+      searchStep: "Recherche Brave par adresse",
+      foundStep: `Page web trouvée${host ? ` sur ${host}` : ""}`,
+      proves: ["Une page web associe ce numéro à l'adresse cherchée."],
+      limits: ["L'adresse peut correspondre à un commerce ou un locataire."],
+      action: "Approuver seulement si le propriétaire est aussi lié à la page.",
+      tone: "warn",
+    };
+  }
+
+  if (key === "company_search") {
+    return {
+      key,
+      title: "Recherche web par nom",
+      toolName: `Recherche Brave — ${hostLabel}`,
+      description: "Recherche web par nom d'entreprise/propriétaire. Le numéro a été extrait d'une page trouvée via Brave Search.",
+      searchStep: "Recherche Brave par nom",
+      foundStep: `Page web trouvée${host ? ` sur ${host}` : ""}`,
+      proves: ["Une page web associe ce numéro au nom recherché."],
+      limits: ["Le nom peut correspondre à un tiers ou à une entreprise différente."],
+      action: "Approuver seulement si la source montre clairement le bon propriétaire.",
+      tone: "warn",
+    };
+  }
+
+  return {
+    key,
+    title: "Source web non catégorisée",
+    toolName: host ?? key,
+    description: "Socle a trouvé ce numéro dans une source qui n'est pas encore classée précisément. Il faut lire le snippet et la source avant d'approuver.",
+    searchStep: c.search_query ? "Recherche web avec la requête affichée" : "Recherche web ou source non catégorisée",
+    foundStep: host ? `Page trouvée sur ${host}` : "Source non catégorisée",
+    proves: ["Une source a retourné ce numéro comme candidat."],
+    limits: ["Le type de source n'indique pas encore un lien fiable avec le propriétaire."],
+    action: "Garder non résolu ou vérifier manuellement avant approbation.",
+    tone: "neutral",
+  };
+}
+
 type ToolInfo = { name: string; description: string };
 function getToolInfo(c: PhoneCandidate): ToolInfo {
-  const stage = c.stage;
-  const url = c.source_url ?? "";
-  let host = "";
-  try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
-
-  if (stage === "openclaw") {
-    return { name: "OpenClaw legacy", description: "Recherche multi-sources approfondie de l'ancien pipeline. Utilise seulement le flux legacy quand ENRICHMENT_USE_LEGACY=true." };
-  }
-  if (host.includes("canada411") || host === "411.ca" || host.includes("pagesjaunes") || host.includes("yellowpages")) {
-    return { name: `Annuaire public — ${host}`, description: "Annuaire téléphonique officiel. Si le nom du proprio y figure, le numéro est généralement fiable." };
-  }
-  if (host.includes("b2bhint")) {
-    return { name: "B2BHint", description: "Annuaire d'entreprises canadiennes (basé sur REQ + sources publiques). Bon pour les compagnies, à recouper pour les particuliers." };
-  }
-  if (host.includes("registreentreprises") || host.includes("req.gouv") || host.includes("registreentreprise")) {
-    return { name: "REQ — Registraire des entreprises Québec", description: "Source officielle. Si le numéro y est listé, c'est l'entreprise qui l'a déclaré." };
-  }
-  if (host.includes("google.com/maps") || host.includes("maps.google") || host.includes("g.co")) {
-    return { name: "Google Maps", description: "Profil d'établissement Google. Risque élevé : c'est souvent le numéro du locataire/commerce, pas du propriétaire foncier." };
-  }
-  if (host.includes("facebook.com")) {
-    return { name: "Facebook", description: "Page publique Facebook. Risque modéré : peut être le proprio, le locataire, ou un tiers." };
-  }
-  if (host.includes("linkedin.com")) {
-    return { name: "LinkedIn", description: "Profil professionnel public." };
-  }
-  if (host.includes("ccq.org") || host.includes("rbq.gouv")) {
-    return { name: `Régulateur — ${host}`, description: "Source officielle (CCQ/RBQ). Fiable si le nom concorde." };
-  }
-  if (stage === "address_search") {
-    return { name: `Recherche Brave — ${host || "web"}`, description: "Recherche web par adresse postale. Le numéro a été extrait d'une page trouvée via Brave Search." };
-  }
-  if (stage === "company_search") {
-    return { name: `Recherche Brave — ${host || "web"}`, description: "Recherche web par nom d'entreprise/proprio. Le numéro a été extrait d'une page trouvée via Brave Search." };
-  }
-  return { name: host || stage, description: "Source web non catégorisée." };
+  const source = getSourceInfo(c);
+  return { name: source.toolName, description: source.description };
 }
 
 // ── Pros/Cons analysis from the candidate data ────────────────────────────
@@ -360,29 +612,6 @@ function getDecisionSummary(analysis: Analysis, c: PhoneCandidate, judge: JudgeS
   };
 }
 
-function sourceHost(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
-function stageLabel(stage: string): string {
-  const labels: Record<string, string> = {
-    address_search: "Recherche web par adresse",
-    company_search: "Recherche web par nom",
-    req_address_lookup: "Recherche adresse REQ",
-    name_postal_directory: "Recherche annuaire nom + postal",
-    reverse_address_lookup: "Recherche inverse adresse",
-    pages_jaunes_business: "Recherche Pages Jaunes",
-    company_website: "Recherche site d'entreprise",
-    openclaw: "OpenClaw legacy",
-  };
-  return labels[stage] ?? stage;
-}
-
 /**
  * Phase 5 — full evidence detail. Pure presentation; only cosmetic local
  * state (note input, action-pending transition). The note value flows
@@ -442,12 +671,13 @@ export default function PhoneReviewEvidencePanel({
 
   // Which tool found this number, and the pros/cons analysis
   const tool = getToolInfo(candidate);
+  const source = getSourceInfo(candidate);
   const analysis = computeAnalysis(candidate);
   const judge = getJudgeStatus(candidate);
   const decision = getDecisionSummary(analysis, candidate, judge);
   const decisionStyle = getToneStyle(decision.tone);
+  const sourceStyle = getToneStyle(source.tone);
   const judgeStyle = getToneStyle(judge.tone);
-  const host = sourceHost(candidate.source_url);
   const matchedSignals = candidate.matched_on
     ? candidate.matched_on.split(/[;,]+/).map((token) => token.trim()).filter(Boolean).map((token) => evidenceLabel(token, ev as EvidenceDict)).join(", ")
     : "aucun signal de concordance explicite";
@@ -459,12 +689,12 @@ export default function PhoneReviewEvidencePanel({
     },
     {
       label: "2. Recherche lancée",
-      detail: `${stageLabel(candidate.stage)}${candidate.search_query ? ` avec la requête "${candidate.search_query}"` : ""}`,
+      detail: `${source.searchStep}${candidate.search_query && source.key !== "cross_property" ? ` avec la requête "${candidate.search_query}"` : ""}`,
       tone: "neutral" as Tone,
     },
     {
       label: "3. Source trouvée",
-      detail: `${tool.name}${host ? ` (${host})` : ""}${candidate.candidate_name ? `; nom source : ${candidate.candidate_name}` : ""}`,
+      detail: `${source.foundStep}${candidate.candidate_name ? `; nom source : ${candidate.candidate_name}` : ""}`,
       tone: "neutral" as Tone,
     },
     {
@@ -522,7 +752,7 @@ export default function PhoneReviewEvidencePanel({
           <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.initial_confidence)}`} style={{ fontSize: 16, padding: "4px 10px" }}>
             {candidate.initial_confidence}%
           </span>
-          <StagePill stage={candidate.stage} />
+          <StagePill stage={candidate.stage} sourceLabel={candidate.source_label} />
           {candidate.openclaw_verdict && <VerdictBadge verdict={candidate.openclaw_verdict} />}
         </div>
         <div className="pr-evidence__score-label" style={{ color: scoreLabel.color }}>
@@ -531,6 +761,38 @@ export default function PhoneReviewEvidencePanel({
         {candidate.review_reason && (
           <div className="pr-evidence__score-reason">{candidate.review_reason}</div>
         )}
+      </div>
+
+      {/* Source summary — plain-language explanation of where the number came from */}
+      <div className="pr-evidence__section" style={{
+        background: sourceStyle.background,
+        border: `1px solid ${sourceStyle.border}`,
+        borderLeft: `4px solid ${sourceStyle.color}`,
+        padding: "12px 14px",
+        borderRadius: 6,
+      }}>
+        <div className="pr-evidence__section-title" style={{ marginBottom: 6 }}>
+          Résumé de la source
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 15, color: sourceStyle.color, marginBottom: 4 }}>
+          {source.title}
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.45, color: "var(--so-fg-4)", marginBottom: 8 }}>
+          {source.description}
+        </div>
+        <div style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--so-fg-5)", lineHeight: 1.45 }}>
+          <div>
+            <strong style={{ color: "var(--so-fg-4)" }}>Ce que ça prouve : </strong>
+            {source.proves.join(" ")}
+          </div>
+          <div>
+            <strong style={{ color: "var(--so-fg-4)" }}>Limite : </strong>
+            {source.limits.join(" ")}
+          </div>
+          <div style={{ fontWeight: 600, color: sourceStyle.color }}>
+            {source.action}
+          </div>
+        </div>
       </div>
 
       {/* Decision summary — answer "should I approve this?" before raw evidence */}
@@ -917,9 +1179,20 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
   );
 }
 
-function StagePill({ stage }: { stage: string }) {
+function StagePill({ stage, sourceLabel }: { stage: string; sourceLabel?: string | null }) {
   const { t } = useLocale();
   const ev = t.review.evidence;
+  const sourceLabels: Record<string, string> = {
+    cross_property: "CRM interne",
+    req_address_lookup: "REQ adresse",
+    name_postal_directory: "Nom + postal",
+    reverse_address_lookup: "Adresse inverse",
+    reverse_address: "Adresse inverse",
+    pages_jaunes_business: "Pages Jaunes",
+    company_website: "Site entreprise",
+    req_phone: "REQ téléphone",
+    twilio_caller_name: "Twilio",
+  };
   const labels: Record<string, string> = {
     address_search: ev.stageAddress,
     company_search: ev.stageCompany,
@@ -930,12 +1203,14 @@ function StagePill({ stage }: { stage: string }) {
     company_website: "Site entreprise",
     openclaw:       "OpenClaw legacy",
   };
+  const key = sourceLabel || stage;
   const variant: string =
-    stage === "address_search" || stage === "req_address_lookup" || stage === "reverse_address_lookup" ? "address"
-    : stage === "company_search" || stage === "company_website" || stage === "pages_jaunes_business" ? "company"
-    : stage === "openclaw" ? "openclaw"
+    key === "cross_property" ? "via"
+    : key === "address_search" || key === "req_address_lookup" || key === "reverse_address_lookup" || key === "reverse_address" ? "address"
+    : key === "company_search" || key === "company_website" || key === "pages_jaunes_business" || key === "req_phone" ? "company"
+    : key === "openclaw" ? "openclaw"
     : "via";
   return (
-    <span className={`crm-pill crm-pill-stage--${variant}`}>{labels[stage] ?? stage}</span>
+    <span className={`crm-pill crm-pill-stage--${variant}`}>{sourceLabels[key] ?? labels[stage] ?? key}</span>
   );
 }
