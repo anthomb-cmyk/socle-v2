@@ -2569,6 +2569,21 @@ html, body {
   grid-template-columns: repeat(3, minmax(112px, 1fr));
   gap: 10px;
 }
+.sms-new-button {
+  appearance: none;
+  border: 1px solid var(--gold-border);
+  border-radius: 10px;
+  background: var(--gold);
+  color: #17130d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  padding: 12px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: var(--shadow-soft);
+}
+.sms-new-button:hover { filter: brightness(0.98); }
 .sms-metric {
   background: var(--surface);
   border: 1px solid var(--border-soft);
@@ -2788,6 +2803,130 @@ html, body {
 .sms-empty--panel {
   margin: auto;
 }
+.sms-new-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.sms-new-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.sms-new-panel__head h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.15;
+}
+.sms-new-panel__head p {
+  margin: 5px 0 0;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+.sms-segmented {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+.sms-segmented button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sms-segmented button.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+.sms-recipient-picker,
+.sms-random-number {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sms-recipient-picker input,
+.sms-random-number input {
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.sms-random-number label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sms-recipient-list {
+  max-height: 360px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 4px;
+}
+.sms-recipient {
+  appearance: none;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+.sms-recipient:hover { background: var(--surface-alt); }
+.sms-recipient--active {
+  border-color: var(--gold-border);
+  background: var(--gold-soft);
+}
+.sms-recipient strong,
+.sms-recipient small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sms-recipient strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.sms-recipient small {
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.sms-recipient em {
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 12px;
+}
+.sms-composer--new {
+  margin-top: auto;
+}
 @media (max-width: 920px) {
   .sms-head { flex-direction: column; }
   .sms-metrics { width: 100%; }
@@ -2798,6 +2937,9 @@ html, body {
   .sms-metrics { grid-template-columns: 1fr; }
   .sms-conversation__head,
   .sms-composer { grid-template-columns: 1fr; }
+  .sms-new-panel__head { flex-direction: column; }
+  .sms-segmented { width: 100%; }
+  .sms-recipient { grid-template-columns: 1fr; }
   .sms-conversation__head { flex-direction: column; }
   .sms-links { justify-content: flex-start; }
   .sms-bubble { max-width: 100%; }

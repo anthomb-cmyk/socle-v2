@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase-server";
 import { normalizePhone } from "@/lib/twilio";
-import TextosClient, { type TextoConversation, type TextoMessage } from "./TextosClient";
+import TextosClient, { type TextoConversation, type TextoMessage, type TextoRecipient } from "./TextosClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,6 +19,15 @@ type SmsEvent = {
 type ContactRow = { id: string; full_name: string | null; company_name: string | null };
 type LeadRow = { id: string; contact_id: string | null; address: string | null; city: string | null };
 type PhoneRow = { id: string; e164: string | null; contact_id: string | null };
+type LeadViewRow = {
+  lead_id: string;
+  contact_id: string | null;
+  full_name: string | null;
+  company_name: string | null;
+  address: string | null;
+  city: string | null;
+  best_phone: string | null;
+};
 type DealRow = {
   id: string;
   title: string;
@@ -47,7 +56,7 @@ export default async function TextosPage() {
   const eventContactIds = unique(rows.map((event) => event.related_contact_id).filter(Boolean) as string[]);
   const eventLeadIds = unique(rows.map((event) => event.related_lead_id).filter(Boolean) as string[]);
 
-  const [phonesRes, eventContactsRes, eventLeadsRes, dealsRes] = await Promise.all([
+  const [phonesRes, eventContactsRes, eventLeadsRes, dealsRes, leadsViewRes, allPhonesRes] = await Promise.all([
     phoneNumbers.length
       ? sb.from("phones").select("id,e164,contact_id").in("e164", phoneNumbers)
       : Promise.resolve({ data: [] }),
@@ -63,6 +72,16 @@ export default async function TextosPage() {
       .not("stage", "eq", "abandonne")
       .order("updated_at", { ascending: false })
       .limit(500),
+    sb
+      .from("leads_view")
+      .select("lead_id,contact_id,full_name,company_name,address,city,best_phone")
+      .not("best_phone", "is", null)
+      .limit(1000),
+    sb
+      .from("phones")
+      .select("id,e164,contact_id")
+      .not("e164", "is", null)
+      .limit(1000),
   ]);
 
   const phones = (phonesRes.data ?? []) as PhoneRow[];
@@ -94,6 +113,12 @@ export default async function TextosPage() {
   }
 
   const deals = (dealsRes.data ?? []) as DealRow[];
+  const recipients = await buildRecipients({
+    sb,
+    leads: (leadsViewRes.data ?? []) as LeadViewRow[],
+    phones: (allPhonesRes.data ?? []) as PhoneRow[],
+    deals,
+  });
   const conversations = buildConversations(rows, {
     contactsById,
     leadsById,
@@ -102,7 +127,83 @@ export default async function TextosPage() {
     deals,
   });
 
-  return <TextosClient conversations={conversations} />;
+  return <TextosClient conversations={conversations} recipients={recipients} />;
+}
+
+async function buildRecipients({
+  sb,
+  leads,
+  phones,
+  deals,
+}: {
+  sb: ReturnType<typeof createSupabaseAdminClient>;
+  leads: LeadViewRow[];
+  phones: PhoneRow[];
+  deals: DealRow[];
+}): Promise<TextoRecipient[]> {
+  const byNumber = new Map<string, TextoRecipient>();
+
+  for (const lead of leads) {
+    const number = normalizePhone(lead.best_phone ?? "");
+    if (!number) continue;
+    const label = [lead.full_name, lead.company_name].filter(Boolean).join(" - ") || number;
+    const sublabel = [lead.address, lead.city].filter(Boolean).join(", ") || null;
+    byNumber.set(number, {
+      id: `lead:${lead.lead_id}:${number}`,
+      label,
+      sublabel,
+      number,
+      contactId: lead.contact_id,
+      leadId: lead.lead_id,
+      dealId: null,
+      dealTitle: null,
+    });
+  }
+
+  for (const deal of deals) {
+    const number = normalizePhone(deal.contact_phone ?? "");
+    if (!number) continue;
+    byNumber.set(number, {
+      id: `deal:${deal.id}:${number}`,
+      label: deal.title,
+      sublabel: "Pipeline deal",
+      number,
+      contactId: null,
+      leadId: null,
+      dealId: deal.id,
+      dealTitle: deal.title,
+    });
+  }
+
+  const contactIds = unique(phones.map((phone) => phone.contact_id).filter(Boolean) as string[]);
+  const contactsRes = contactIds.length
+    ? await sb.from("contacts").select("id,full_name,company_name").in("id", contactIds)
+    : { data: [] };
+  const contactById = new Map(
+    ((contactsRes.data ?? []) as ContactRow[]).map((contact) => [contact.id, contact]),
+  );
+  const leadByContactId = new Map(leads.filter((lead) => lead.contact_id).map((lead) => [lead.contact_id as string, lead]));
+
+  for (const phone of phones) {
+    const number = normalizePhone(phone.e164 ?? "");
+    if (!number || byNumber.has(number)) continue;
+    const contact = phone.contact_id ? contactById.get(phone.contact_id) ?? null : null;
+    const lead = phone.contact_id ? leadByContactId.get(phone.contact_id) ?? null : null;
+    byNumber.set(number, {
+      id: `contact:${phone.contact_id ?? phone.id}:${number}`,
+      label: contactName(contact) ?? number,
+      sublabel: leadPlaceLabel(lead ?? null),
+      number,
+      contactId: phone.contact_id,
+      leadId: lead?.lead_id ?? null,
+      dealId: null,
+      dealTitle: null,
+    });
+  }
+
+  return Array.from(byNumber.values())
+    .sort((a, b) => a.label.localeCompare(b.label, "fr-CA"))
+    .slice(0, 1500);
 }
 
 function buildConversations(
@@ -209,6 +310,11 @@ function contactName(contact: ContactRow | null) {
 }
 
 function leadLabel(lead: LeadRow | null) {
+  if (!lead) return null;
+  return [lead.address, lead.city].filter(Boolean).join(", ") || null;
+}
+
+function leadPlaceLabel(lead: { address: string | null; city: string | null } | null) {
   if (!lead) return null;
   return [lead.address, lead.city].filter(Boolean).join(", ") || null;
 }
