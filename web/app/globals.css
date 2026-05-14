@@ -11481,8 +11481,11 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 /* ── Dialer ──────────────────────────────────────────────── */
 .ph-dialer {
   display: flex; flex-direction: column;
-  padding: 16px 18px 24px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 16px 10px;
   gap: 0;
+  box-sizing: border-box;
 }
 
 .ph-dial-search {
@@ -11490,8 +11493,9 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 .ph-dial-search:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent); }
 .ph-dial-search svg { color: var(--ink-3); flex-shrink: 0; }
@@ -11539,21 +11543,22 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 
 .ph-dial-display {
   text-align: center;
-  padding: 4px 0 14px;
-  min-height: 92px;
+  padding: 2px 0 8px;
+  min-height: 44px;
+  flex-shrink: 0;
 }
 .ph-dial-num {
-  font-size: 36px; font-weight: 500;
+  font-size: 30px; font-weight: 500;
   color: var(--ink); letter-spacing: -0.01em;
   line-height: 1.1;
-  min-height: 44px;
+  min-height: 36px;
 }
 .ph-dial-num--empty {
-  color: var(--ink-4); font-size: 16px; font-weight: 500; letter-spacing: 0;
-  padding-top: 14px;
+  color: var(--ink-4); font-size: 15px; font-weight: 500; letter-spacing: 0;
+  padding-top: 8px;
 }
 .ph-dial-hint {
-  font-size: 12px; color: var(--ink-3); margin-top: 6px;
+  font-size: 12px; color: var(--ink-3); margin-top: 4px;
   display: inline-flex; align-items: center; gap: 6px;
   flex-wrap: wrap; justify-content: center;
 }
@@ -11565,22 +11570,28 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 }
 
 .ph-keypad-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding: 0 4px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 8px;
+  padding: 0 2px;
+  flex: 1;
+  min-height: 0;
 }
 .ph-keypad-grid .ph-key {
   width: auto; height: auto;
-  aspect-ratio: 1.4 / 1;
-  border-radius: 18px;
+  aspect-ratio: auto;
+  border-radius: 16px;
   background: var(--surface);
   border: 1px solid var(--border-soft);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 1px;
+  gap: 0;
+  min-height: 0;
 }
 .ph-keypad-grid .ph-key:active { background: var(--gold-tint); border-color: var(--gold-border); }
 .ph-keypad-grid .ph-key__d {
-  font-size: 28px; font-weight: 500; color: var(--ink);
+  font-size: clamp(20px, 6.4vw, 26px);
+  font-weight: 500; color: var(--ink);
   letter-spacing: -0.02em; line-height: 1;
 }
 .ph-keypad-grid .ph-key__l {
@@ -11592,9 +11603,10 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 
 .ph-dial-actions {
   display: grid; grid-template-columns: 44px 1fr 44px;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 16px 4px 8px;
+  padding: 10px 2px 0;
+  flex-shrink: 0;
 }
 .ph-dial-iconbtn {
   width: 44px; height: 44px; border-radius: 14px;
@@ -11608,7 +11620,7 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 .ph-dial-iconbtn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .ph-dial-call {
-  height: 56px; border-radius: 18px;
+  height: 50px; border-radius: 16px;
   background: var(--gold); color: #fff;
   border: 0;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
