@@ -6,6 +6,8 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type LeadRow = {

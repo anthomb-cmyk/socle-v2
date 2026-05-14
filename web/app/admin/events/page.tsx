@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+
 export default async function EventsPage(
   { searchParams }: { searchParams: Promise<{ source?: string; status?: string }> }
 ) {

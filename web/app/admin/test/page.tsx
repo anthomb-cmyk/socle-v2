@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import TestPanel from "./TestPanel";
 
+export const dynamic = "force-dynamic";
+
 export default async function TestChecklistPage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();

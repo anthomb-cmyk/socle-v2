@@ -221,7 +221,7 @@ export default function AppSidebar({
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+    return pathname?.startsWith(href) ?? false;
   }
 
   function priorityDot(p: number | null, status: string): string {

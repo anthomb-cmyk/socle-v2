@@ -39,6 +39,8 @@ const RANGE_LABELS: Record<CostRange, string> = {
   "all": "Tout",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function CostsPage({
   searchParams,
 }: {
