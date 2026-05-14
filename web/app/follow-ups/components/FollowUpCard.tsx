@@ -26,6 +26,8 @@ type Props = {
   busy: boolean;
   onComplete: () => void;
   onCancel: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 };
 
 /**
@@ -39,7 +41,7 @@ type Props = {
  * Existing 📅 emoji marker is preserved verbatim — directive tolerates
  * pre-existing emojis but forbids adding new ones.
  */
-export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: Props) {
+export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel, selected, onToggleSelect }: Props) {
   const { t, locale } = useLocale();
   const owner = f.lead?.full_name ?? f.lead?.company_name ?? "—";
   const priorityClass =
@@ -59,6 +61,16 @@ export default function FollowUpCard({ f, bucket, busy, onComplete, onCancel }: 
 
   return (
     <li className={`fu-card fu-card--${bucket}`}>
+      {onToggleSelect && (
+        <div className="fu-card__select">
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={onToggleSelect}
+            aria-label={`Sélectionner ${owner}`}
+          />
+        </div>
+      )}
       <div className="fu-card__main">
         <div className="fu-card__head">
           <span className="fu-card__name">{owner}</span>
