@@ -540,14 +540,10 @@ function RecentsPane({
   }
   return (
     <ul className="ph-recents">
-      {recents.map((call) => (
-        <li key={call.id} className="ph-recent">
-          <button
-            type="button"
-            className={`ph-recent__main${call.missed ? " ph-recent__main--missed" : ""}`}
-            onClick={() => onRecall(call)}
-            aria-label={`Rappeler ${call.name ?? call.number}`}
-          >
+      {recents.map((call) => {
+        const linked = Boolean(call.leadId || call.contactId || call.investorId);
+        const Body = (
+          <>
             <span className="ph-recent__dir" aria-hidden="true">
               {call.direction === "inbound" ? <ArrowInIcon /> : <ArrowOutIcon />}
             </span>
@@ -561,18 +557,40 @@ function RecentsPane({
               </span>
             </span>
             <span className="ph-recent__time">{formatRelativeDate(call.recordedAt)}</span>
-          </button>
-          {(call.leadId || call.contactId || call.investorId) && (
-            <Link
-              href={detailHref(call) as never}
+          </>
+        );
+        return (
+          <li key={call.id} className="ph-recent">
+            {linked ? (
+              <Link
+                href={detailHref(call) as never}
+                className={`ph-recent__main${call.missed ? " ph-recent__main--missed" : ""}`}
+                aria-label={`Ouvrir ${call.name ?? call.number}`}
+              >
+                {Body}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className={`ph-recent__main${call.missed ? " ph-recent__main--missed" : ""}`}
+                onClick={() => onRecall(call)}
+                aria-label={`Rappeler ${call.number}`}
+              >
+                {Body}
+              </button>
+            )}
+            <button
+              type="button"
               className="ph-recent__info"
-              aria-label="Détails de l'appel"
+              onClick={() => onRecall(call)}
+              aria-label="Composer ce numéro"
+              title="Composer ce numéro"
             >
-              <InfoIcon />
-            </Link>
-          )}
-        </li>
-      ))}
+              <PhoneSmallIcon />
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -629,11 +647,10 @@ function ArrowOutIcon() {
     </svg>
   );
 }
-function InfoIcon() {
+function PhoneSmallIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 8h.01M11 12h1v5h1" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" />
     </svg>
   );
 }

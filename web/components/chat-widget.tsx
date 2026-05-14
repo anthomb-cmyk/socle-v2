@@ -6,8 +6,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 
 // Routes where the floating button would overlap an in-page primary
-// action (e.g. the SMS send button on /textos) — hide it there.
-const HIDDEN_PREFIXES = ["/textos", "/calls/"];
+// action (Send button on /textos, big green call button on
+// /quick-call, in-call workspace on /calls/) — hide it there.
+const HIDDEN_PREFIXES = ["/textos", "/calls/", "/quick-call"];
 
 type Message = {
   role: "user" | "assistant";
