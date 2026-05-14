@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>585 Boulevard Gouin · Deal — Socle CRM</title>
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    body { background: var(--bg); }
+    .app { display: grid; grid-template-columns: 244px 1fr; min-height: 100vh; }
+
+    /* ── Sidebar (lifted from d-lead.html) ───────────────────── */
+    .sb { background: oklch(0.96 0.012 82); border-right: 1px solid var(--border-soft); padding: 22px 14px 18px; display: flex; flex-direction: column; gap: 22px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+    .sb__brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+    .sb__mark { width: 32px; height: 32px; border-radius: 9px; background: var(--ink); color: var(--gold); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+    .sb__brand__t1 { font-size: 13px; font-weight: 800; letter-spacing: 0.14em; }
+    .sb__brand__t2 { font-size: 9px; font-weight: 600; letter-spacing: 0.20em; color: var(--gold-deep); margin-top: 2px; }
+    .sb__group { display: flex; flex-direction: column; gap: 1px; }
+    .sb__sect { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; color: var(--ink-3); text-transform: uppercase; padding: 8px 8px 4px; }
+    .sb__link { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+    .sb__link:hover { background: oklch(0.93 0.012 82); }
+    .sb__link--active { background: var(--surface); color: var(--ink); box-shadow: var(--sh-1); font-weight: 600; border: 1px solid var(--border-soft); }
+    .sb__link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
+    .sb__badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; font-family: var(--mono); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-alt); color: var(--ink-2); }
+    .sb__badge--alert { background: var(--red); color: #fff; }
+    .sb__badge--ready { background: var(--green-soft); color: oklch(0.34 0.10 150); }
+    .sb__badge--warn  { background: var(--amber-soft); color: oklch(0.42 0.13 70); }
+    .sb__user { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 8px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 12px; }
+    .sb__user__t { font-size: 12.5px; font-weight: 600; }
+    .sb__user__r { font-size: 10.5px; color: var(--ink-3); }
+
+    /* ── Topbar ──────────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 10;
+      background: oklch(0.97 0.012 82 / 0.95);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border-soft);
+      padding: 14px 28px 12px;
+    }
+    .topbar__row {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 12px;
+    }
+    .crumbs { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+    .crumbs a { color: var(--gold-deep); font-weight: 600; }
+    .crumbs__sep { color: var(--ink-4); }
+    .topbar__title {
+      font-size: 18px; font-weight: 700; letter-spacing: -0.015em;
+      color: var(--ink); margin: 0;
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .topbar__save {
+      font-size: 11px; color: var(--ink-3);
+      display: inline-flex; align-items: center; gap: 4px;
+      font-style: italic;
+    }
+    .topbar__save::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+    }
+
+    /* ── Stage stepper ───────────────────────────────────────── */
+    .stage-row { display: flex; align-items: center; gap: 8px; }
+    .stages {
+      flex: 1;
+      display: grid; grid-template-columns: repeat(6, 1fr);
+      background: var(--surface-sunken);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .stage {
+      position: relative;
+      padding: 7px 10px;
+      font-size: 12px; font-weight: 600;
+      color: var(--ink-3);
+      background: transparent;
+      border: 0; border-radius: 7px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transition: all .15s;
+    }
+    .stage:hover { color: var(--ink); }
+    .stage--done {
+      color: oklch(0.40 0.10 150);
+      background: var(--green-soft);
+    }
+    .stage--done::before {
+      content: ""; width: 10px; height: 10px; border-radius: 50%;
+      background: var(--green);
+      mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/contain no-repeat;
+      -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/contain no-repeat;
+    }
+    .stage--active {
+      background: var(--ink); color: var(--ink-inv);
+      box-shadow: var(--sh-1);
+    }
+    .stage--active::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--gold);
+    }
+    .stage-abandon {
+      flex-shrink: 0;
+      padding: 8px 12px;
+      font-size: 12px; font-weight: 600;
+      color: var(--red);
+      background: var(--surface);
+      border: 1px solid oklch(0.85 0.08 25);
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .stage-abandon:hover { background: var(--red-soft); }
+
+    /* ── Body grid ───────────────────────────────────────────── */
+    .body { padding: 22px 28px 60px; display: grid; grid-template-columns: 1fr 360px; gap: 22px; align-items: start; }
+    @media (max-width: 1180px) { .body { grid-template-columns: 1fr; } }
+
+    .col { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Card primitive ─────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .card__h {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .card__t {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+      color: var(--ink-3); text-transform: uppercase;
+    }
+    .card__a { font-size: 12px; color: var(--gold-deep); font-weight: 600; }
+
+    /* ── Dossier hero card ──────────────────────────────────── */
+    .dossier {
+      background: var(--gold-tint);
+      border: 1px solid var(--gold-border);
+      border-radius: 16px;
+      padding: 18px 20px;
+    }
+    .dossier__h {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 14px; margin-bottom: 16px;
+    }
+    .dossier__kicker {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+      color: var(--gold-deep); text-transform: uppercase; margin-bottom: 4px;
+    }
+    .dossier__title {
+      font-size: 22px; font-weight: 600; letter-spacing: -0.025em;
+      color: var(--ink); margin: 0; line-height: 1.1;
+    }
+    .dossier__tag {
+      flex-shrink: 0;
+      font-size: 11px; font-weight: 700; color: var(--gold-deep);
+      background: var(--surface); border: 1px solid var(--gold-border);
+      border-radius: 999px; padding: 5px 10px;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .dossier__tag::before {
+      content: ""; width: 5px; height: 5px; border-radius: 50%;
+      background: var(--gold);
+    }
+
+    .facts {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1px; background: var(--gold-border); border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--gold-border);
+    }
+    .fact { background: var(--surface); padding: 12px 14px; }
+    .fact__l { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; color: var(--gold-deep); text-transform: uppercase; margin-bottom: 8px; }
+    .fact__row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; margin-bottom: 5px; font-size: 12.5px; }
+    .fact__row:last-child { margin-bottom: 0; }
+    .fact__row__k { color: var(--ink-3); font-size: 10.5px; letter-spacing: 0.05em; font-weight: 600; text-transform: uppercase; padding-top: 1px; }
+    .fact__row__v { color: var(--ink); font-weight: 600; }
+
+    .evidence {
+      display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 10px;
+      margin-top: 10px;
+    }
+    .ev {
+      background: var(--surface); border: 1px solid var(--gold-border);
+      border-radius: 12px; padding: 12px 14px;
+    }
+    .ev__l { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; color: var(--gold-deep); text-transform: uppercase; margin-bottom: 6px; }
+    .ev__b { font-size: 13px; line-height: 1.5; color: var(--ink); font-family: var(--serif); font-style: italic; }
+    .ev__b strong { font-family: var(--font); font-style: normal; color: var(--gold-deep); font-weight: 600; }
+    .ev__f { margin-top: 8px; font-size: 10.5px; color: var(--gold-deep); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+    /* ── Tabs ───────────────────────────────────────────────── */
+    .tabs-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .tabs {
+      display: flex; gap: 0;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border-soft);
+      overflow-x: auto;
+    }
+    .tab {
+      position: relative;
+      padding: 13px 0 14px;
+      margin-right: 22px;
+      font-size: 13px; font-weight: 600; color: var(--ink-3);
+      border: 0; background: transparent; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .tab:hover { color: var(--ink-2); }
+    .tab--active { color: var(--ink); }
+    .tab--active::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+      background: var(--gold);
+    }
+    .tab__c {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; padding: 0 5px;
+      border-radius: 999px; font-size: 10px; font-weight: 700;
+      background: var(--bg-alt); color: var(--ink-2);
+      font-family: var(--mono);
+    }
+    .tab--active .tab__c { background: var(--gold-soft); color: var(--gold-deep); }
+    .tab__pane { padding: 18px 22px 22px; }
+    .tab__pane[hidden] { display: none; }
+
+    /* ── Editable field ─────────────────────────────────────── */
+    .edit {
+      cursor: text; padding: 12px 14px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      transition: background .12s, border-color .12s;
+    }
+    .edit:hover { background: var(--surface-alt); border-color: var(--border-soft); }
+    .edit + .edit { margin-top: 8px; }
+    .edit__l { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 5px; }
+    .edit__v { font-size: 13.5px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
+    .edit__v--empty { color: var(--ink-4); font-style: italic; }
+
+    /* ── Narrative section blocks ───────────────────────────── */
+    .narrative-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 1050px) { .narrative-grid { grid-template-columns: 1fr; } }
+    .narrative {
+      background: var(--surface-alt);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .narrative__h {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .narrative__t {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+      color: var(--ink-3); text-transform: uppercase;
+    }
+    .narrative__b { font-size: 13.5px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
+    .narrative--ai {
+      background: var(--gold-tint);
+      border-color: var(--gold-border);
+      grid-column: 1 / -1;
+    }
+    .narrative--ai .narrative__b {
+      font-family: var(--serif); font-style: italic; font-size: 14px;
+    }
+    .narrative--ai .narrative__b strong {
+      font-family: var(--font); font-style: normal; color: var(--gold-deep); font-weight: 600;
+    }
+    .narrative__edit {
+      font-size: 11px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 4px;
+    }
+    .narrative__edit:hover { color: var(--ink); }
+
+    /* ── Calls list ─────────────────────────────────────────── */
+    .calls { display: flex; flex-direction: column; }
+    .call {
+      display: grid; grid-template-columns: 28px 1fr auto;
+      gap: 14px; padding: 14px 0;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .call:last-child { border-bottom: 0; }
+    .call:first-child { padding-top: 4px; }
+    .call__dot {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--ink-4);
+      margin: 7px auto 0; position: relative;
+    }
+    .call__dot::after {
+      content: ""; position: absolute; left: 50%; top: 100%;
+      width: 1px; height: 80px;
+      background: var(--border-soft);
+      transform: translateX(-50%);
+    }
+    .call:last-child .call__dot::after { display: none; }
+    .call__h { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+    .call__dur {
+      font-family: var(--mono); font-size: 12px; font-weight: 600;
+      background: var(--surface-sunken); padding: 2px 7px; border-radius: 999px;
+      color: var(--ink-2);
+    }
+    .call__rec {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+      background: var(--red-soft); color: var(--red);
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .call__sum { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin-top: 4px; }
+    .call__sum em { color: var(--gold-deep); font-style: normal; font-weight: 600; }
+    .call__acts { display: flex; gap: 6px; margin-top: 8px; }
+    .call__act {
+      font-size: 11.5px; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 7px;
+      color: var(--ink-2);
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .call__act:hover { background: var(--surface-alt); color: var(--ink); }
+    .call__act--ai {
+      background: var(--gold-tint); border-color: var(--gold-border); color: var(--gold-deep);
+    }
+    .call__time { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); padding-top: 4px; }
+
+    /* ── SMS inline ────────────────────────────────────────── */
+    .sms-list { display: flex; flex-direction: column; gap: 8px; }
+    .bubble {
+      max-width: 78%; padding: 9px 13px;
+      border-radius: 12px; font-size: 13.5px; line-height: 1.45;
+    }
+    .bubble--in {
+      align-self: flex-start;
+      background: var(--surface-alt);
+      border: 1px solid var(--border-soft);
+    }
+    .bubble--out {
+      align-self: flex-end;
+      background: var(--gold-tint);
+      border: 1px solid var(--gold-border);
+      color: var(--ink);
+    }
+    .bubble__meta { font-size: 10.5px; color: var(--ink-3); margin-top: 5px; font-family: var(--mono); }
+
+    /* ── Activity log ──────────────────────────────────────── */
+    .log-input {
+      display: flex; gap: 8px; margin-bottom: 14px;
+    }
+    .log-input input {
+      flex: 1; padding: 9px 13px;
+      border: 1px solid var(--border); border-radius: 10px;
+      font-size: 13px; outline: none; font-family: inherit;
+      background: var(--surface);
+    }
+    .log-input input:focus { border-color: var(--gold); }
+    .log-input button {
+      width: 38px; border: 0; background: var(--gold); color: #fff;
+      border-radius: 10px; font-size: 18px; font-weight: 600; cursor: pointer;
+    }
+    .log-list { display: flex; flex-direction: column; gap: 0; }
+    .log {
+      display: grid; grid-template-columns: 16px 1fr auto;
+      gap: 10px; padding: 10px 0;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 13px;
+    }
+    .log:last-child { border-bottom: 0; }
+    .log__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin: 7px auto 0; }
+    .log__t { font-size: 13px; color: var(--ink); }
+    .log__t em { font-family: var(--serif); font-style: italic; color: var(--gold-deep); }
+    .log__time { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding-top: 1px; }
+
+    /* ── Checklist ─────────────────────────────────────────── */
+    .chk-h { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .chk-pct { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-2); margin-left: auto; }
+    .chk-bar { height: 4px; background: var(--surface-sunken); border-radius: 2px; overflow: hidden; margin-bottom: 14px; }
+    .chk-bar__fill { height: 100%; background: var(--gold); border-radius: 2px; }
+    .chk-list { display: flex; flex-direction: column; gap: 8px; }
+    .chk { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink); }
+    .chk__box {
+      width: 18px; height: 18px; border-radius: 5px;
+      border: 1.5px solid var(--border-strong);
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .chk__box--done { background: var(--green); border-color: var(--green); }
+    .chk--done .chk__l { color: var(--ink-3); text-decoration: line-through; }
+
+    /* ── Empty state ──────────────────────────────────────── */
+    .empty {
+      padding: 30px 20px; text-align: center;
+      font-size: 13px; color: var(--ink-3);
+      background: var(--surface-alt); border-radius: 10px;
+      border: 1px dashed var(--border);
+    }
+
+    /* ── Right rail blocks ────────────────────────────────── */
+    .rail { position: sticky; top: 130px; display: flex; flex-direction: column; gap: 14px; }
+
+    .contact {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      padding: 18px 20px;
+    }
+    .contact__h { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .contact__av {
+      width: 42px; height: 42px; border-radius: 12px;
+      background: var(--gold-soft); border: 1px solid var(--gold-border);
+      color: var(--gold-deep);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; letter-spacing: 0.04em;
+    }
+    .contact__n { font-size: 15px; font-weight: 700; color: var(--ink); }
+    .contact__r { font-size: 11.5px; color: var(--ink-3); }
+    .contact__phone {
+      font-family: var(--mono); font-size: 22px; font-weight: 600;
+      letter-spacing: -0.02em; margin-bottom: 2px;
+    }
+    .contact__email { font-size: 12.5px; color: var(--ink-2); margin-bottom: 12px; word-break: break-all; }
+    .contact__cta { display: flex; gap: 8px; }
+    .contact__cta .btn--call {
+      flex: 1;
+      background: var(--gold); color: #fff; border-color: var(--gold-deep);
+      box-shadow: var(--sh-gold);
+    }
+    .contact__cta .btn--call:hover { background: var(--gold-deep); }
+    .contact__alt {
+      display: block; text-align: center; margin-top: 8px;
+      font-size: 11.5px; color: var(--ink-3); padding: 6px 0;
+    }
+    .contact__alt:hover { color: var(--ink); }
+
+    /* ── Offre summary ────────────────────────────────────── */
+    .offre {
+      background: var(--ink); color: var(--ink-inv);
+      border-radius: 16px;
+      padding: 18px 20px;
+      position: relative; overflow: hidden;
+    }
+    .offre::after {
+      content: ""; position: absolute; top: -40px; right: -40px;
+      width: 160px; height: 160px;
+      background: radial-gradient(circle at center, var(--gold) 0%, transparent 65%);
+      opacity: 0.28; pointer-events: none;
+    }
+    .offre__l { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; color: var(--gold); text-transform: uppercase; margin-bottom: 12px; position: relative; }
+    .offre__row {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 10px;
+      padding: 6px 0; font-size: 13px; position: relative;
+    }
+    .offre__row + .offre__row { border-top: 1px solid oklch(0.30 0.012 75); }
+    .offre__row__k { color: oklch(0.70 0.012 75); white-space: nowrap; flex-shrink: 0; }
+    .offre__row__v { font-family: var(--mono); font-weight: 600; color: var(--ink-inv); font-size: 14px; text-align: right; }
+    .offre__row__v--gold { color: var(--gold); }
+    .offre__row__v--green { color: oklch(0.78 0.10 150); }
+    .offre__edit {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; color: var(--gold); font-style: italic; cursor: pointer;
+    }
+    .offre__pills {
+      display: flex; gap: 6px; margin-top: 12px; position: relative;
+    }
+    .offre__pill {
+      flex: 1;
+      background: oklch(0.30 0.012 75);
+      border: 1px solid oklch(0.36 0.012 75);
+      border-radius: 9px;
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+    .offre__pill__k { font-size: 9.5px; color: oklch(0.70 0.012 75); letter-spacing: 0.06em; text-transform: uppercase; }
+    .offre__pill__v { font-size: 12.5px; font-weight: 700; color: var(--ink-inv); margin-top: 2px; }
+    .offre__pill__v.warm { color: var(--gold); }
+    .offre__pill__v.high { color: oklch(0.78 0.15 30); }
+
+    /* ── Next action / Meta ───────────────────────────────── */
+    .next {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 16px 18px;
+    }
+    .next__l { font-size: 11px; font-weight: 700; letter-spacing: 0.10em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 8px; }
+    .next__v { font-size: 13.5px; color: var(--ink-4); font-style: italic; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
+    .next__v:hover { background: var(--surface-alt); }
+
+    .meta-foot {
+      font-size: 11px; color: var(--ink-3); padding: 6px 18px;
+      font-family: var(--mono); display: flex; flex-direction: column; gap: 2px;
+    }
+  </style>
+</head>
+<body>
+<div class="app" data-screen-label="Deal · 585 Boulevard Gouin">
+  <!-- ────────── Sidebar ────────── -->
+  <aside class="sb">
+    <div class="sb__brand">
+      <div class="sb__mark">S</div>
+      <div>
+        <div class="sb__brand__t1">SOCLE</div>
+        <div class="sb__brand__t2">ACQUISITIONS</div>
+      </div>
+    </div>
+
+    <div class="sb__group">
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2 7-7 7 7 2 2v8a2 2 0 01-2 2h-3v-7h-8v7H5a2 2 0 01-2-2v-8z"/></svg>Tableau de bord</a>
+      <a href="#" class="sb__link sb__link--active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>Pipeline deals<span class="sb__badge">38</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20h5v-2a3 3 0 00-5.36-1.86M7 20H2v-2a3 3 0 015.36-1.86M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>Leads<span class="sb__badge">1.6k</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>File d'appels<span class="sb__badge sb__badge--ready">712</span></a>
+      <a href="screens/d-textos.html" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>Textos<span class="sb__badge sb__badge--warn">1</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4M12 17h.01M3 12a9 9 0 1118 0 9 9 0 01-18 0z"/></svg>Tél. à réviser<span class="sb__badge sb__badge--warn">79</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>Revue<span class="sb__badge sb__badge--alert">2</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3m8 4V3M5 11h14M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>Calendrier</a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a6 6 0 0112 0v1M16 11h6m-3-3v6"/></svg>Investisseurs</a>
+    </div>
+
+    <div class="sb__user">
+      <div class="avatar">AH</div>
+      <div>
+        <div class="sb__user__t">anthony</div>
+        <div class="sb__user__r">admin</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ────────── Main ────────── -->
+  <main>
+    <!-- ── Topbar ── -->
+    <div class="topbar">
+      <div class="topbar__row">
+        <div class="crumbs">
+          <a href="#">← Pipeline</a>
+          <span class="crumbs__sep">/</span>
+          <span style="color:var(--ink);">585 Boulevard Gouin, Saint-Jean-sur-Richelieu</span>
+        </div>
+        <div style="flex:1;"></div>
+        <span class="topbar__save">Sauvegardé · il y a 12 s</span>
+        <span class="pill pill--review"><span class="pill__dot"></span>Tiède</span>
+      </div>
+
+      <div class="stage-row">
+        <div class="stages" role="tablist">
+          <button class="stage stage--done">Prospection</button>
+          <button class="stage stage--done">Analyse</button>
+          <button class="stage stage--active">Offre déposée</button>
+          <button class="stage">Due Diligence</button>
+          <button class="stage">Financement</button>
+          <button class="stage">Clôture</button>
+        </div>
+        <button class="stage-abandon">Abandonné</button>
+      </div>
+    </div>
+
+    <!-- ── Body ── -->
+    <div class="body">
+      <!-- ====== LEFT COLUMN ====== -->
+      <div class="col">
+        <!-- Dossier hero -->
+        <section class="dossier">
+          <div class="dossier__h">
+            <div>
+              <div class="dossier__kicker">Dossier avant appel · Anthony</div>
+              <h2 class="dossier__title">585 Boulevard Gouin, Saint-Jean-sur-Richelieu</h2>
+            </div>
+            <span class="dossier__tag">3 appels liés</span>
+          </div>
+
+          <div class="facts">
+            <div class="fact">
+              <div class="fact__l">Bâtiment</div>
+              <div class="fact__row"><span class="fact__row__k">Adresse</span><span class="fact__row__v">585 Boul. Gouin, Saint-Jean</span></div>
+              <div class="fact__row"><span class="fact__row__k">Unités</span><span class="fact__row__v">12</span></div>
+              <div class="fact__row"><span class="fact__row__k">Évaluation</span><span class="fact__row__v">—</span></div>
+              <div class="fact__row"><span class="fact__row__k">Prix demandé</span><span class="fact__row__v">2 100 000 $</span></div>
+            </div>
+            <div class="fact">
+              <div class="fact__l">Vendeur</div>
+              <div class="fact__row"><span class="fact__row__k">Nom</span><span class="fact__row__v">Benoit Laverriere</span></div>
+              <div class="fact__row"><span class="fact__row__k">Téléphone</span><span class="fact__row__v mono">514 803-3730</span></div>
+              <div class="fact__row"><span class="fact__row__k">Motivation</span><span class="fact__row__v">—</span></div>
+              <div class="fact__row"><span class="fact__row__k">Délai</span><span class="fact__row__v">—</span></div>
+            </div>
+            <div class="fact">
+              <div class="fact__l">Données ajoutées</div>
+              <div class="fact__row"><span class="fact__row__k">Submissions</span><span class="fact__row__v mono">0</span></div>
+              <div class="fact__row"><span class="fact__row__k">Transcripts</span><span class="fact__row__v mono">2</span></div>
+              <div class="fact__row"><span class="fact__row__k">Documents</span><span class="fact__row__v mono">0</span></div>
+              <div class="fact__row"><span class="fact__row__k">Dernier appel</span><span class="fact__row__v mono">11 mai, 15h23</span></div>
+            </div>
+          </div>
+
+          <div class="evidence">
+            <div class="ev">
+              <div class="ev__l">Notes du transcript et appels</div>
+              <div class="ev__b">"Bonjour, salut Benoît, c'est Anthony. Tu veux que je <strong>t'envoie ça par écrit</strong>, par e-mail ou quelque chose? Ouais, si tu préfères que je t'envoie ça par e-mail, je peux t'envoyer ça tout de suite…"</div>
+              <div class="ev__f">Outcome · Suivi planifié</div>
+            </div>
+            <div class="ev">
+              <div class="ev__l">Notes caller</div>
+              <div class="ev__b">M'avait appelé il y a ~1 mois ; a <strong>rappelé après que le premier acheteur ait choke</strong>. Habite en Gaspésie. Part au Texas jusqu'au 4 mai, veut surtout son <strong>cash</strong>.</div>
+              <div class="ev__f">Soumis le 16 avr · 13h53</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tabs -->
+        <section class="tabs-wrap">
+          <div class="tabs" role="tablist">
+            <button class="tab tab--active" data-tab="notes">Notes &amp; analyse</button>
+            <button class="tab" data-tab="calls">Appels<span class="tab__c">3</span></button>
+            <button class="tab" data-tab="sms">Textos<span class="tab__c">1</span></button>
+            <button class="tab" data-tab="activity">Activité<span class="tab__c">5</span></button>
+            <button class="tab" data-tab="checklist">Checklist</button>
+            <button class="tab" data-tab="docs">Documents<span class="tab__c">0</span></button>
+          </div>
+
+          <!-- ── Notes pane ── -->
+          <div class="tab__pane" data-pane="notes">
+            <div class="narrative-grid">
+              <div class="narrative">
+                <div class="narrative__h">
+                  <div class="narrative__t">Notes deal · générales</div>
+                  <button class="narrative__edit">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Éditer
+                  </button>
+                </div>
+                <p class="narrative__b">Premier contact suite à une lettre envoyée. Courtier avait trouvé un acheteur à 2.4 M$ mais le deal a choke. Benoît est prêt à financer le deal. Mise de fonds requise ~400 000 $. J'avais avancé 2.1 M$. Je vais essayer de descendre à 2 M$. Visite visée le 6 mai.</p>
+              </div>
+
+              <div class="narrative">
+                <div class="narrative__h">
+                  <div class="narrative__t">Notes vendeur · motivation, délai, contexte</div>
+                  <button class="narrative__edit">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Éditer
+                  </button>
+                </div>
+                <p class="narrative__b">M'avait appelé il y a ~1 mois ; a rappelé après que le premier acheteur ait choke. Habite en Gaspésie en ce moment, veut vendre ses blocs. Part au Texas jusqu'au 4 mai, supposé me revenir rapidement. Impression : très chill, business, vieux style, veut surtout son cash.</p>
+              </div>
+
+              <div class="narrative narrative--ai">
+                <div class="narrative__h">
+                  <div class="narrative__t" style="color: var(--gold-deep);">Analyse AI · risques &amp; opportunités</div>
+                  <button class="narrative__edit" style="color: var(--gold-deep);">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 11-2.64-6.36M21 4v5h-5"/></svg>
+                    Régénérer
+                  </button>
+                </div>
+                <p class="narrative__b">Premier contact suite à une lettre ; <strong>courtier avait trouvé un acheteur à 2.4 M$</strong> mais le deal a échoué — Benoît est prêt à financer, mise de fonds ~400 000 $. Prix avancé <strong>2.1 M$, tentative de descendre à 2 M$</strong>. <strong>Risque</strong> que le courtier remette l'immeuble sur le marché → closer rapidement. Visite prévue le 6 mai.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Calls pane ── -->
+          <div class="tab__pane" data-pane="calls" hidden>
+            <div class="calls">
+              <div class="call">
+                <div class="call__dot" style="background: var(--green);"></div>
+                <div>
+                  <div class="call__h">
+                    <span class="call__dur">26s</span>
+                    <span style="font-size:13px; font-weight:600; color: var(--ink);">Appel sortant · Anthony</span>
+                  </div>
+                  <div class="call__sum">Pas de réponse. Boîte vocale, pas de message laissé.</div>
+                </div>
+                <span class="call__time">13 MAI · 14:48</span>
+              </div>
+
+              <div class="call">
+                <div class="call__dot" style="background: var(--gold);"></div>
+                <div>
+                  <div class="call__h">
+                    <span class="call__dur">5m 54s</span>
+                    <span class="call__rec">ENR.</span>
+                    <span style="font-size:13px; font-weight:600; color: var(--ink);">Appel sortant · Anthony</span>
+                  </div>
+                  <div class="call__sum">Discussion offre. Vendeur ouvert à descendre, demande proposition écrite par courriel. Visite à confirmer.</div>
+                  <div class="call__acts">
+                    <button class="call__act">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      Écouter
+                    </button>
+                    <button class="call__act">Voir la transcription</button>
+                    <button class="call__act call__act--ai">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 14.77 7.06 17.4 8 11.9 4 8l5.61-1.16L12 2z"/></svg>
+                      Organiser avec l'AI
+                    </button>
+                  </div>
+                </div>
+                <span class="call__time">11 MAI · 15:23</span>
+              </div>
+
+              <div class="call">
+                <div class="call__dot" style="background: var(--gold);"></div>
+                <div>
+                  <div class="call__h">
+                    <span class="call__dur">3m 58s</span>
+                    <span class="call__rec">ENR.</span>
+                    <span style="font-size:13px; font-weight:600; color: var(--ink);">Appel entrant · Benoit</span>
+                  </div>
+                  <div class="call__sum"><em>[AI]</em> L'appel a porté sur des options de financement, notamment un financement en deuxième rang, que l'interlocuteur (Anthony) refuse catégoriquement. Il exprime des préoccupations sur les risques et souhaite vérifier avec son notaire.</div>
+                  <div class="call__acts">
+                    <button class="call__act">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      Écouter
+                    </button>
+                    <button class="call__act">Voir la transcription</button>
+                    <button class="call__act call__act--ai">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 14.77 7.06 17.4 8 11.9 4 8l5.61-1.16L12 2z"/></svg>
+                      Organiser avec l'AI
+                    </button>
+                  </div>
+                </div>
+                <span class="call__time">8 MAI · 14:15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── SMS pane ── -->
+          <div class="tab__pane" data-pane="sms" hidden>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+              <div>
+                <div style="font-size: 13px; color: var(--ink);">Benoit Laverriere <span class="mono" style="color: var(--ink-3);">· 514-803-3730</span></div>
+                <div style="font-size: 11px; color: var(--ink-3); margin-top: 2px;">1 conversation liée à ce deal</div>
+              </div>
+              <a href="screens/d-textos.html" class="btn btn--sm">Ouvrir Textos →</a>
+            </div>
+            <div class="sms-list">
+              <div class="bubble bubble--out">
+                Salut,<br />
+                oui pas de problème, on se reparle demain.
+                <div class="bubble__meta">Envoyé · 13 mai 2026, 20 h 28</div>
+              </div>
+            </div>
+            <div style="margin-top: 18px; padding: 14px 16px; background: var(--surface-alt); border: 1px solid var(--border-soft); border-radius: 12px;">
+              <textarea placeholder="Répondre à Benoit Laverriere…" rows="2"
+                style="width: 100%; border: 0; background: transparent; resize: none; font-family: inherit; font-size: 13.5px; outline: none; color: var(--ink);"></textarea>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+                <div style="font-size: 11px; color: var(--ink-3); font-style: italic;">Le client voit le numéro Twilio, pas ton cell.</div>
+                <button class="btn btn--gold btn--sm">Envoyer</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Activity pane ── -->
+          <div class="tab__pane" data-pane="activity" hidden>
+            <div class="log-input">
+              <input type="text" placeholder="Ajouter une note ou activité…" />
+              <button>+</button>
+            </div>
+            <div class="log-list">
+              <div class="log">
+                <div class="log__dot"></div>
+                <div class="log__t">SMS envoyé · "Salut, oui pas de problème, on se reparle demain."</div>
+                <div class="log__time">13 MAI · 20:28</div>
+              </div>
+              <div class="log">
+                <div class="log__dot" style="background: oklch(0.50 0.10 245);"></div>
+                <div class="log__t">Stade changé → <em>Offre déposée</em></div>
+                <div class="log__time">13 MAI · 20:03</div>
+              </div>
+              <div class="log">
+                <div class="log__dot"></div>
+                <div class="log__t">Appel sortant · 26 s · pas de réponse</div>
+                <div class="log__time">13 MAI · 14:48</div>
+              </div>
+              <div class="log">
+                <div class="log__dot"></div>
+                <div class="log__t">Stade changé → <em>Prospection</em></div>
+                <div class="log__time">13 MAI · 14:46</div>
+              </div>
+              <div class="log">
+                <div class="log__dot" style="background: var(--green);"></div>
+                <div class="log__t">Appel sortant · 5 m 54 s · enregistré, transcrit</div>
+                <div class="log__time">11 MAI · 15:23</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Checklist pane ── -->
+          <div class="tab__pane" data-pane="checklist" hidden>
+            <div class="chk-h">
+              <div class="card__t">Stade · Offre déposée</div>
+              <div class="chk-pct">2 / 5</div>
+            </div>
+            <div class="chk-bar"><div class="chk-bar__fill" style="width: 40%;"></div></div>
+            <div class="chk-list">
+              <div class="chk chk--done">
+                <span class="chk__box chk__box--done">
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="chk__l">Confirmer prix demandé avec vendeur</span>
+              </div>
+              <div class="chk chk--done">
+                <span class="chk__box chk__box--done">
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="chk__l">Envoyer offre par écrit</span>
+              </div>
+              <div class="chk">
+                <span class="chk__box"></span>
+                <span class="chk__l">Planifier la visite</span>
+              </div>
+              <div class="chk">
+                <span class="chk__box"></span>
+                <span class="chk__l">Préparer plan de financement (mise de fonds 400 k$)</span>
+              </div>
+              <div class="chk">
+                <span class="chk__box"></span>
+                <span class="chk__l">Faire valider l'offre par notaire</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Docs pane ── -->
+          <div class="tab__pane" data-pane="docs" hidden>
+            <div class="empty">
+              Aucun document attaché.<br />
+              <button class="btn btn--sm" style="margin-top: 10px;">
+                <svg class="i--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                Téléverser
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ====== RIGHT RAIL ====== -->
+      <aside class="col rail">
+        <!-- Contact -->
+        <div class="contact">
+          <div class="card__t" style="margin-bottom: 10px;">Contact vendeur</div>
+          <div class="contact__h">
+            <div class="contact__av">BL</div>
+            <div>
+              <div class="contact__n">Benoit Laverriere</div>
+              <div class="contact__r">benoit@tandempublications.com</div>
+            </div>
+          </div>
+          <div class="contact__phone">514&nbsp;803-3730</div>
+          <div class="contact__cta">
+            <button class="btn btn--call btn--lg">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+              Appeler
+            </button>
+            <button class="btn btn--lg" title="SMS" aria-label="SMS">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>
+            </button>
+          </div>
+          <a href="tel:5148033730" class="contact__alt">Composer manuellement →</a>
+        </div>
+
+        <!-- Offre summary -->
+        <div class="offre">
+          <div class="offre__l">Offre · Saint-Jean</div>
+          <div class="offre__row">
+            <span class="offre__row__k">Prix demandé</span>
+            <span class="offre__row__v">2 100 000 $</span>
+          </div>
+          <div class="offre__row">
+            <span class="offre__row__k">Notre offre</span>
+            <span class="offre__row__v offre__edit">— cliquer pour modifier</span>
+          </div>
+          <div class="offre__row">
+            <span class="offre__row__k">Écart</span>
+            <span class="offre__row__v offre__row__v--green">—</span>
+          </div>
+          <div class="offre__pills">
+            <div class="offre__pill">
+              <div class="offre__pill__k">Température</div>
+              <div class="offre__pill__v warm">Tiède</div>
+            </div>
+            <div class="offre__pill">
+              <div class="offre__pill__k">Priorité</div>
+              <div class="offre__pill__v high">Haute</div>
+            </div>
+            <div class="offre__pill">
+              <div class="offre__pill__k">Unités</div>
+              <div class="offre__pill__v mono">12</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Next action -->
+        <div class="next">
+          <div class="next__l">Prochaine action</div>
+          <div class="next__v">— cliquer pour modifier</div>
+        </div>
+
+        <!-- Meta footer -->
+        <div class="meta-foot">
+          <div>Créé · 16 avr 2026 · 13 h 53</div>
+          <div>Modifié · 13 mai 2026 · 20 h 03</div>
+          <div style="color: var(--ink-4);">deal_id · f1647521…0578eb15d964</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Simple tab switcher
+  document.querySelectorAll('.tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.tab;
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('tab--active', t === btn));
+      document.querySelectorAll('.tab__pane').forEach((p) => {
+        p.hidden = p.dataset.pane !== name;
+      });
+    });
+  });
+</script>
+</body>
+</html>

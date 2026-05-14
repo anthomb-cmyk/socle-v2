@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Textos — Socle CRM</title>
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    body { background: var(--bg); }
+    .app { display: grid; grid-template-columns: 244px 1fr; min-height: 100vh; }
+
+    /* Sidebar (same family) */
+    .sb { background: oklch(0.96 0.012 82); border-right: 1px solid var(--border-soft); padding: 22px 14px 18px; display: flex; flex-direction: column; gap: 22px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+    .sb__brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+    .sb__mark { width: 32px; height: 32px; border-radius: 9px; background: var(--ink); color: var(--gold); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+    .sb__brand__t1 { font-size: 13px; font-weight: 800; letter-spacing: 0.14em; }
+    .sb__brand__t2 { font-size: 9px; font-weight: 600; letter-spacing: 0.20em; color: var(--gold-deep); margin-top: 2px; }
+    .sb__group { display: flex; flex-direction: column; gap: 1px; }
+    .sb__link { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+    .sb__link:hover { background: oklch(0.93 0.012 82); }
+    .sb__link--active { background: var(--surface); color: var(--ink); box-shadow: var(--sh-1); font-weight: 600; border: 1px solid var(--border-soft); }
+    .sb__link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
+    .sb__badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; font-family: var(--mono); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-alt); color: var(--ink-2); }
+    .sb__badge--alert { background: var(--red); color: #fff; }
+    .sb__badge--ready { background: var(--green-soft); color: oklch(0.34 0.10 150); }
+    .sb__badge--warn  { background: var(--amber-soft); color: oklch(0.42 0.13 70); }
+    .sb__user { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 8px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 12px; }
+    .sb__user__t { font-size: 12.5px; font-weight: 600; }
+    .sb__user__r { font-size: 10.5px; color: var(--ink-3); }
+
+    /* ── Layout ────────────────────────────────────────────── */
+    main { display: flex; flex-direction: column; min-height: 100vh; }
+
+    .head {
+      padding: 22px 28px 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .head__row { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+    .head__kicker {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+      color: var(--gold-deep); text-transform: uppercase;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .head__kicker::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--gold);
+    }
+    .head__t {
+      font-size: 30px; font-weight: 600; letter-spacing: -0.025em;
+      margin: 4px 0 4px;
+    }
+    .head__sub { font-size: 13.5px; color: var(--ink-3); max-width: 540px; }
+    .head__cta { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Three-pane shell ──────────────────────────────────── */
+    .shell {
+      flex: 1;
+      display: grid; grid-template-columns: 320px 1fr 300px;
+      min-height: 0;
+      max-height: calc(100vh - 0px);
+    }
+    @media (max-width: 1280px) { .shell { grid-template-columns: 300px 1fr 280px; } }
+
+    /* ── Conversation list ─────────────────────────────────── */
+    .list {
+      border-right: 1px solid var(--border-soft);
+      display: flex; flex-direction: column;
+      background: oklch(0.97 0.010 84);
+      min-height: 0;
+    }
+    .list__tools {
+      padding: 14px 14px 10px;
+      display: flex; flex-direction: column; gap: 10px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .search {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 12px;
+    }
+    .search input {
+      flex: 1; border: 0; outline: 0; background: transparent;
+      font-family: inherit; font-size: 13px; color: var(--ink);
+    }
+    .search input::placeholder { color: var(--ink-4); }
+    .filters { display: flex; gap: 4px; flex-wrap: wrap; }
+    .fchip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 11.5px; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border-soft);
+      color: var(--ink-2); cursor: pointer;
+    }
+    .fchip__c {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      background: var(--bg-alt); color: var(--ink-3);
+      padding: 1px 5px; border-radius: 999px; font-weight: 700;
+    }
+    .fchip--active { background: var(--ink); color: var(--ink-inv); border-color: var(--ink); }
+    .fchip--active .fchip__c { background: oklch(0.30 0.012 75); color: var(--gold); }
+    .fchip--green .fchip__c { background: var(--green-soft); color: oklch(0.34 0.10 150); }
+    .fchip--amber .fchip__c { background: var(--amber-soft); color: oklch(0.42 0.13 70); }
+
+    .list__items {
+      flex: 1; overflow-y: auto;
+      padding: 6px 8px 16px;
+    }
+    .thread {
+      display: block; width: 100%; text-align: left;
+      padding: 12px 14px; margin-bottom: 4px;
+      background: transparent; border: 0; border-radius: 10px;
+      cursor: pointer;
+      position: relative;
+    }
+    .thread:hover { background: oklch(0.95 0.012 82); }
+    .thread--active {
+      background: var(--surface);
+      box-shadow: var(--sh-1);
+      border: 1px solid var(--gold-border);
+    }
+    .thread--unread::after {
+      content: ""; position: absolute; top: 16px; right: 14px;
+      width: 8px; height: 8px; border-radius: 50%; background: var(--gold);
+    }
+    .thread__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .thread__n { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .thread__t { font-size: 10.5px; font-family: var(--mono); color: var(--ink-3); flex-shrink: 0; }
+    .thread__num { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+    .thread__p { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.4;
+                 display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .thread__tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 700; padding: 2px 7px;
+      border-radius: 999px;
+      margin-top: 6px;
+    }
+    .thread__tag--pipeline { background: var(--gold-soft); color: var(--gold-deep); border: 1px solid var(--gold-border); }
+    .thread__tag--unknown  { background: var(--amber-soft); color: oklch(0.42 0.13 70); border: 1px solid oklch(0.85 0.07 75); }
+
+    /* ── Conversation thread ────────────────────────────────── */
+    .conv {
+      display: flex; flex-direction: column; min-height: 0;
+      background: var(--surface);
+    }
+    .conv__head {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .conv__av {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: var(--gold-soft); border: 1px solid var(--gold-border);
+      color: var(--gold-deep);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px;
+      flex-shrink: 0;
+    }
+    .conv__id { flex: 1; min-width: 0; }
+    .conv__n { font-size: 16px; font-weight: 700; color: var(--ink); }
+    .conv__r { font-size: 12px; color: var(--ink-3); margin-top: 2px; font-family: var(--mono); }
+    .conv__links { display: flex; gap: 6px; flex-shrink: 0; }
+    .link-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 700;
+      background: var(--gold-soft); color: var(--gold-deep);
+      border: 1px solid var(--gold-border);
+    }
+    .link-pill svg { width: 11px; height: 11px; }
+    .link-pill--lead { background: var(--blue-soft); color: oklch(0.36 0.10 245); border-color: oklch(0.85 0.05 245); }
+    .link-pill--contact { background: var(--green-soft); color: oklch(0.34 0.10 150); border-color: var(--green-border); }
+    .link-pill--unknown { background: var(--surface-sunken); color: var(--ink-3); border-color: var(--border); }
+
+    .conv__body {
+      flex: 1; overflow-y: auto; padding: 22px 22px 8px;
+      background: var(--bg);
+    }
+    .conv__day {
+      text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+      color: var(--ink-3); text-transform: uppercase;
+      margin: 8px 0 14px; position: relative;
+    }
+    .conv__day::before, .conv__day::after {
+      content: ""; position: absolute; top: 50%; width: calc(50% - 70px);
+      height: 1px; background: var(--border-soft);
+    }
+    .conv__day::before { left: 0; }
+    .conv__day::after { right: 0; }
+
+    .bubble {
+      max-width: 70%; padding: 10px 14px;
+      border-radius: 14px; font-size: 14px; line-height: 1.45;
+      margin-bottom: 10px;
+      position: relative;
+    }
+    .bubble--in {
+      background: var(--surface); border: 1px solid var(--border-soft);
+      color: var(--ink);
+      align-self: flex-start; margin-right: auto;
+      border-bottom-left-radius: 4px;
+    }
+    .bubble--out {
+      background: var(--gold-tint); border: 1px solid var(--gold-border);
+      color: var(--ink);
+      align-self: flex-end; margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble__meta { font-size: 10.5px; color: var(--ink-3); margin-top: 6px; font-family: var(--mono); }
+    .bubbles { display: flex; flex-direction: column; }
+
+    .conv__composer {
+      padding: 14px 22px 22px;
+      background: var(--surface);
+      border-top: 1px solid var(--border-soft);
+    }
+    .composer-box {
+      display: flex; flex-direction: column; gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+      transition: border-color .15s;
+    }
+    .composer-box:focus-within { border-color: var(--gold); }
+    .composer-box textarea {
+      width: 100%; border: 0; outline: 0; resize: none;
+      padding: 12px 14px 6px;
+      font-family: inherit; font-size: 13.5px; color: var(--ink);
+      background: transparent; line-height: 1.5;
+    }
+    .composer-bar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px 8px 12px;
+    }
+    .composer-bar__tools { display: flex; gap: 4px; }
+    .composer-tool {
+      width: 30px; height: 30px; border-radius: 8px;
+      border: 0; background: transparent; color: var(--ink-3);
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .composer-tool:hover { background: var(--bg-alt); color: var(--ink); }
+    .composer-bar__count { font-size: 11px; color: var(--ink-4); font-family: var(--mono); margin-left: 8px; }
+    .composer-bar__spacer { flex: 1; }
+    .composer-bar .btn { padding: 7px 16px; }
+    .composer-hint { font-size: 11px; color: var(--ink-3); margin-top: 8px; padding-left: 4px; font-style: italic; }
+
+    /* ── Right context rail ─────────────────────────────────── */
+    .ctx {
+      border-left: 1px solid var(--border-soft);
+      padding: 20px 18px;
+      display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto;
+      background: oklch(0.97 0.010 84);
+    }
+    .ctx__title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+      color: var(--ink-3); text-transform: uppercase;
+    }
+
+    .deal-card {
+      background: var(--surface);
+      border: 1px solid var(--gold-border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .deal-card__k {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+      color: var(--gold-deep); text-transform: uppercase; margin-bottom: 6px;
+    }
+    .deal-card__t {
+      font-size: 15px; font-weight: 600; letter-spacing: -0.015em; color: var(--ink);
+      line-height: 1.25; margin-bottom: 10px;
+    }
+    .deal-stage {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 700;
+      padding: 3px 9px; border-radius: 999px;
+      background: oklch(0.94 0.03 245); color: oklch(0.36 0.10 245);
+      border: 1px solid oklch(0.85 0.05 245);
+      margin-bottom: 12px;
+    }
+    .deal-stage::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+    .kv { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-soft); font-size: 12px; }
+    .kv:first-of-type { border-top: 0; }
+    .kv__k { color: var(--ink-3); }
+    .kv__v { color: var(--ink); font-weight: 600; font-family: var(--mono); }
+
+    .ctx__actions {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-top: 6px;
+    }
+    .ctx__actions .btn {
+      width: 100%; justify-content: flex-start; padding: 9px 12px;
+    }
+    .ctx__actions .btn svg { width: 14px; height: 14px; }
+
+    .templates {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .tpl {
+      display: block; width: 100%; text-align: left;
+      padding: 9px 11px; margin-top: 6px;
+      border: 1px solid var(--border-soft);
+      background: var(--bg);
+      border-radius: 9px;
+      font-size: 12px; line-height: 1.4; color: var(--ink-2);
+      cursor: pointer;
+    }
+    .tpl:first-of-type { margin-top: 8px; }
+    .tpl:hover { background: var(--gold-tint); border-color: var(--gold-border); color: var(--ink); }
+    .tpl__l { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--gold-deep); text-transform: uppercase; margin-bottom: 3px; }
+  </style>
+</head>
+<body>
+<div class="app" data-screen-label="Textos · liste + conversation">
+  <!-- ────────── Sidebar ────────── -->
+  <aside class="sb">
+    <div class="sb__brand">
+      <div class="sb__mark">S</div>
+      <div>
+        <div class="sb__brand__t1">SOCLE</div>
+        <div class="sb__brand__t2">ACQUISITIONS</div>
+      </div>
+    </div>
+
+    <div class="sb__group">
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2 7-7 7 7 2 2v8a2 2 0 01-2 2h-3v-7h-8v7H5a2 2 0 01-2-2v-8z"/></svg>Tableau de bord</a>
+      <a href="screens/d-deal.html" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>Pipeline deals<span class="sb__badge">38</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20h5v-2a3 3 0 00-5.36-1.86M7 20H2v-2a3 3 0 015.36-1.86M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>Leads<span class="sb__badge">1.6k</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>File d'appels<span class="sb__badge sb__badge--ready">712</span></a>
+      <a href="#" class="sb__link sb__link--active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>Textos<span class="sb__badge sb__badge--warn">1</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4M12 17h.01M3 12a9 9 0 1118 0 9 9 0 01-18 0z"/></svg>Tél. à réviser<span class="sb__badge sb__badge--warn">79</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>Revue<span class="sb__badge sb__badge--alert">2</span></a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3m8 4V3M5 11h14M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>Calendrier</a>
+      <a href="#" class="sb__link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a6 6 0 0112 0v1M16 11h6m-3-3v6"/></svg>Investisseurs</a>
+    </div>
+
+    <div class="sb__user">
+      <div class="avatar">AH</div>
+      <div>
+        <div class="sb__user__t">anthony</div>
+        <div class="sb__user__r">admin</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ────────── Main ────────── -->
+  <main>
+    <!-- Header — much tighter than before -->
+    <header class="head">
+      <div class="head__row">
+        <div>
+          <div class="head__kicker">Twilio · SMS</div>
+          <h1 class="head__t">Textos</h1>
+          <p class="head__sub">Conversations reçues et envoyées depuis les numéros Socle. Les numéros connus sont automatiquement liés au lead, contact et deal.</p>
+        </div>
+        <div class="head__cta">
+          <button class="btn">
+            <svg class="i--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14M5 12h14M5 16h10"/></svg>
+            Modèles
+          </button>
+          <button class="btn btn--gold btn--lg">
+            <svg class="i--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Nouveau texto
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 3-pane shell -->
+    <section class="shell">
+      <!-- ── Conversation list ── -->
+      <aside class="list">
+        <div class="list__tools">
+          <label class="search">
+            <svg class="i--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color: var(--ink-3);"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+            <input type="search" placeholder="Chercher nom, deal, numéro…" />
+          </label>
+          <div class="filters">
+            <button class="fchip fchip--active">Toutes <span class="fchip__c">2</span></button>
+            <button class="fchip fchip--green">Liées <span class="fchip__c">1</span></button>
+            <button class="fchip fchip--amber">Inconnues <span class="fchip__c">1</span></button>
+            <button class="fchip">Non lus <span class="fchip__c">0</span></button>
+          </div>
+        </div>
+
+        <div class="list__items">
+          <button class="thread thread--active">
+            <div class="thread__top">
+              <span class="thread__n">Benoit Laverriere</span>
+              <span class="thread__t">13 mai · 20h28</span>
+            </div>
+            <div class="thread__num">+1 514 803-3730</div>
+            <div class="thread__p">Salut, oui pas de problème, on se reparle demain.</div>
+            <span class="thread__tag thread__tag--pipeline">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>
+              Offre déposée · 585 Boul. Gouin
+            </span>
+          </button>
+
+          <button class="thread">
+            <div class="thread__top">
+              <span class="thread__n">+1 450 803-1880</span>
+              <span class="thread__t">13 mai · 20h26</span>
+            </div>
+            <div class="thread__num">Numéro inconnu</div>
+            <div class="thread__p">hey</div>
+            <span class="thread__tag thread__tag--unknown">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 9v4M12 17h.01M3 12a9 9 0 1118 0 9 9 0 01-18 0z"/></svg>
+              À identifier
+            </span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ── Conversation thread ── -->
+      <section class="conv">
+        <header class="conv__head">
+          <div class="conv__av">BL</div>
+          <div class="conv__id">
+            <div class="conv__n">Benoit Laverriere</div>
+            <div class="conv__r">+1 514 803-3730 · via numéro Socle <span style="color: var(--ink-2);">514 555-0010</span></div>
+          </div>
+          <div class="conv__links">
+            <a href="screens/d-deal.html" class="link-pill">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>
+              Pipeline
+            </a>
+            <a href="#" class="link-pill link-pill--lead">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0116 0v1"/></svg>
+              Lead
+            </a>
+            <a href="#" class="link-pill link-pill--contact">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
+              Contact
+            </a>
+          </div>
+        </header>
+
+        <div class="conv__body">
+          <div class="conv__day">Mercredi · 13 mai 2026</div>
+          <div class="bubbles">
+            <div class="bubble bubble--out">
+              Salut,<br />oui pas de problème, on se reparle demain.
+              <div class="bubble__meta">Envoyé · 20 h 28 · Twilio</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="conv__composer">
+          <div class="composer-box">
+            <textarea rows="2" placeholder="Répondre à Benoit Laverriere…"></textarea>
+            <div class="composer-bar">
+              <div class="composer-bar__tools">
+                <button class="composer-tool" title="Modèles">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14M5 12h14M5 16h10"/></svg>
+                </button>
+                <button class="composer-tool" title="Pièce jointe">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5l-9 9a5.5 5.5 0 01-8-8L13.5 4a4 4 0 015.5 5.5L9 19a2.5 2.5 0 11-3.5-3.5L14 7"/></svg>
+                </button>
+                <button class="composer-tool" title="Planifier">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                </button>
+                <span class="composer-bar__count mono">0 / 320 · 1 SMS</span>
+              </div>
+              <div class="composer-bar__spacer"></div>
+              <button class="btn btn--gold">
+                Envoyer
+                <svg class="i--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="composer-hint">
+            Le client voit seulement le numéro Twilio Socle, pas ton cell personnel.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Context rail ── -->
+      <aside class="ctx">
+        <div>
+          <div class="ctx__title" style="margin-bottom: 10px;">Deal lié</div>
+          <div class="deal-card">
+            <div class="deal-card__k">Pipeline · Saint-Jean</div>
+            <div class="deal-card__t">585 Boulevard Gouin, Saint-Jean-sur-Richelieu</div>
+            <div class="deal-stage">Offre déposée</div>
+
+            <div class="kv"><span class="kv__k">Unités</span><span class="kv__v">12</span></div>
+            <div class="kv"><span class="kv__k">Prix demandé</span><span class="kv__v">2 100 000 $</span></div>
+            <div class="kv"><span class="kv__k">Notre offre</span><span class="kv__v" style="color: var(--ink-4); font-style: italic;">—</span></div>
+            <div class="kv"><span class="kv__k">Température</span><span class="kv__v" style="color: oklch(0.42 0.13 70);">Tiède</span></div>
+            <div class="kv"><span class="kv__k">Dernier appel</span><span class="kv__v">11 mai · 15h23</span></div>
+
+            <div class="ctx__actions">
+              <a href="screens/d-deal.html" class="btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>
+                Ouvrir le deal
+              </a>
+              <button class="btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+                Appeler Benoit
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="templates">
+          <div class="ctx__title">Modèles rapides</div>
+          <button class="tpl">
+            <div class="tpl__l">Confirmation visite</div>
+            Salut [prénom], je confirme la visite demain à [heure] au [adresse]. Réponds OK si ça tient toujours.
+          </button>
+          <button class="tpl">
+            <div class="tpl__l">Suivi offre</div>
+            Salut [prénom], as-tu eu la chance de regarder l'offre que je t'ai envoyée par courriel ? Disponible pour en jaser.
+          </button>
+          <button class="tpl">
+            <div class="tpl__l">Premier contact</div>
+            Bonjour [prénom], Anthony de Socle Acquisitions ici. J'aimerais te parler 2 min de ton immeuble au [adresse]. Bon moment ?
+          </button>
+        </div>
+      </aside>
+    </section>
+  </main>
+</div>
+
+<script>
+  // Thread switching
+  document.querySelectorAll('.thread').forEach((t) => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.thread').forEach((x) => x.classList.toggle('thread--active', x === t));
+    });
+  });
+  // Filter chips
+  document.querySelectorAll('.fchip').forEach((c) => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.fchip').forEach((x) => x.classList.toggle('fchip--active', x === c));
+    });
+  });
+</script>
+</body>
+</html>

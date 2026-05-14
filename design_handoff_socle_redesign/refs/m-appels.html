@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Appels — Socle CRM</title>
+  <meta name="viewport" content="width=390, initial-scale=1" />
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    body { background: var(--bg); }
+    .m-app { background: var(--bg); }
+    .m-body { padding-bottom: 100px; }
+
+    /* ── Header ────────────────────────────────────────────── */
+    .head {
+      padding: 4px 18px 0;
+      background: var(--bg);
+    }
+    .head__t {
+      font-size: 32px; font-weight: 700; letter-spacing: -0.03em;
+      margin: 4px 0 2px;
+    }
+    .head__sub {
+      font-size: 12.5px; color: var(--ink-3);
+      font-family: var(--mono);
+    }
+
+    /* ── View toggle (Récents / Clavier) ───────────────────── */
+    .view-toggle {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin: 14px 18px 0;
+      background: var(--surface-sunken);
+      border-radius: 12px;
+      padding: 3px;
+    }
+    .vt-btn {
+      padding: 9px 14px;
+      border: 0; border-radius: 10px;
+      background: transparent;
+      font-size: 13px; font-weight: 600;
+      color: var(--ink-3);
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      cursor: pointer;
+    }
+    .vt-btn svg { width: 15px; height: 15px; opacity: 0.6; }
+    .vt-btn--active {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: var(--sh-1);
+    }
+    .vt-btn--active svg { opacity: 1; color: var(--gold-deep); }
+
+    /* ── Filter chips ──────────────────────────────────────── */
+    .filters {
+      display: flex; gap: 6px;
+      padding: 14px 18px 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .filters::-webkit-scrollbar { display: none; }
+    .fchip {
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 13px;
+      border-radius: 999px;
+      font-size: 12.5px; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border-soft);
+      color: var(--ink-2);
+    }
+    .fchip__c {
+      font-family: var(--mono); font-size: 10.5px;
+      background: var(--bg-alt); color: var(--ink-3);
+      padding: 1px 6px; border-radius: 999px; font-weight: 700;
+    }
+    .fchip--active { background: var(--ink); color: var(--ink-inv); border-color: var(--ink); }
+    .fchip--active .fchip__c { background: oklch(0.30 0.012 75); color: var(--gold); }
+    .fchip--red .fchip__c { background: var(--red-soft); color: var(--red); }
+
+    /* ── Day group ─────────────────────────────────────────── */
+    .day-label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 18px 22px 6px;
+      font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--ink-3);
+    }
+    .day-label::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+    /* ── Call row ──────────────────────────────────────────── */
+    .calls { padding: 0 14px; display: flex; flex-direction: column; gap: 4px; }
+    .call {
+      display: grid; grid-template-columns: 44px 1fr auto;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      text-align: left;
+      align-items: center;
+      position: relative;
+    }
+    .call:active { background: var(--surface-alt); transform: scale(0.995); transition: transform .06s; }
+    .call--missed { border-color: oklch(0.85 0.08 25); background: oklch(0.99 0.02 25); }
+
+    /* Avatar / direction badge */
+    .call-av {
+      position: relative;
+      width: 44px; height: 44px; border-radius: 14px;
+      background: var(--gold-soft); border: 1px solid var(--gold-border);
+      color: var(--gold-deep);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13.5px;
+    }
+    .call-av--u {
+      background: var(--surface-alt);
+      border-color: var(--border-soft);
+      color: var(--ink-3);
+    }
+    .call-av--u svg { width: 18px; height: 18px; }
+    .call-av__dir {
+      position: absolute; bottom: -3px; right: -3px;
+      width: 18px; height: 18px; border-radius: 6px;
+      background: var(--surface); border: 1.5px solid var(--bg);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--ink-3);
+    }
+    .call-av__dir svg { width: 10px; height: 10px; }
+    .call-av__dir--in  { color: oklch(0.40 0.10 150); }
+    .call-av__dir--out { color: var(--gold-deep); }
+    .call-av__dir--miss { color: var(--red); background: var(--red-soft); border-color: var(--bg); }
+
+    /* Body */
+    .call-body { min-width: 0; }
+    .call-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+    .call-n {
+      font-size: 15px; font-weight: 700; color: var(--ink);
+      letter-spacing: -0.01em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .call--missed .call-n { color: var(--red); }
+    .call-time { font-size: 11.5px; color: var(--ink-3); flex-shrink: 0; }
+    .call-meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+    .call-meta__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-4); }
+    .call-meta__dur { font-family: var(--mono); }
+
+    .call-deal {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600;
+      color: var(--gold-deep);
+      background: var(--gold-tint);
+      border: 1px solid var(--gold-border);
+      padding: 2px 8px; border-radius: 999px;
+      margin-top: 6px;
+    }
+    .call-deal svg { width: 9px; height: 9px; }
+    .call-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600;
+      color: oklch(0.42 0.13 70);
+      background: var(--amber-soft);
+      border: 1px solid oklch(0.85 0.07 75);
+      padding: 2px 8px 2px 6px; border-radius: 999px;
+      margin-top: 6px;
+    }
+    .call-link svg { width: 9px; height: 9px; }
+
+    /* Right side - one subtle call icon */
+    .call-action {
+      width: 38px; height: 38px; border-radius: 12px;
+      background: transparent; border: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--gold-deep);
+    }
+    .call-action svg { width: 17px; height: 17px; }
+    .call-action:active { background: var(--gold-soft); }
+
+    /* ── Dialer view ───────────────────────────────────────── */
+    .dialer {
+      display: none;
+      flex-direction: column;
+      padding: 24px 18px 0;
+    }
+    .dialer--active { display: flex; }
+
+    .dial-display {
+      text-align: center;
+      padding: 8px 0 16px;
+      min-height: 92px;
+    }
+    .dial-num {
+      font-family: var(--mono); font-size: 36px; font-weight: 500;
+      color: var(--ink); letter-spacing: -0.01em;
+      min-height: 44px;
+    }
+    .dial-num--empty { color: var(--ink-4); font-size: 16px; font-weight: 500; letter-spacing: 0; padding-top: 14px; font-family: var(--font); }
+    .dial-hint {
+      font-size: 12px; color: var(--ink-3); margin-top: 6px;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .dial-hint a { color: var(--gold-deep); font-weight: 600; }
+    .dial-hint__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-4); }
+
+    .dial-search {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin: 4px 0 14px;
+    }
+    .dial-search svg { color: var(--ink-3); flex-shrink: 0; }
+    .dial-search input {
+      flex: 1; border: 0; outline: 0; background: transparent;
+      font-family: inherit; font-size: 14px; color: var(--ink);
+    }
+    .dial-search input::placeholder { color: var(--ink-4); }
+
+    .keypad {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 0 4px;
+    }
+    .key {
+      aspect-ratio: 1.4 / 1;
+      border-radius: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1px;
+      cursor: pointer;
+    }
+    .key:active { background: var(--gold-tint); border-color: var(--gold-border); transform: scale(0.97); transition: transform .05s; }
+    .key__d { font-size: 28px; font-weight: 500; color: var(--ink); letter-spacing: -0.02em; line-height: 1; }
+    .key__l { font-size: 9px; font-weight: 700; letter-spacing: 0.16em; color: var(--ink-3); }
+
+    .dial-actions {
+      display: grid; grid-template-columns: 44px 1fr 44px;
+      gap: 12px;
+      align-items: center;
+      padding: 16px 4px 22px;
+    }
+    .dial-iconbtn {
+      width: 44px; height: 44px; border-radius: 14px;
+      background: transparent; border: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--ink-3);
+    }
+    .dial-iconbtn:active { background: var(--bg-alt); }
+    .dial-call {
+      height: 56px; border-radius: 18px;
+      background: var(--gold); color: #fff;
+      border: 0;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 15px; font-weight: 700;
+      box-shadow: var(--sh-gold);
+    }
+    .dial-call:active { background: var(--gold-deep); transform: scale(0.99); transition: transform .05s; }
+    .dial-call svg { width: 18px; height: 18px; }
+
+    /* ── Empty state ───────────────────────────────────────── */
+    .empty {
+      padding: 50px 20px; text-align: center;
+      color: var(--ink-3); font-size: 13px;
+    }
+
+    .m-tabbar { position: sticky; bottom: 0; }
+  </style>
+</head>
+<body>
+<div class="m-app" data-screen-label="Mobile · Appels (Récents + Clavier)">
+  <div class="m-statusbar">
+    <span class="mono tabular">9:42</span>
+    <div class="m-statusbar__icons">
+      <svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx=".5"/><rect x="5" y="3" width="3" height="9" rx=".5"/><rect x="10" y="0" width="3" height="12" rx=".5"/><rect x="15" y="-2" width="3" height="14" rx=".5" opacity=".3"/></svg>
+      <svg viewBox="0 0 26 12" fill="none" stroke="currentColor" stroke-width="1"><rect x=".5" y=".5" width="22" height="11" rx="3"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="2" height="4" rx="1" fill="currentColor"/></svg>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="head">
+    <h1 class="head__t">Appels</h1>
+    <div class="head__sub">Numéro Socle · 514 555-0010</div>
+  </header>
+
+  <!-- View toggle -->
+  <div class="view-toggle">
+    <button class="vt-btn vt-btn--active" data-view="recents">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Récents
+    </button>
+    <button class="vt-btn" data-view="dialer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="1.2" fill="currentColor"/><circle cx="12" cy="6" r="1.2" fill="currentColor"/><circle cx="18" cy="6" r="1.2" fill="currentColor"/><circle cx="6" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="18" cy="12" r="1.2" fill="currentColor"/><circle cx="6" cy="18" r="1.2" fill="currentColor"/><circle cx="12" cy="18" r="1.2" fill="currentColor"/><circle cx="18" cy="18" r="1.2" fill="currentColor"/></svg>
+      Clavier
+    </button>
+  </div>
+
+  <div class="m-body">
+    <!-- ── RÉCENTS VIEW ── -->
+    <div id="view-recents">
+      <div class="filters">
+        <button class="fchip fchip--active">Tous <span class="fchip__c">12</span></button>
+        <button class="fchip fchip--red">Manqués <span class="fchip__c">1</span></button>
+        <button class="fchip">Entrants <span class="fchip__c">5</span></button>
+        <button class="fchip">Sortants <span class="fchip__c">7</span></button>
+      </div>
+
+      <!-- Hier -->
+      <div class="day-label">Hier · jeudi 13 mai</div>
+      <div class="calls">
+        <a class="call call--missed" href="#">
+          <div class="call-av call-av--u">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="11" r="3"/><path d="M12 14v4M9 18h6"/></svg>
+            <span class="call-av__dir call-av__dir--miss">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </span>
+          </div>
+          <div class="call-body">
+            <div class="call-top">
+              <span class="call-n mono">(514) 555-0000</span>
+              <span class="call-time">23 h 47</span>
+            </div>
+            <div class="call-meta">
+              <span>Manqué</span>
+              <span class="call-meta__dot"></span>
+              <span>2 tentatives</span>
+            </div>
+            <span class="call-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Lier à un lead
+            </span>
+          </div>
+          <button class="call-action" aria-label="Rappeler">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          </button>
+        </a>
+
+        <a class="call" href="#">
+          <div class="call-av call-av--u">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="11" r="3"/><path d="M12 14v4M9 18h6"/></svg>
+            <span class="call-av__dir call-av__dir--in">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </span>
+          </div>
+          <div class="call-body">
+            <div class="call-top">
+              <span class="call-n mono">(450) 803-1880</span>
+              <span class="call-time">20 h 06</span>
+            </div>
+            <div class="call-meta">
+              <span>Entrant</span>
+              <span class="call-meta__dot"></span>
+              <span class="call-meta__dur">0 m 06 s</span>
+            </div>
+            <span class="call-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Identifier le numéro
+            </span>
+          </div>
+          <button class="call-action" aria-label="Appeler">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          </button>
+        </a>
+
+        <a class="call" href="#">
+          <div class="call-av">BL</div>
+          <div class="call-body">
+            <div class="call-top">
+              <span class="call-n">Benoit Laverriere</span>
+              <span class="call-time">14 h 48</span>
+            </div>
+            <div class="call-meta">
+              <span>Sortant</span>
+              <span class="call-meta__dot"></span>
+              <span class="call-meta__dur">0 m 26 s</span>
+              <span class="call-meta__dot"></span>
+              <span>Boîte vocale</span>
+            </div>
+            <span class="call-deal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>
+              585 Boul. Gouin · Offre déposée
+            </span>
+          </div>
+          <button class="call-action" aria-label="Rappeler Benoit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          </button>
+        </a>
+
+        <a class="call" href="#">
+          <div class="call-av">IS</div>
+          <div class="call-body">
+            <div class="call-top">
+              <span class="call-n">Isabelle St-Jean</span>
+              <span class="call-time">8 h 41</span>
+            </div>
+            <div class="call-meta">
+              <span>Sortant</span>
+              <span class="call-meta__dot"></span>
+              <span class="call-meta__dur">4 m 12 s</span>
+            </div>
+            <span class="call-deal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 20h5v-2a3 3 0 00-5.36-1.86M7 20H2v-2a3 3 0 015.36-1.86M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              Lead · Trois-Rivières
+            </span>
+          </div>
+          <button class="call-action" aria-label="Rappeler Isabelle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          </button>
+        </a>
+      </div>
+
+      <!-- 12 mai -->
+      <div class="day-label">Mardi · 12 mai</div>
+      <div class="calls">
+        <a class="call" href="#">
+          <div class="call-av">MC</div>
+          <div class="call-body">
+            <div class="call-top">
+              <span class="call-n">Marie-Claude Tremblay</span>
+              <span class="call-time">11 h 24</span>
+            </div>
+            <div class="call-meta">
+              <span>Sortant</span>
+              <span class="call-meta__dot"></span>
+              <span class="call-meta__dur">4 m 32 s</span>
+              <span class="call-meta__dot"></span>
+              <span>Transcrit</span>
+            </div>
+            <span class="call-deal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 20h5v-2a3 3 0 00-5.36-1.86M7 20H2v-2a3 3 0 015.36-1.86M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              Lead · Granby
+            </span>
+          </div>
+          <button class="call-action" aria-label="Rappeler">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          </button>
+        </a>
+
+        <a class="call" href="#">
+          <div class="call-av">SD</div>
+          <div class="call-body">
+            <div class="call-top">
+              <span class="call-n">Sylvain Dubois</span>
+              <span class="call-time">15 h 23</span>
+            </div>
+            <div class="call-meta">
+              <span>Sortant</span>
+              <span class="call-meta__dot"></span>
+              <span class="call-meta__dur">5 m 54 s</span>
+              <span class="call-meta__dot"></span>
+              <span>Enregistré</span>
+            </div>
+            <span class="call-deal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>
+              1712 Rue de Nouë · Analyse
+            </span>
+          </div>
+          <button class="call-action" aria-label="Rappeler">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          </button>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── DIALER VIEW ── -->
+    <div id="view-dialer" class="dialer">
+      <div class="dial-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+        <input type="search" placeholder="Chercher un contact, lead ou deal…" />
+      </div>
+
+      <div class="dial-display">
+        <div class="dial-num" id="dial-num">514 803-3</div>
+        <div class="dial-hint">
+          <span class="mono" style="color: var(--ink-2); font-weight: 600;">Benoit Laverriere</span>
+          <span class="dial-hint__dot"></span>
+          <a href="screens/m-deal.html">585 Boul. Gouin</a>
+        </div>
+      </div>
+
+      <div class="keypad">
+        <button class="key" data-d="1"><span class="key__d">1</span><span class="key__l">&nbsp;</span></button>
+        <button class="key" data-d="2"><span class="key__d">2</span><span class="key__l">A B C</span></button>
+        <button class="key" data-d="3"><span class="key__d">3</span><span class="key__l">D E F</span></button>
+        <button class="key" data-d="4"><span class="key__d">4</span><span class="key__l">G H I</span></button>
+        <button class="key" data-d="5"><span class="key__d">5</span><span class="key__l">J K L</span></button>
+        <button class="key" data-d="6"><span class="key__d">6</span><span class="key__l">M N O</span></button>
+        <button class="key" data-d="7"><span class="key__d">7</span><span class="key__l">P Q R S</span></button>
+        <button class="key" data-d="8"><span class="key__d">8</span><span class="key__l">T U V</span></button>
+        <button class="key" data-d="9"><span class="key__d">9</span><span class="key__l">W X Y Z</span></button>
+        <button class="key" data-d="*"><span class="key__d">∗</span><span class="key__l">&nbsp;</span></button>
+        <button class="key" data-d="0"><span class="key__d">0</span><span class="key__l">+</span></button>
+        <button class="key" data-d="#"><span class="key__d">#</span><span class="key__l">&nbsp;</span></button>
+      </div>
+
+      <div class="dial-actions">
+        <button class="dial-iconbtn" aria-label="Coller">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M5 7h2v14h10V7h2"/></svg>
+        </button>
+        <button class="dial-call" id="dial-call">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+          Appeler Benoit
+        </button>
+        <button class="dial-iconbtn" id="dial-back" aria-label="Effacer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5H8l-6 7 6 7h13a1 1 0 001-1V6a1 1 0 00-1-1z"/><path d="M11 9l6 6M17 9l-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <nav class="m-tabbar">
+    <button class="m-tabbar__btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2 7-7 7 7 2 2v8a2 2 0 01-2 2h-3v-7h-8v7H5a2 2 0 01-2-2v-8z"/></svg>
+      Accueil
+    </button>
+    <button class="m-tabbar__btn m-tabbar__btn--active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+      Appels
+      <span class="m-tabbar__badge">1</span>
+    </button>
+    <button class="m-tabbar__btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17V7m6 10V7M5 7h14M5 17h14"/></svg>
+      Pipeline
+    </button>
+    <button class="m-tabbar__btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>
+      Textos
+    </button>
+    <button class="m-tabbar__btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
+      Plus
+    </button>
+  </nav>
+</div>
+
+<script>
+  // View toggle
+  document.querySelectorAll('.vt-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      const view = b.dataset.view;
+      document.querySelectorAll('.vt-btn').forEach((x) => x.classList.toggle('vt-btn--active', x === b));
+      document.getElementById('view-recents').style.display = view === 'recents' ? '' : 'none';
+      document.getElementById('view-dialer').classList.toggle('dialer--active', view === 'dialer');
+    });
+  });
+
+  // Filter chips
+  document.querySelectorAll('.fchip').forEach((c) => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.fchip').forEach((x) => x.classList.toggle('fchip--active', x === c));
+    });
+  });
+
+  // Keypad input
+  const display = document.getElementById('dial-num');
+  let buf = '514 803-3';
+  function render() {
+    display.textContent = buf || 'Entre un numéro';
+    display.classList.toggle('dial-num--empty', !buf);
+  }
+  document.querySelectorAll('.key').forEach((k) => {
+    k.addEventListener('click', () => { buf += k.dataset.d; render(); });
+  });
+  document.getElementById('dial-back').addEventListener('click', () => {
+    buf = buf.slice(0, -1); render();
+  });
+</script>
+</body>
+</html>
