@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import EnrichmentDashboard from "./EnrichmentDashboard";
 
+export const dynamic = "force-dynamic";
+
 export default async function EnrichmentPage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();

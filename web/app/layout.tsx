@@ -13,6 +13,10 @@ export const metadata = {
   // PWA: apple-specific meta in <head> below (viewport + icons)
 };
 
+// Every page is auth-gated and personalized; skip Next.js static generation
+// entirely. Avoids prerender failures on auto-generated routes like /404.
+export const dynamic = "force-dynamic";
+
 // Viewport must be exported separately from metadata in Next.js 14+
 export const viewport = {
   width: "device-width",

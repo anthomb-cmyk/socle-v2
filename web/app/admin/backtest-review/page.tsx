@@ -53,6 +53,8 @@ function stratifiedSample(leads: SnapshotLead[], n: number): SnapshotLead[] {
   return result;
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function BacktestReviewPage() {
   const supabase = await createSupabaseServerClient();
   const {

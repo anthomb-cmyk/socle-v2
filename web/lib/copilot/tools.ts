@@ -1096,7 +1096,7 @@ async function resolveDealReference(
   ctx: CopilotToolContext,
   reference: string,
   select = "*",
-): Promise<{ ok: true; deal: Record<string, unknown> } | { ok: false; error: string; candidates?: unknown[] }> {
+): Promise<{ ok: true; deal: Record<string, unknown>; matchedBy?: string; similarity?: number } | { ok: false; error: string; candidates?: unknown[] }> {
   // Always include the columns we need for scoring + display alongside whatever caller asked for.
   const requiredCols = ["id", "title", "stage", "address", "contact_name", "contact_phone", "updated_at", "activities"];
   const selectCols = mergeSelect(select, requiredCols);

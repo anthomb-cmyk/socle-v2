@@ -81,7 +81,7 @@ export default function MobileBottomNav({ role: _role }: { role?: "admin" | "cal
   const { t } = useLocale();
 
   function isActive(href: string) {
-    return pathname.startsWith(href);
+    return pathname?.startsWith(href) ?? false;
   }
 
   function openSidebar() {
