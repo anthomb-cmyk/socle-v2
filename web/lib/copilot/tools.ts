@@ -844,8 +844,8 @@ async function addNote(ctx: CopilotToolContext, input: z.infer<typeof AddNoteArg
 }
 
 async function scheduleFollowUp(ctx: CopilotToolContext, input: z.infer<typeof FollowUpArgs>) {
-  const due = new Date(input.dueAt);
-  if (Number.isNaN(due.getTime())) return { ok: false, error: "Invalid dueAt." };
+  const due = parseFlexibleDate(input.dueAt);
+  if (!due) return { ok: false, error: `Invalid dueAt "${input.dueAt}". Pass an ISO datetime or a clear natural phrase like "5 mai 14h", "demain 10h", "vendredi".` };
 
   if (input.targetType === "deal") {
     const resolved = await resolveDealReference(ctx, input.id, "id,title,address,contact_name,contact_phone,activities");
@@ -1559,6 +1559,99 @@ async function getCrmCounts(
     total: grouped.reduce((s, g) => s + g.count, 0),
     buckets: grouped,
   };
+}
+
+// Best-effort natural-date parser as a safety net behind the LLM. The model
+// is asked to produce ISO; this catches the cases where it slips and passes
+// "5 mai" / "demain 10h" / "vendredi" / "in 3 days". All dates resolve to the
+// next future occurrence in America/Toronto (Anthony's TZ).
+function parseFlexibleDate(input: string): Date | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  // Fast path: ISO or any Date-parseable string.
+  const direct = new Date(trimmed);
+  if (!Number.isNaN(direct.getTime()) && /\d{4}/.test(trimmed)) return direct;
+
+  const now = new Date();
+  const lower = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Extract optional time: "14h", "14h30", "2pm", "14:30", "10h00", "à 14h"
+  let hour = 9;
+  let minute = 0;
+  const timeMatch = lower.match(/(?:a\s+)?(\d{1,2})\s*(?:h|:|am|pm)\s*(\d{0,2})\s*(am|pm)?/);
+  if (timeMatch) {
+    hour = parseInt(timeMatch[1], 10);
+    minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const meridiem = timeMatch[3] ?? (lower.includes("pm") ? "pm" : lower.includes("am") ? "am" : null);
+    if (meridiem === "pm" && hour < 12) hour += 12;
+    if (meridiem === "am" && hour === 12) hour = 0;
+  }
+
+  const setTime = (d: Date) => {
+    d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+
+  // "demain" / "tomorrow"
+  if (/\b(demain|tomorrow)\b/.test(lower)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    return setTime(d);
+  }
+  // "aujourd'hui" / "today" / "ce soir"
+  if (/\b(aujourd hui|aujourdhui|today|ce soir|tonight)\b/.test(lower)) {
+    return setTime(new Date(now));
+  }
+  // "dans X jours/semaines/heures" / "in X days/weeks/hours"
+  const inMatch = lower.match(/\b(?:dans|in)\s+(\d+)\s*(jour|jours|semaine|semaines|heure|heures|day|days|week|weeks|hour|hours)\b/);
+  if (inMatch) {
+    const n = parseInt(inMatch[1], 10);
+    const unit = inMatch[2];
+    const d = new Date(now);
+    if (/heure|hour/.test(unit)) d.setHours(d.getHours() + n);
+    else if (/semaine|week/.test(unit)) d.setDate(d.getDate() + n * 7);
+    else d.setDate(d.getDate() + n);
+    return /heure|hour/.test(unit) ? d : setTime(d);
+  }
+  // Day of week: "lundi", "mardi", "monday", "tuesday"... → next occurrence.
+  const weekdays = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+  const weekdaysEn = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  for (let i = 0; i < 7; i++) {
+    const re = new RegExp(`\\b(${weekdays[i]}|${weekdaysEn[i]})\\b`);
+    if (re.test(lower)) {
+      const d = new Date(now);
+      const delta = ((i - d.getDay()) + 7) % 7 || 7;
+      d.setDate(d.getDate() + delta);
+      return setTime(d);
+    }
+  }
+  // "5 mai" / "12 décembre" / "may 5" / "december 12"
+  const months: Record<string, number> = {
+    janvier: 0, fevrier: 1, mars: 2, avril: 3, mai: 4, juin: 5, juillet: 6, aout: 7, septembre: 8, octobre: 9, novembre: 10, decembre: 11,
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+  };
+  const monthRe = Object.keys(months).join("|");
+  const dayMonth = lower.match(new RegExp(`\\b(\\d{1,2})\\s+(${monthRe})(?:\\s+(\\d{4}))?`));
+  const monthDay = lower.match(new RegExp(`\\b(${monthRe})\\s+(\\d{1,2})(?:\\s+(\\d{4}))?`));
+  const m = dayMonth ?? monthDay;
+  if (m) {
+    const isDayFirst = !!dayMonth;
+    const day = parseInt(isDayFirst ? m[1] : m[2], 10);
+    const month = months[isDayFirst ? m[2] : m[1]];
+    const year = m[3] ? parseInt(m[3], 10) : now.getFullYear();
+    const d = new Date(year, month, day, hour, minute);
+    // If date is in the past with no explicit year, roll to next year.
+    if (!m[3] && d.getTime() < now.getTime()) d.setFullYear(year + 1);
+    return d;
+  }
+  // Last resort: fall through if Date could parse it at all.
+  if (!Number.isNaN(direct.getTime())) return direct;
+  return null;
 }
 
 function mergeSelect(select: string, required: string[]) {

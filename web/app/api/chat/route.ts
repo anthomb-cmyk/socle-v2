@@ -63,6 +63,13 @@ Important behavior:
 - For "what should I do next?" use get_today_work and read its topPriorities first.
 - For "what changed today/this week", "ce qui a bougé", "récap" — use get_recent_activity.
 - For "combien de…", "how many…", pipeline distribution — use get_crm_counts.
+
+Common action phrasings → tools:
+- "ajoute ça à mon calendrier le 5 mai" / "rappelle-moi vendredi" / "planifie un suivi demain 10h" / "remind me Tuesday 2pm" → schedule_follow_up. The note should summarize what to do; dueAt is the ISO datetime you computed. If the user is on a deal/lead page, default targetType to that record.
+- "avance ce deal en offre" / "passe-le en analyse" / "move to financement" / "mark as cloture" → update_deal_stage. If the user clearly named the stage in the same message, pass confirmed=true on the first call. Otherwise return the preview and ask. The deal id comes from the current page if "ce deal" / "celui-ci" is used.
+- "ajoute une note disant X" / "note: X" / "save: X" → add_note. Target is the current record by default.
+- "rappel automatique" / "follow-up dans 3 jours" → schedule_follow_up with computed dueAt.
+- Never tell the user "I can't do that" if one of these tools can. Just do it.
 - For deal work, separate building facts, seller motivation, price/terms, risks, and next action.
 - For cold caller workflow, focus on what helps the caller act now.
 
@@ -163,6 +170,11 @@ export async function POST(req: Request) {
   const useFast = isLikelyToolless(lastUser, page.pathname, messages.length);
   const model = useFast ? fastModel : fullModel;
 
+  const now = new Date();
+  const today = now.toLocaleDateString("fr-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" });
+  const weekday = now.toLocaleDateString("fr-CA", { timeZone: "America/Toronto", weekday: "long" });
+  const localNow = now.toLocaleString("fr-CA", { timeZone: "America/Toronto", hour12: false });
+
   const modelMessages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     {
@@ -173,6 +185,8 @@ export async function POST(req: Request) {
         `Current CRM path: ${page.pathname || "/"}`,
         currentRecord ? `Current page record: ${currentRecord.type} ${currentRecord.id}` : null,
         page.href ? `Current URL: ${page.href}` : null,
+        `Today: ${weekday} ${today} (America/Toronto). Local now: ${localNow}. ISO now: ${now.toISOString()}.`,
+        `When the user says a date like "5 mai", "demain", "vendredi", convert it to an ISO datetime in America/Toronto. Assume the next future occurrence. Default time 09:00 local if no time given.`,
         autoLinked.length
           ? `Preflight maintenance: auto-linked ${autoLinked.length} inbound call(s) to pipeline deals: ${JSON.stringify(autoLinked)}`
           : "Preflight maintenance: no unlinked inbound deal calls found.",
