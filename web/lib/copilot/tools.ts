@@ -5,6 +5,7 @@ import { buildDefaultChecklists } from "@/lib/deals/defaults";
 import { normalizePhone } from "@/lib/twilio";
 import { autoLinkRecentInboundCallsToDeals } from "./auto-link-calls";
 import { saveCopilotMemory, deleteCopilotMemory } from "./memory";
+import { fuzzyRankRows } from "./fuzzy";
 
 export type CopilotPageContext = {
   pathname?: string;
@@ -68,7 +69,7 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "get_lead_dossier",
-      description: "Fetch a lead dossier: owner, property, phones, calls, follow-ups, submissions, and events.",
+      description: "Fetch a lead dossier (owner, property, phones, calls, follow-ups, submissions, events). Accepts a UUID, or a human reference like name, company, phone, or address — token + fuzzy resolver handles typos and st↔saint variants.",
       parameters: {
         type: "object",
         properties: {
@@ -83,13 +84,49 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "get_investor_dossier",
-      description: "Fetch an investor dossier with investor profile, notes, calls, and linked deals. Admin only.",
+      description: "Fetch an investor dossier (profile, notes, calls, linked deals). Admin only. Accepts a UUID or a human reference (name, firm).",
       parameters: {
         type: "object",
         properties: {
           investorId: { type: "string" },
         },
         required: ["investorId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_recent_activity",
+      description: "Unified CRM activity timeline: new/updated deals, stage moves, calls, SMS, follow-ups, review items. Use for 'what changed today/this week', 'ce qui a bougé', 'récap'.",
+      parameters: {
+        type: "object",
+        properties: {
+          hours: { type: "number", description: "Lookback window in hours (default 24, max 168)." },
+          limit: { type: "number", description: "Max events to return (default 30, max 80)." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_crm_counts",
+      description: "Aggregate counts across the CRM. Use for 'how many hot deals', 'combien de leads par ville', 'pipeline distribution'.",
+      parameters: {
+        type: "object",
+        properties: {
+          entity: { type: "string", enum: ["deal", "lead", "investor"] },
+          groupBy: { type: "string", enum: ["stage", "temperature", "priority", "city", "assigned_to", "status", "none"] },
+          filters: {
+            type: "object",
+            description: "Optional filters: { stage, temperature, city, assigned_to, status }. Each value can be a single string or array of strings.",
+            additionalProperties: true,
+          },
+        },
+        required: ["entity"],
         additionalProperties: false,
       },
     },
@@ -281,6 +318,10 @@ export async function runCopilotTool(name: string, rawArgs: string, ctx: Copilot
       return getTodayWork(ctx);
     case "get_pipeline_health":
       return getPipelineHealth(ctx, LimitArg.parse(args).limit);
+    case "get_recent_activity":
+      return getRecentActivity(ctx, RecentActivityArgs.parse(args));
+    case "get_crm_counts":
+      return getCrmCounts(ctx, CrmCountsArgs.parse(args));
     case "add_note":
       return addNote(ctx, AddNoteArgs.parse(args));
     case "schedule_follow_up":
@@ -343,6 +384,15 @@ const SaveMemoryArgs = z.object({
   kind: z.enum(["preference", "fact", "workflow", "constraint"]).optional(),
 });
 const DeleteMemoryArgs = z.object({ memoryId: z.string().min(1) });
+const RecentActivityArgs = z.object({
+  hours: z.number().int().min(1).max(168).optional(),
+  limit: z.number().int().min(1).max(80).optional(),
+});
+const CrmCountsArgs = z.object({
+  entity: z.enum(["deal", "lead", "investor"]),
+  groupBy: z.enum(["stage", "temperature", "priority", "city", "assigned_to", "status", "none"]).optional(),
+  filters: z.record(z.string(), z.union([z.string(), z.array(z.string()), z.number(), z.boolean(), z.null()])).optional(),
+});
 
 function IdArg(key: string) {
   return z.object({ [key]: z.string().min(1) });
@@ -363,40 +413,55 @@ async function getCurrentPageContext(ctx: CopilotToolContext) {
 
 async function searchCrm(ctx: CopilotToolContext, input: z.infer<typeof SearchArgs>) {
   const limit = input.limit ?? 8;
-  const q = sanitizeSearch(input.query);
   const digits = input.query.replace(/\D/g, "");
-  const pattern = `%${q}%`;
   const phone = normalizePhone(input.query);
+  const tokens = dealReferenceTokens(input.query).slice(0, 4);
+
+  // Build an AND-of-OR ilike filter on a list of columns from the tokens.
+  // Each token becomes one .or(...) call; chained calls are AND'd together.
+  function applyTokenFilters<T>(query: T, columns: string[]): T {
+    if (tokens.length === 0) return query;
+    let q = query as unknown as {
+      or: (filter: string) => unknown;
+    };
+    for (const token of tokens) {
+      const variants = tokenSqlVariants(token).map((v) => v.replace(/[%_,()]/g, " "));
+      const ors = variants.flatMap((v) => columns.map((col) => `${col}.ilike.%${v}%`));
+      q = q.or(ors.join(",")) as typeof q;
+    }
+    return q as unknown as T;
+  }
+
+  const dealsBase = ctx.sb.from("deals")
+    .select("id,title,stage,address,units,asking_price,temperature,contact_name,contact_phone,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const leadsBase = ctx.sb.from("leads_view")
+    .select("lead_id,full_name,company_name,address,city,best_phone,status,priority,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const investorsBase = ctx.sb.from("investors")
+    .select("id,full_name,firm_name,email,phone_e164,city,status,preferred_geography,asset_class_focus,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const contactsBase = ctx.sb.from("contacts")
+    .select("id,full_name,company_name,kind,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const callsBase = ctx.sb.from("call_logs")
+    .select("id,direction,recorded_at,duration_sec,outcome,notes,summary,transcript,raw")
+    .order("recorded_at", { ascending: false })
+    .limit(Math.min(limit, 5));
 
   const [deals, leads, investors, contacts, calls] = await Promise.all([
-    ctx.sb.from("deals")
-      .select("id,title,stage,address,units,asking_price,temperature,contact_name,contact_phone,updated_at")
-      .or(`title.ilike.${pattern},address.ilike.${pattern},contact_name.ilike.${pattern}`)
-      .order("updated_at", { ascending: false })
-      .limit(limit),
-    ctx.sb.from("leads_view")
-      .select("lead_id,full_name,company_name,address,city,best_phone,status,priority,updated_at")
-      .or(`full_name.ilike.${pattern},company_name.ilike.${pattern},address.ilike.${pattern},city.ilike.${pattern},best_phone.ilike.${pattern}`)
-      .order("updated_at", { ascending: false })
-      .limit(limit),
+    applyTokenFilters(dealsBase, ["title", "address", "contact_name"]),
+    applyTokenFilters(leadsBase, ["full_name", "company_name", "address", "city", "best_phone"]),
     ctx.role === "admin"
-      ? ctx.sb.from("investors")
-          .select("id,full_name,firm_name,email,phone_e164,city,status,preferred_geography,asset_class_focus,updated_at")
-          .or(`full_name.ilike.${pattern},firm_name.ilike.${pattern},preferred_geography.ilike.${pattern},asset_class_focus.ilike.${pattern},notes.ilike.${pattern}`)
-          .order("updated_at", { ascending: false })
-          .limit(limit)
+      ? applyTokenFilters(investorsBase, ["full_name", "firm_name", "preferred_geography", "asset_class_focus", "notes"])
       : Promise.resolve({ data: [] }),
-    ctx.sb.from("contacts")
-      .select("id,full_name,company_name,kind,updated_at")
-      .or(`full_name.ilike.${pattern},company_name.ilike.${pattern}`)
-      .order("updated_at", { ascending: false })
-      .limit(limit),
-    q || phone || digits
-      ? ctx.sb.from("call_logs")
-          .select("id,direction,recorded_at,duration_sec,outcome,notes,summary,transcript,raw")
-          .or(`notes.ilike.${pattern},summary.ilike.${pattern},transcript.ilike.${pattern}`)
-          .order("recorded_at", { ascending: false })
-          .limit(Math.min(limit, 5))
+    applyTokenFilters(contactsBase, ["full_name", "company_name"]),
+    tokens.length || phone || digits
+      ? applyTokenFilters(callsBase, ["notes", "summary", "transcript"])
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -404,14 +469,66 @@ async function searchCrm(ctx: CopilotToolContext, input: z.infer<typeof SearchAr
     ? ((deals.data ?? []) as Array<{ contact_phone?: string | null }>).filter((deal) => normalizePhone(deal.contact_phone ?? "") === phone)
     : [];
 
+  // Fuzzy fallback per entity when exact token search produced nothing.
+  // The user types fast, makes typos — we'd rather return close matches with
+  // a similarity score than empty arrays.
+  const dealsExact = (deals.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const leadsExact = (leads.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const investorsExact = (investors.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const contactsExact = (contacts.data ?? []) as unknown as Array<Record<string, unknown>>;
+
+  let dealsFuzzy: typeof dealsExact = [];
+  let leadsFuzzy: typeof leadsExact = [];
+  let investorsFuzzy: typeof investorsExact = [];
+  let contactsFuzzy: typeof contactsExact = [];
+
+  const trimmedQuery = input.query.trim();
+  if (trimmedQuery.length >= 3) {
+    const fuzzyPromises: Promise<void>[] = [];
+    if (dealsExact.length === 0) {
+      fuzzyPromises.push((async () => {
+        const { data } = await ctx.sb.from("deals").select("id,title,stage,address,contact_name,contact_phone,updated_at").not("stage", "in", '("cloture","abandonne")').order("updated_at", { ascending: false }).limit(400);
+        dealsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["title", "address", "contact_name"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    if (leadsExact.length === 0) {
+      fuzzyPromises.push((async () => {
+        const baseQ = ctx.sb.from("leads_view").select("lead_id,full_name,company_name,address,city,best_phone,status,updated_at").order("updated_at", { ascending: false }).limit(400);
+        const { data } = await (ctx.role === "admin" ? baseQ : baseQ.eq("assigned_to", ctx.user.id));
+        leadsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["full_name", "company_name", "address", "city"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    if (investorsExact.length === 0 && ctx.role === "admin") {
+      fuzzyPromises.push((async () => {
+        const { data } = await ctx.sb.from("investors").select("id,full_name,firm_name,city,status,preferred_geography,updated_at").order("updated_at", { ascending: false }).limit(400);
+        investorsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["full_name", "firm_name", "preferred_geography"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    if (contactsExact.length === 0) {
+      fuzzyPromises.push((async () => {
+        const { data } = await ctx.sb.from("contacts").select("id,full_name,company_name,kind,updated_at").order("updated_at", { ascending: false }).limit(400);
+        contactsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["full_name", "company_name"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    await Promise.all(fuzzyPromises);
+  }
+
+  const dealsCombined = compactRows([...phoneMatchedDeals, ...dealsExact, ...dealsFuzzy], limit);
+  const usedFuzzy: string[] = [];
+  if (dealsFuzzy.length > 0) usedFuzzy.push("deals");
+  if (leadsFuzzy.length > 0) usedFuzzy.push("leads");
+  if (investorsFuzzy.length > 0) usedFuzzy.push("investors");
+  if (contactsFuzzy.length > 0) usedFuzzy.push("contacts");
+
   return {
     ok: true,
     query: input.query,
+    fuzzyFallback: usedFuzzy.length > 0 ? usedFuzzy : undefined,
     results: {
-      deals: compactRows([...phoneMatchedDeals, ...((deals.data ?? []) as unknown[])], limit),
-      leads: leads.data ?? [],
-      investors: investors.data ?? [],
-      contacts: contacts.data ?? [],
+      deals: dealsCombined,
+      leads: leadsExact.length > 0 ? leadsExact : leadsFuzzy,
+      investors: investorsExact.length > 0 ? investorsExact : investorsFuzzy,
+      contacts: contactsExact.length > 0 ? contactsExact : contactsFuzzy,
       calls: ((calls.data ?? []) as Array<{ transcript?: string | null; notes?: string | null; summary?: string | null }>)
         .map((call) => ({
           ...call,
@@ -485,9 +602,10 @@ async function getDealDossier(ctx: CopilotToolContext, dealId: string) {
 }
 
 async function getLeadDossier(ctx: CopilotToolContext, leadId: string) {
-  const { data: lead, error } = await ctx.sb.from("leads_view").select("*").eq("lead_id", leadId).maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  if (!lead) return { ok: false, error: "Lead not found." };
+  const resolved = await resolveLeadReference(ctx, leadId);
+  if (!resolved.ok) return resolved;
+  const lead = resolved.lead;
+  leadId = String(lead.lead_id);
 
   const leadRow = lead as { assigned_to?: string | null; contact_id?: string | null; property_id?: string | null };
   if (ctx.role !== "admin" && leadRow.assigned_to !== ctx.user.id) {
@@ -522,6 +640,9 @@ async function getLeadDossier(ctx: CopilotToolContext, leadId: string) {
 
 async function getInvestorDossier(ctx: CopilotToolContext, investorId: string) {
   if (ctx.role !== "admin") return { ok: false, error: "Admin only." };
+  const resolved = await resolveInvestorReference(ctx, investorId);
+  if (!resolved.ok) return resolved;
+  investorId = String(resolved.investor.id);
   const [investor, calls, deals, notes] = await Promise.all([
     ctx.sb.from("investors").select("*").eq("id", investorId).maybeSingle(),
     ctx.sb.from("investor_calls").select("id,direction,duration_sec,transcript_status,summary,started_at,recorded_at,created_at").eq("investor_id", investorId).order("created_at", { ascending: false }).limit(8),
@@ -1003,11 +1124,13 @@ async function resolveDealReference(
   // Falls back to a small recent slice if neither yields candidates.
   const orFilters: string[] = [];
   if (phone) orFilters.push(`contact_phone.ilike.%${phone}%`);
-  for (const token of tokens.filter((t) => t.length >= 4).slice(0, 3)) {
-    const safe = token.replace(/[%_,()]/g, " ");
-    orFilters.push(`title.ilike.%${safe}%`);
-    orFilters.push(`address.ilike.%${safe}%`);
-    orFilters.push(`contact_name.ilike.%${safe}%`);
+  for (const token of tokens.filter((t) => t.length >= 3).slice(0, 4)) {
+    for (const variant of tokenSqlVariants(token)) {
+      const safe = variant.replace(/[%_,()]/g, " ");
+      orFilters.push(`title.ilike.%${safe}%`);
+      orFilters.push(`address.ilike.%${safe}%`);
+      orFilters.push(`contact_name.ilike.%${safe}%`);
+    }
   }
 
   let query = ctx.sb
@@ -1020,18 +1143,23 @@ async function resolveDealReference(
 
   const { data, error } = await query;
   if (error) return { ok: false, error: error.message };
+  // When the query contains a street number, weight address matches heavily
+  // and dampen contact-name-only matches: "585 Rue Gouin" must beat "Pascal Gouin".
+  const hasStreetNumber = tokens.some((t) => /^\d{2,5}$/.test(t));
   const scored = ((data ?? []) as unknown as Array<Record<string, unknown>>)
     .map((deal) => {
-      const haystack = normalizeDealText([
-        deal.title,
-        deal.address,
-        deal.contact_name,
-        deal.contact_phone,
-      ].filter(Boolean).join(" "));
+      const addressText = normalizeDealText(String(deal.title ?? "") + " " + String(deal.address ?? ""));
+      const contactText = normalizeDealText(String(deal.contact_name ?? ""));
       let score = 0;
       if (phone && normalizePhone(String(deal.contact_phone ?? "")) === phone) score += 100;
       for (const token of tokens) {
-        if (haystack.includes(token)) score += token.length >= 5 ? 14 : 8;
+        const inAddress = addressText.includes(token);
+        const inContact = contactText.includes(token);
+        if (inAddress) {
+          score += hasStreetNumber ? 25 : (token.length >= 5 ? 14 : 8);
+        } else if (inContact) {
+          score += hasStreetNumber ? 2 : 8;
+        }
       }
       return { deal, score };
     })
@@ -1039,26 +1167,398 @@ async function resolveDealReference(
     .sort((a, b) => b.score - a.score);
 
   const top = scored[0];
-  if (!top || top.score < 8) {
-    return { ok: false, error: `No active deal matched "${reference}". Try an address, seller name, phone, or open the deal page first.` };
+  if (top && top.score >= 8) {
+    const second = scored[1];
+    if (second && second.score >= top.score - 4 && !isWeakDealReference(ref)) {
+      return {
+        ok: false,
+        error: `Multiple deals matched "${reference}".`,
+        candidates: scored.slice(0, 5).map((row) => ({
+          id: row.deal.id,
+          title: row.deal.title,
+          address: row.deal.address,
+          contact_name: row.deal.contact_name,
+          score: row.score,
+        })),
+      };
+    }
+    return { ok: true, deal: top.deal };
   }
 
-  const second = scored[1];
-  if (second && second.score >= top.score - 4 && !isWeakDealReference(ref)) {
+  // Fuzzy fallback: load a wider slice and trigram-rank for typo tolerance
+  // ("Lavriere" -> "Laverriere", "Gouain" -> "Gouin", "Saint Hyasinte" -> "Saint-Hyacinthe").
+  const { data: wide } = await ctx.sb
+    .from("deals")
+    .select(selectCols)
+    .not("stage", "in", '("cloture","abandonne")')
+    .order("updated_at", { ascending: false })
+    .limit(400);
+  const wideRows = (wide ?? []) as unknown as Array<Record<string, unknown>>;
+  const fuzzy = fuzzyRankRows(wideRows, ref, ["title", "address", "contact_name"]).slice(0, 5);
+  if (fuzzy.length === 0) {
+    return { ok: false, error: `No active deal matched "${reference}". Try an address, seller name, phone, or open the deal page first.` };
+  }
+  const fz = fuzzy[0];
+  if (fuzzy[1] && fuzzy[1].score >= fz.score - 0.05) {
     return {
       ok: false,
-      error: `Multiple deals matched "${reference}".`,
-      candidates: scored.slice(0, 5).map((row) => ({
-        id: row.deal.id,
-        title: row.deal.title,
-        address: row.deal.address,
-        contact_name: row.deal.contact_name,
-        score: row.score,
+      error: `No exact deal match for "${reference}". Closest fuzzy candidates:`,
+      candidates: fuzzy.map((f) => ({
+        id: f.row.id,
+        title: f.row.title,
+        address: f.row.address,
+        contact_name: f.row.contact_name,
+        similarity: Number(f.score.toFixed(3)),
+        matchedField: String(f.matchedField),
       })),
     };
   }
+  return { ok: true, deal: fz.row, matchedBy: "fuzzy", similarity: Number(fz.score.toFixed(3)) };
+}
 
-  return { ok: true, deal: top.deal };
+async function resolveLeadReference(
+  ctx: CopilotToolContext,
+  reference: string,
+): Promise<{ ok: true; lead: Record<string, unknown>; matchedBy?: string; similarity?: number } | { ok: false; error: string; candidates?: unknown[] }> {
+  const ref = reference.trim();
+  if (!ref) return { ok: false, error: "Lead reference is empty." };
+
+  if (isUuid(ref)) {
+    const { data, error } = await ctx.sb.from("leads_view").select("*").eq("lead_id", ref).maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!data) return { ok: false, error: `Lead not found for id ${ref}.` };
+    const lead = data as unknown as Record<string, unknown>;
+    if (ctx.role !== "admin" && lead.assigned_to !== ctx.user.id) return { ok: false, error: "Forbidden for this lead." };
+    return { ok: true, lead };
+  }
+
+  const phone = normalizePhone(ref);
+  const tokens = dealReferenceTokens(ref);
+  const orFilters: string[] = [];
+  if (phone) orFilters.push(`best_phone.ilike.%${phone}%`);
+  for (const token of tokens.filter((t) => t.length >= 3).slice(0, 4)) {
+    for (const variant of tokenSqlVariants(token)) {
+      const safe = variant.replace(/[%_,()]/g, " ");
+      orFilters.push(`full_name.ilike.%${safe}%`);
+      orFilters.push(`company_name.ilike.%${safe}%`);
+      orFilters.push(`address.ilike.%${safe}%`);
+      orFilters.push(`city.ilike.%${safe}%`);
+    }
+  }
+
+  let query = ctx.sb.from("leads_view").select("*").order("updated_at", { ascending: false }).limit(120);
+  if (orFilters.length > 0) query = query.or(orFilters.join(","));
+  if (ctx.role !== "admin") query = query.eq("assigned_to", ctx.user.id);
+  const { data, error } = await query;
+  if (error) return { ok: false, error: error.message };
+
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const hasStreetNumber = tokens.some((t) => /^\d{2,5}$/.test(t));
+  const scored = scoreRecords(rows, tokens, phone, {
+    addressFields: ["address", "city"],
+    contactFields: ["full_name", "company_name"],
+    phoneField: "best_phone",
+    hasStreetNumber,
+  });
+
+  const top = scored[0];
+  if (top && top.score >= 8) {
+    const second = scored[1];
+    if (second && second.score >= top.score - 4) {
+      return {
+        ok: false,
+        error: `Multiple leads matched "${reference}".`,
+        candidates: scored.slice(0, 5).map((s) => ({
+          id: s.row.lead_id,
+          full_name: s.row.full_name,
+          company_name: s.row.company_name,
+          address: s.row.address,
+          city: s.row.city,
+          score: s.score,
+        })),
+      };
+    }
+    return { ok: true, lead: top.row };
+  }
+
+  // Fuzzy fallback for typos: load a wider slice and rank by trigram similarity.
+  const wideQuery = ctx.role === "admin"
+    ? ctx.sb.from("leads_view").select("*").order("updated_at", { ascending: false }).limit(400)
+    : ctx.sb.from("leads_view").select("*").eq("assigned_to", ctx.user.id).order("updated_at", { ascending: false }).limit(400);
+  const { data: wide } = await wideQuery;
+  const wideRows = (wide ?? []) as unknown as Array<Record<string, unknown>>;
+  const fuzzy = fuzzyRankRows(wideRows, ref, ["full_name", "company_name", "address", "city"]).slice(0, 5);
+  if (fuzzy.length === 0) {
+    return { ok: false, error: `No lead matched "${reference}". Try a full name, company, phone, or address.` };
+  }
+  const fz = fuzzy[0];
+  if (fuzzy[1] && fuzzy[1].score >= fz.score - 0.05) {
+    return {
+      ok: false,
+      error: `No exact lead match for "${reference}". Closest fuzzy candidates:`,
+      candidates: fuzzy.map((f) => ({
+        id: f.row.lead_id,
+        full_name: f.row.full_name,
+        company_name: f.row.company_name,
+        address: f.row.address,
+        city: f.row.city,
+        similarity: Number(f.score.toFixed(3)),
+        matchedField: String(f.matchedField),
+      })),
+    };
+  }
+  return { ok: true, lead: fz.row, matchedBy: "fuzzy", similarity: Number(fz.score.toFixed(3)) };
+}
+
+async function resolveInvestorReference(
+  ctx: CopilotToolContext,
+  reference: string,
+): Promise<{ ok: true; investor: Record<string, unknown>; matchedBy?: string; similarity?: number } | { ok: false; error: string; candidates?: unknown[] }> {
+  const ref = reference.trim();
+  if (!ref) return { ok: false, error: "Investor reference is empty." };
+  if (isUuid(ref)) {
+    const { data, error } = await ctx.sb.from("investors").select("*").eq("id", ref).maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!data) return { ok: false, error: `Investor not found for id ${ref}.` };
+    return { ok: true, investor: data as unknown as Record<string, unknown> };
+  }
+  const phone = normalizePhone(ref);
+  const tokens = dealReferenceTokens(ref);
+  const orFilters: string[] = [];
+  if (phone) orFilters.push(`phone_e164.ilike.%${phone}%`);
+  for (const token of tokens.filter((t) => t.length >= 3).slice(0, 4)) {
+    for (const variant of tokenSqlVariants(token)) {
+      const safe = variant.replace(/[%_,()]/g, " ");
+      orFilters.push(`full_name.ilike.%${safe}%`);
+      orFilters.push(`firm_name.ilike.%${safe}%`);
+      orFilters.push(`preferred_geography.ilike.%${safe}%`);
+    }
+  }
+  let query = ctx.sb.from("investors").select("*").order("updated_at", { ascending: false }).limit(120);
+  if (orFilters.length > 0) query = query.or(orFilters.join(","));
+  const { data, error } = await query;
+  if (error) return { ok: false, error: error.message };
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const scored = scoreRecords(rows, tokens, phone, {
+    addressFields: ["preferred_geography"],
+    contactFields: ["full_name", "firm_name"],
+    phoneField: "phone_e164",
+    hasStreetNumber: false,
+  });
+  const top = scored[0];
+  if (top && top.score >= 8) {
+    const second = scored[1];
+    if (second && second.score >= top.score - 4) {
+      return {
+        ok: false,
+        error: `Multiple investors matched "${reference}".`,
+        candidates: scored.slice(0, 5).map((s) => ({
+          id: s.row.id, full_name: s.row.full_name, firm_name: s.row.firm_name, preferred_geography: s.row.preferred_geography, score: s.score,
+        })),
+      };
+    }
+    return { ok: true, investor: top.row };
+  }
+  const { data: wide } = await ctx.sb.from("investors").select("*").order("updated_at", { ascending: false }).limit(400);
+  const wideRows = (wide ?? []) as unknown as Array<Record<string, unknown>>;
+  const fuzzy = fuzzyRankRows(wideRows, ref, ["full_name", "firm_name", "preferred_geography"]).slice(0, 5);
+  if (fuzzy.length === 0) {
+    return { ok: false, error: `No investor matched "${reference}".` };
+  }
+  const fz = fuzzy[0];
+  if (fuzzy[1] && fuzzy[1].score >= fz.score - 0.05) {
+    return {
+      ok: false,
+      error: `No exact investor match for "${reference}". Fuzzy candidates:`,
+      candidates: fuzzy.map((f) => ({
+        id: f.row.id, full_name: f.row.full_name, firm_name: f.row.firm_name, similarity: Number(f.score.toFixed(3)),
+      })),
+    };
+  }
+  return { ok: true, investor: fz.row, matchedBy: "fuzzy", similarity: Number(fz.score.toFixed(3)) };
+}
+
+function scoreRecords(
+  rows: Array<Record<string, unknown>>,
+  tokens: string[],
+  phone: string,
+  config: { addressFields: string[]; contactFields: string[]; phoneField: string; hasStreetNumber: boolean },
+): Array<{ row: Record<string, unknown>; score: number }> {
+  return rows
+    .map((row) => {
+      const addressText = normalizeDealText(config.addressFields.map((f) => String(row[f] ?? "")).join(" "));
+      const contactText = normalizeDealText(config.contactFields.map((f) => String(row[f] ?? "")).join(" "));
+      let score = 0;
+      if (phone && normalizePhone(String(row[config.phoneField] ?? "")) === phone) score += 100;
+      for (const token of tokens) {
+        const inAddress = addressText.includes(token);
+        const inContact = contactText.includes(token);
+        if (inContact) {
+          score += config.hasStreetNumber ? 2 : (token.length >= 5 ? 14 : 8);
+        } else if (inAddress) {
+          score += config.hasStreetNumber ? 25 : (token.length >= 5 ? 14 : 8);
+        }
+      }
+      return { row, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+async function getRecentActivity(
+  ctx: CopilotToolContext,
+  input: z.infer<typeof RecentActivityArgs>,
+) {
+  const hours = input.hours ?? 24;
+  const limit = input.limit ?? 30;
+  const since = new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  const [deals, calls, sms, followUps, reviews] = await Promise.all([
+    ctx.sb.from("deals")
+      .select("id,title,stage,temperature,priority,assigned_to,updated_at,created_at,activities")
+      .gte("updated_at", since)
+      .order("updated_at", { ascending: false })
+      .limit(40),
+    ctx.sb.from("call_logs")
+      .select("id,direction,outcome,duration_sec,recorded_at,summary,raw,lead_id")
+      .gte("recorded_at", since)
+      .order("recorded_at", { ascending: false })
+      .limit(30),
+    ctx.sb.from("automation_events")
+      .select("id,event_type,payload,occurred_at")
+      .in("event_type", ["sms_received", "sms_sent"])
+      .gte("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .limit(30),
+    ctx.sb.from("follow_ups")
+      .select("id,lead_id,due_at,note,status,assigned_to,created_at,completed_at")
+      .or(`created_at.gte.${since},completed_at.gte.${since}`)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    ctx.role === "admin"
+      ? ctx.sb.from("review_items").select("id,title,urgency,status,created_at,resolved_at").gte("created_at", since).order("created_at", { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  type TimelineEntry = { ts: string; type: string; summary: string; ref?: { type: string; id: string } };
+  const timeline: TimelineEntry[] = [];
+
+  for (const d of (deals.data ?? []) as Array<{ id: string; title: string | null; stage: string | null; temperature: string | null; updated_at: string; created_at: string; activities?: unknown }>) {
+    const isNew = d.created_at >= since;
+    timeline.push({
+      ts: d.updated_at,
+      type: isNew ? "deal_created" : "deal_updated",
+      summary: `${isNew ? "Nouveau deal" : "Deal modifié"}: ${d.title ?? d.id} · ${d.stage ?? "?"} · ${d.temperature ?? "?"}`,
+      ref: { type: "deal", id: d.id },
+    });
+    // Surface stage changes from activities (most recent only).
+    const acts = Array.isArray(d.activities) ? d.activities as Array<{ time?: string; text?: string }> : [];
+    for (const act of acts.slice(0, 3)) {
+      if (act.time && act.text && String(act.time) >= since && /stade|stage/i.test(String(act.text))) {
+        timeline.push({ ts: String(act.time), type: "deal_stage_move", summary: String(act.text), ref: { type: "deal", id: d.id } });
+      }
+    }
+  }
+  for (const c of (calls.data ?? []) as Array<{ id: string; direction: string | null; outcome: string | null; duration_sec: number | null; recorded_at: string; summary: string | null; lead_id: string | null }>) {
+    timeline.push({
+      ts: c.recorded_at,
+      type: `call_${c.direction ?? "?"}`,
+      summary: `Appel ${c.direction ?? ""} · ${c.outcome ?? "?"} · ${c.duration_sec ?? 0}s${c.summary ? ` · ${c.summary.slice(0, 120)}` : ""}`,
+      ref: c.lead_id ? { type: "lead", id: c.lead_id } : undefined,
+    });
+  }
+  for (const e of (sms.data ?? []) as Array<{ id: string; event_type: string; occurred_at: string; payload?: Record<string, unknown> | null }>) {
+    const p = e.payload ?? {};
+    timeline.push({
+      ts: e.occurred_at,
+      type: e.event_type,
+      summary: `${e.event_type} ${p.from ? `from ${p.from}` : ""}${p.to ? ` to ${p.to}` : ""} · ${String(p.body ?? "").slice(0, 100)}`,
+    });
+  }
+  for (const f of (followUps.data ?? []) as Array<{ id: string; lead_id: string | null; due_at: string; note: string; status: string; created_at: string; completed_at: string | null }>) {
+    if (f.completed_at && f.completed_at >= since) {
+      timeline.push({ ts: f.completed_at, type: "follow_up_completed", summary: `Suivi complété: ${f.note.slice(0, 100)}`, ref: f.lead_id ? { type: "lead", id: f.lead_id } : undefined });
+    } else if (f.created_at >= since) {
+      timeline.push({ ts: f.created_at, type: "follow_up_created", summary: `Suivi planifié pour ${f.due_at}: ${f.note.slice(0, 100)}`, ref: f.lead_id ? { type: "lead", id: f.lead_id } : undefined });
+    }
+  }
+  for (const r of (reviews.data ?? []) as Array<{ id: string; title: string | null; urgency: string | null; status: string; created_at: string }>) {
+    timeline.push({
+      ts: r.created_at,
+      type: "review_item_created",
+      summary: `Review (${r.urgency ?? "?"}): ${r.title ?? r.id}`,
+    });
+  }
+
+  timeline.sort((a, b) => b.ts.localeCompare(a.ts));
+
+  return {
+    ok: true,
+    since,
+    hours,
+    count: timeline.length,
+    timeline: timeline.slice(0, limit),
+  };
+}
+
+async function getCrmCounts(
+  ctx: CopilotToolContext,
+  input: z.infer<typeof CrmCountsArgs>,
+) {
+  const table = input.entity === "deal" ? "deals" : input.entity === "lead" ? "leads_view" : "investors";
+  if (input.entity === "investor" && ctx.role !== "admin") return { ok: false, error: "Admin only for investor counts." };
+
+  let query = ctx.sb.from(table).select("*", { count: "exact", head: input.groupBy === "none" || !input.groupBy ? true : false }).limit(5000);
+
+  const filters = input.filters ?? {};
+  for (const [key, raw] of Object.entries(filters)) {
+    if (raw === null || raw === undefined) continue;
+    if (Array.isArray(raw)) {
+      query = query.in(key, raw);
+    } else {
+      query = query.eq(key, raw as never);
+    }
+  }
+  if (ctx.role !== "admin" && input.entity === "lead") {
+    query = query.eq("assigned_to", ctx.user.id);
+  }
+
+  if (!input.groupBy || input.groupBy === "none") {
+    const { count, error } = await query;
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, entity: input.entity, total: count ?? 0, filters };
+  }
+
+  // For groupBy, fetch rows + count in JS. PostgREST doesn't natively GROUP BY.
+  const groupCol = input.groupBy;
+  const rowQuery = ctx.sb.from(table).select(`${groupCol}`).limit(5000);
+  let rq = rowQuery;
+  for (const [key, raw] of Object.entries(filters)) {
+    if (raw === null || raw === undefined) continue;
+    if (Array.isArray(raw)) rq = rq.in(key, raw);
+    else rq = rq.eq(key, raw as never);
+  }
+  if (ctx.role !== "admin" && input.entity === "lead") rq = rq.eq("assigned_to", ctx.user.id);
+
+  const { data: rows, error: rowErr } = await rq;
+  if (rowErr) return { ok: false, error: rowErr.message };
+
+  const buckets = new Map<string, number>();
+  for (const row of (rows ?? []) as Array<Record<string, unknown>>) {
+    const key = String(row[groupCol] ?? "(null)");
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  const grouped = Array.from(buckets.entries())
+    .map(([key, value]) => ({ [groupCol]: key, count: value }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    ok: true,
+    entity: input.entity,
+    groupBy: groupCol,
+    filters,
+    total: grouped.reduce((s, g) => s + g.count, 0),
+    buckets: grouped,
+  };
 }
 
 function mergeSelect(select: string, required: string[]) {
@@ -1117,23 +1617,42 @@ function isWeakDealReference(value: string) {
     || tokens.length <= 2;
 }
 
+const DEAL_STOPWORDS = new Set([
+  // structural / placeholder
+  "deal", "id", "fiche", "page", "current", "cette", "celui", "celle", "avec", "pour", "the",
+  // French/English question + filler words
+  "que", "qui", "quoi", "est", "se", "le", "la", "les", "un", "une", "des", "du",
+  "et", "ou", "mais", "donc", "ni", "car", "passe", "il", "elle", "ils", "elles",
+  "sur", "dans", "comme", "sans", "vers", "chez", "par", "what", "where", "with", "about", "tell",
+  // street types \u2014 drop so they don't dilute scoring
+  "rue", "boul", "boulevard", "av", "ave", "avenue", "chemin", "place", "route", "rang", "cote",
+]);
+
 function dealReferenceTokens(value: string) {
-  const normalized = normalizeDealText(value);
-  return normalized
+  return normalizeDealText(value)
     .split(/\s+/)
-    .map((token) => token === "st" ? "saint" : token)
-    .filter((token) =>
-      token.length >= 2 &&
-      !["deal", "id", "fiche", "page", "current", "cette", "celui", "celle", "avec", "pour", "the"].includes(token),
-    );
+    .filter((token) => token.length >= 2 && !DEAL_STOPWORDS.has(token));
 }
 
+// Expand a normalized token to all spelling variants the DB might store.
+// SQL ilike has no notion of "St" == "Saint", so we OR the variants explicitly.
+function tokenSqlVariants(token: string): string[] {
+  if (token === "saint") return ["saint", "st"];
+  if (token === "sainte") return ["sainte", "ste"];
+  return [token];
+}
+
+// Normalize text for matching: strip accents, lowercase, collapse punctuation,
+// and canonicalize Quebec naming variants (st/ste \u2192 saint/sainte) so we match
+// both directions ("st jean" \u2194 "Saint-Jean").
 function normalizeDealText(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9+]+/g, " ")
+    .replace(/\bst\b/g, "saint")
+    .replace(/\bste\b/g, "sainte")
     .replace(/\s+/g, " ")
     .trim();
 }
