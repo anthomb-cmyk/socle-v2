@@ -488,10 +488,36 @@ export default function TextosClient({
                     ? <Link href={`/contacts/${selected.contactId}` as never} className="tx-conv__link">Contact</Link>
                     : null}
                   {!selected.dealId && !selected.leadId && !selected.contactId
-                    ? <span className="tx-conv__link tx-conv__link--unlinked">Non reconnu</span>
+                    ? (
+                      <Link href={"/leads" as never} className="tx-link-action">
+                        <PlusIcon />
+                        Lier à un deal
+                      </Link>
+                    )
                     : null}
                 </div>
+                <a
+                  href={`tel:${selected.number}`}
+                  className="tx-conv__iconbtn tx-conv__iconbtn--call"
+                  aria-label="Appeler"
+                >
+                  <PhoneIcon />
+                </a>
               </header>
+
+              {selected.dealId && (
+                <Link href={`/pipeline/${selected.dealId}` as never} className="tx-dealstrip">
+                  <span className="tx-dealstrip__icon"><PipelineIcon /></span>
+                  <div className="tx-dealstrip__body">
+                    <div className="tx-dealstrip__l">Deal lié · pipeline</div>
+                    <div className="tx-dealstrip__t">{selected.dealTitle ?? selected.contactName ?? selected.number}</div>
+                    {selected.dealStage && (
+                      <div className="tx-dealstrip__sub">Stade · {selected.dealStage}</div>
+                    )}
+                  </div>
+                  <span className="tx-dealstrip__cta">Ouvrir →</span>
+                </Link>
+              )}
 
               <div className="tx-messages">
                 {groupByDay(selected.messages).map((group) => (
@@ -589,6 +615,21 @@ export default function TextosClient({
           )}
         </aside>
       </div>
+
+      {/* Mobile FAB — visible only on mobile list view (display controlled via CSS data-view) */}
+      <button
+        type="button"
+        className="tx-fab"
+        aria-label="Nouveau texto"
+        onClick={() => {
+          setNewOpen(true);
+          setMobileView("thread");
+          setStatus("idle");
+          setError(null);
+        }}
+      >
+        <PlusIcon />
+      </button>
     </main>
   );
 }
@@ -642,6 +683,27 @@ function BackIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+function PhoneIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" />
+    </svg>
+  );
+}
+function PipelineIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M9 17V7m6 10V7M5 7h14M5 17h14" />
     </svg>
   );
 }
