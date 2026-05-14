@@ -107,6 +107,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
         {/* Prevent phone number auto-detection from mangling addresses */}
         <meta name="format-detection" content="telephone=no" />
+
+        {/* PWA cold-launch → dashboard.
+            iOS preserves the last URL when the user just backgrounds the PWA,
+            but kills sessionStorage on a true app termination. On the first
+            page render of a session in standalone display-mode, bounce to /. */}
+        <script
+          // eslint-disable-next-line @next/next/no-sync-scripts
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;if(s&&!sessionStorage.getItem('socle_pwa_started')){sessionStorage.setItem('socle_pwa_started','1');if(location.pathname!=='/'){location.replace('/');return;}}else{sessionStorage.setItem('socle_pwa_started','1');}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body style={{ background: "var(--crm-bg)", color: "var(--crm-text)", margin: 0, padding: 0 }}>
         <LocaleProvider>
