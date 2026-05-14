@@ -5,6 +5,7 @@ import { buildDefaultChecklists } from "@/lib/deals/defaults";
 import { normalizePhone } from "@/lib/twilio";
 import { autoLinkRecentInboundCallsToDeals } from "./auto-link-calls";
 import { saveCopilotMemory, deleteCopilotMemory } from "./memory";
+import { fuzzyRankRows } from "./fuzzy";
 
 export type CopilotPageContext = {
   pathname?: string;
@@ -68,7 +69,7 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "get_lead_dossier",
-      description: "Fetch a lead dossier: owner, property, phones, calls, follow-ups, submissions, and events.",
+      description: "Fetch a lead dossier (owner, property, phones, calls, follow-ups, submissions, events). Accepts a UUID, or a human reference like name, company, phone, or address — token + fuzzy resolver handles typos and st↔saint variants.",
       parameters: {
         type: "object",
         properties: {
@@ -83,13 +84,49 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "get_investor_dossier",
-      description: "Fetch an investor dossier with investor profile, notes, calls, and linked deals. Admin only.",
+      description: "Fetch an investor dossier (profile, notes, calls, linked deals). Admin only. Accepts a UUID or a human reference (name, firm).",
       parameters: {
         type: "object",
         properties: {
           investorId: { type: "string" },
         },
         required: ["investorId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_recent_activity",
+      description: "Unified CRM activity timeline: new/updated deals, stage moves, calls, SMS, follow-ups, review items. Use for 'what changed today/this week', 'ce qui a bougé', 'récap'.",
+      parameters: {
+        type: "object",
+        properties: {
+          hours: { type: "number", description: "Lookback window in hours (default 24, max 168)." },
+          limit: { type: "number", description: "Max events to return (default 30, max 80)." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_crm_counts",
+      description: "Aggregate counts across the CRM. Use for 'how many hot deals', 'combien de leads par ville', 'pipeline distribution'.",
+      parameters: {
+        type: "object",
+        properties: {
+          entity: { type: "string", enum: ["deal", "lead", "investor"] },
+          groupBy: { type: "string", enum: ["stage", "temperature", "priority", "city", "assigned_to", "status", "none"] },
+          filters: {
+            type: "object",
+            description: "Optional filters: { stage, temperature, city, assigned_to, status }. Each value can be a single string or array of strings.",
+            additionalProperties: true,
+          },
+        },
+        required: ["entity"],
         additionalProperties: false,
       },
     },
@@ -281,6 +318,10 @@ export async function runCopilotTool(name: string, rawArgs: string, ctx: Copilot
       return getTodayWork(ctx);
     case "get_pipeline_health":
       return getPipelineHealth(ctx, LimitArg.parse(args).limit);
+    case "get_recent_activity":
+      return getRecentActivity(ctx, RecentActivityArgs.parse(args));
+    case "get_crm_counts":
+      return getCrmCounts(ctx, CrmCountsArgs.parse(args));
     case "add_note":
       return addNote(ctx, AddNoteArgs.parse(args));
     case "schedule_follow_up":
@@ -343,6 +384,15 @@ const SaveMemoryArgs = z.object({
   kind: z.enum(["preference", "fact", "workflow", "constraint"]).optional(),
 });
 const DeleteMemoryArgs = z.object({ memoryId: z.string().min(1) });
+const RecentActivityArgs = z.object({
+  hours: z.number().int().min(1).max(168).optional(),
+  limit: z.number().int().min(1).max(80).optional(),
+});
+const CrmCountsArgs = z.object({
+  entity: z.enum(["deal", "lead", "investor"]),
+  groupBy: z.enum(["stage", "temperature", "priority", "city", "assigned_to", "status", "none"]).optional(),
+  filters: z.record(z.string(), z.union([z.string(), z.array(z.string()), z.number(), z.boolean(), z.null()])).optional(),
+});
 
 function IdArg(key: string) {
   return z.object({ [key]: z.string().min(1) });
@@ -500,9 +550,10 @@ async function getDealDossier(ctx: CopilotToolContext, dealId: string) {
 }
 
 async function getLeadDossier(ctx: CopilotToolContext, leadId: string) {
-  const { data: lead, error } = await ctx.sb.from("leads_view").select("*").eq("lead_id", leadId).maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  if (!lead) return { ok: false, error: "Lead not found." };
+  const resolved = await resolveLeadReference(ctx, leadId);
+  if (!resolved.ok) return resolved;
+  const lead = resolved.lead;
+  leadId = String(lead.lead_id);
 
   const leadRow = lead as { assigned_to?: string | null; contact_id?: string | null; property_id?: string | null };
   if (ctx.role !== "admin" && leadRow.assigned_to !== ctx.user.id) {
@@ -537,6 +588,9 @@ async function getLeadDossier(ctx: CopilotToolContext, leadId: string) {
 
 async function getInvestorDossier(ctx: CopilotToolContext, investorId: string) {
   if (ctx.role !== "admin") return { ok: false, error: "Admin only." };
+  const resolved = await resolveInvestorReference(ctx, investorId);
+  if (!resolved.ok) return resolved;
+  investorId = String(resolved.investor.id);
   const [investor, calls, deals, notes] = await Promise.all([
     ctx.sb.from("investors").select("*").eq("id", investorId).maybeSingle(),
     ctx.sb.from("investor_calls").select("id,direction,duration_sec,transcript_status,summary,started_at,recorded_at,created_at").eq("investor_id", investorId).order("created_at", { ascending: false }).limit(8),
@@ -1081,6 +1135,351 @@ async function resolveDealReference(
   }
 
   return { ok: true, deal: top.deal };
+}
+
+async function resolveLeadReference(
+  ctx: CopilotToolContext,
+  reference: string,
+): Promise<{ ok: true; lead: Record<string, unknown>; matchedBy?: string; similarity?: number } | { ok: false; error: string; candidates?: unknown[] }> {
+  const ref = reference.trim();
+  if (!ref) return { ok: false, error: "Lead reference is empty." };
+
+  if (isUuid(ref)) {
+    const { data, error } = await ctx.sb.from("leads_view").select("*").eq("lead_id", ref).maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!data) return { ok: false, error: `Lead not found for id ${ref}.` };
+    const lead = data as unknown as Record<string, unknown>;
+    if (ctx.role !== "admin" && lead.assigned_to !== ctx.user.id) return { ok: false, error: "Forbidden for this lead." };
+    return { ok: true, lead };
+  }
+
+  const phone = normalizePhone(ref);
+  const tokens = dealReferenceTokens(ref);
+  const orFilters: string[] = [];
+  if (phone) orFilters.push(`best_phone.ilike.%${phone}%`);
+  for (const token of tokens.filter((t) => t.length >= 3).slice(0, 4)) {
+    for (const variant of tokenSqlVariants(token)) {
+      const safe = variant.replace(/[%_,()]/g, " ");
+      orFilters.push(`full_name.ilike.%${safe}%`);
+      orFilters.push(`company_name.ilike.%${safe}%`);
+      orFilters.push(`address.ilike.%${safe}%`);
+      orFilters.push(`city.ilike.%${safe}%`);
+    }
+  }
+
+  let query = ctx.sb.from("leads_view").select("*").order("updated_at", { ascending: false }).limit(120);
+  if (orFilters.length > 0) query = query.or(orFilters.join(","));
+  if (ctx.role !== "admin") query = query.eq("assigned_to", ctx.user.id);
+  const { data, error } = await query;
+  if (error) return { ok: false, error: error.message };
+
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const hasStreetNumber = tokens.some((t) => /^\d{2,5}$/.test(t));
+  const scored = scoreRecords(rows, tokens, phone, {
+    addressFields: ["address", "city"],
+    contactFields: ["full_name", "company_name"],
+    phoneField: "best_phone",
+    hasStreetNumber,
+  });
+
+  const top = scored[0];
+  if (top && top.score >= 8) {
+    const second = scored[1];
+    if (second && second.score >= top.score - 4) {
+      return {
+        ok: false,
+        error: `Multiple leads matched "${reference}".`,
+        candidates: scored.slice(0, 5).map((s) => ({
+          id: s.row.lead_id,
+          full_name: s.row.full_name,
+          company_name: s.row.company_name,
+          address: s.row.address,
+          city: s.row.city,
+          score: s.score,
+        })),
+      };
+    }
+    return { ok: true, lead: top.row };
+  }
+
+  // Fuzzy fallback for typos: load a wider slice and rank by trigram similarity.
+  const wideQuery = ctx.role === "admin"
+    ? ctx.sb.from("leads_view").select("*").order("updated_at", { ascending: false }).limit(400)
+    : ctx.sb.from("leads_view").select("*").eq("assigned_to", ctx.user.id).order("updated_at", { ascending: false }).limit(400);
+  const { data: wide } = await wideQuery;
+  const wideRows = (wide ?? []) as unknown as Array<Record<string, unknown>>;
+  const fuzzy = fuzzyRankRows(wideRows, ref, ["full_name", "company_name", "address", "city"]).slice(0, 5);
+  if (fuzzy.length === 0) {
+    return { ok: false, error: `No lead matched "${reference}". Try a full name, company, phone, or address.` };
+  }
+  const fz = fuzzy[0];
+  if (fuzzy[1] && fuzzy[1].score >= fz.score - 0.05) {
+    return {
+      ok: false,
+      error: `No exact lead match for "${reference}". Closest fuzzy candidates:`,
+      candidates: fuzzy.map((f) => ({
+        id: f.row.lead_id,
+        full_name: f.row.full_name,
+        company_name: f.row.company_name,
+        address: f.row.address,
+        city: f.row.city,
+        similarity: Number(f.score.toFixed(3)),
+        matchedField: String(f.matchedField),
+      })),
+    };
+  }
+  return { ok: true, lead: fz.row, matchedBy: "fuzzy", similarity: Number(fz.score.toFixed(3)) };
+}
+
+async function resolveInvestorReference(
+  ctx: CopilotToolContext,
+  reference: string,
+): Promise<{ ok: true; investor: Record<string, unknown>; matchedBy?: string; similarity?: number } | { ok: false; error: string; candidates?: unknown[] }> {
+  const ref = reference.trim();
+  if (!ref) return { ok: false, error: "Investor reference is empty." };
+  if (isUuid(ref)) {
+    const { data, error } = await ctx.sb.from("investors").select("*").eq("id", ref).maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!data) return { ok: false, error: `Investor not found for id ${ref}.` };
+    return { ok: true, investor: data as unknown as Record<string, unknown> };
+  }
+  const phone = normalizePhone(ref);
+  const tokens = dealReferenceTokens(ref);
+  const orFilters: string[] = [];
+  if (phone) orFilters.push(`phone_e164.ilike.%${phone}%`);
+  for (const token of tokens.filter((t) => t.length >= 3).slice(0, 4)) {
+    for (const variant of tokenSqlVariants(token)) {
+      const safe = variant.replace(/[%_,()]/g, " ");
+      orFilters.push(`full_name.ilike.%${safe}%`);
+      orFilters.push(`firm_name.ilike.%${safe}%`);
+      orFilters.push(`preferred_geography.ilike.%${safe}%`);
+    }
+  }
+  let query = ctx.sb.from("investors").select("*").order("updated_at", { ascending: false }).limit(120);
+  if (orFilters.length > 0) query = query.or(orFilters.join(","));
+  const { data, error } = await query;
+  if (error) return { ok: false, error: error.message };
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const scored = scoreRecords(rows, tokens, phone, {
+    addressFields: ["preferred_geography"],
+    contactFields: ["full_name", "firm_name"],
+    phoneField: "phone_e164",
+    hasStreetNumber: false,
+  });
+  const top = scored[0];
+  if (top && top.score >= 8) {
+    const second = scored[1];
+    if (second && second.score >= top.score - 4) {
+      return {
+        ok: false,
+        error: `Multiple investors matched "${reference}".`,
+        candidates: scored.slice(0, 5).map((s) => ({
+          id: s.row.id, full_name: s.row.full_name, firm_name: s.row.firm_name, preferred_geography: s.row.preferred_geography, score: s.score,
+        })),
+      };
+    }
+    return { ok: true, investor: top.row };
+  }
+  const { data: wide } = await ctx.sb.from("investors").select("*").order("updated_at", { ascending: false }).limit(400);
+  const wideRows = (wide ?? []) as unknown as Array<Record<string, unknown>>;
+  const fuzzy = fuzzyRankRows(wideRows, ref, ["full_name", "firm_name", "preferred_geography"]).slice(0, 5);
+  if (fuzzy.length === 0) {
+    return { ok: false, error: `No investor matched "${reference}".` };
+  }
+  const fz = fuzzy[0];
+  if (fuzzy[1] && fuzzy[1].score >= fz.score - 0.05) {
+    return {
+      ok: false,
+      error: `No exact investor match for "${reference}". Fuzzy candidates:`,
+      candidates: fuzzy.map((f) => ({
+        id: f.row.id, full_name: f.row.full_name, firm_name: f.row.firm_name, similarity: Number(f.score.toFixed(3)),
+      })),
+    };
+  }
+  return { ok: true, investor: fz.row, matchedBy: "fuzzy", similarity: Number(fz.score.toFixed(3)) };
+}
+
+function scoreRecords(
+  rows: Array<Record<string, unknown>>,
+  tokens: string[],
+  phone: string,
+  config: { addressFields: string[]; contactFields: string[]; phoneField: string; hasStreetNumber: boolean },
+): Array<{ row: Record<string, unknown>; score: number }> {
+  return rows
+    .map((row) => {
+      const addressText = normalizeDealText(config.addressFields.map((f) => String(row[f] ?? "")).join(" "));
+      const contactText = normalizeDealText(config.contactFields.map((f) => String(row[f] ?? "")).join(" "));
+      let score = 0;
+      if (phone && normalizePhone(String(row[config.phoneField] ?? "")) === phone) score += 100;
+      for (const token of tokens) {
+        const inAddress = addressText.includes(token);
+        const inContact = contactText.includes(token);
+        if (inContact) {
+          score += config.hasStreetNumber ? 2 : (token.length >= 5 ? 14 : 8);
+        } else if (inAddress) {
+          score += config.hasStreetNumber ? 25 : (token.length >= 5 ? 14 : 8);
+        }
+      }
+      return { row, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+async function getRecentActivity(
+  ctx: CopilotToolContext,
+  input: z.infer<typeof RecentActivityArgs>,
+) {
+  const hours = input.hours ?? 24;
+  const limit = input.limit ?? 30;
+  const since = new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  const [deals, calls, sms, followUps, reviews] = await Promise.all([
+    ctx.sb.from("deals")
+      .select("id,title,stage,temperature,priority,assigned_to,updated_at,created_at,activities")
+      .gte("updated_at", since)
+      .order("updated_at", { ascending: false })
+      .limit(40),
+    ctx.sb.from("call_logs")
+      .select("id,direction,outcome,duration_sec,recorded_at,summary,raw,lead_id")
+      .gte("recorded_at", since)
+      .order("recorded_at", { ascending: false })
+      .limit(30),
+    ctx.sb.from("automation_events")
+      .select("id,event_type,payload,occurred_at")
+      .in("event_type", ["sms_received", "sms_sent"])
+      .gte("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .limit(30),
+    ctx.sb.from("follow_ups")
+      .select("id,lead_id,due_at,note,status,assigned_to,created_at,completed_at")
+      .or(`created_at.gte.${since},completed_at.gte.${since}`)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    ctx.role === "admin"
+      ? ctx.sb.from("review_items").select("id,title,urgency,status,created_at,resolved_at").gte("created_at", since).order("created_at", { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  type TimelineEntry = { ts: string; type: string; summary: string; ref?: { type: string; id: string } };
+  const timeline: TimelineEntry[] = [];
+
+  for (const d of (deals.data ?? []) as Array<{ id: string; title: string | null; stage: string | null; temperature: string | null; updated_at: string; created_at: string; activities?: unknown }>) {
+    const isNew = d.created_at >= since;
+    timeline.push({
+      ts: d.updated_at,
+      type: isNew ? "deal_created" : "deal_updated",
+      summary: `${isNew ? "Nouveau deal" : "Deal modifié"}: ${d.title ?? d.id} · ${d.stage ?? "?"} · ${d.temperature ?? "?"}`,
+      ref: { type: "deal", id: d.id },
+    });
+    // Surface stage changes from activities (most recent only).
+    const acts = Array.isArray(d.activities) ? d.activities as Array<{ time?: string; text?: string }> : [];
+    for (const act of acts.slice(0, 3)) {
+      if (act.time && act.text && String(act.time) >= since && /stade|stage/i.test(String(act.text))) {
+        timeline.push({ ts: String(act.time), type: "deal_stage_move", summary: String(act.text), ref: { type: "deal", id: d.id } });
+      }
+    }
+  }
+  for (const c of (calls.data ?? []) as Array<{ id: string; direction: string | null; outcome: string | null; duration_sec: number | null; recorded_at: string; summary: string | null; lead_id: string | null }>) {
+    timeline.push({
+      ts: c.recorded_at,
+      type: `call_${c.direction ?? "?"}`,
+      summary: `Appel ${c.direction ?? ""} · ${c.outcome ?? "?"} · ${c.duration_sec ?? 0}s${c.summary ? ` · ${c.summary.slice(0, 120)}` : ""}`,
+      ref: c.lead_id ? { type: "lead", id: c.lead_id } : undefined,
+    });
+  }
+  for (const e of (sms.data ?? []) as Array<{ id: string; event_type: string; occurred_at: string; payload?: Record<string, unknown> | null }>) {
+    const p = e.payload ?? {};
+    timeline.push({
+      ts: e.occurred_at,
+      type: e.event_type,
+      summary: `${e.event_type} ${p.from ? `from ${p.from}` : ""}${p.to ? ` to ${p.to}` : ""} · ${String(p.body ?? "").slice(0, 100)}`,
+    });
+  }
+  for (const f of (followUps.data ?? []) as Array<{ id: string; lead_id: string | null; due_at: string; note: string; status: string; created_at: string; completed_at: string | null }>) {
+    if (f.completed_at && f.completed_at >= since) {
+      timeline.push({ ts: f.completed_at, type: "follow_up_completed", summary: `Suivi complété: ${f.note.slice(0, 100)}`, ref: f.lead_id ? { type: "lead", id: f.lead_id } : undefined });
+    } else if (f.created_at >= since) {
+      timeline.push({ ts: f.created_at, type: "follow_up_created", summary: `Suivi planifié pour ${f.due_at}: ${f.note.slice(0, 100)}`, ref: f.lead_id ? { type: "lead", id: f.lead_id } : undefined });
+    }
+  }
+  for (const r of (reviews.data ?? []) as Array<{ id: string; title: string | null; urgency: string | null; status: string; created_at: string }>) {
+    timeline.push({
+      ts: r.created_at,
+      type: "review_item_created",
+      summary: `Review (${r.urgency ?? "?"}): ${r.title ?? r.id}`,
+    });
+  }
+
+  timeline.sort((a, b) => b.ts.localeCompare(a.ts));
+
+  return {
+    ok: true,
+    since,
+    hours,
+    count: timeline.length,
+    timeline: timeline.slice(0, limit),
+  };
+}
+
+async function getCrmCounts(
+  ctx: CopilotToolContext,
+  input: z.infer<typeof CrmCountsArgs>,
+) {
+  const table = input.entity === "deal" ? "deals" : input.entity === "lead" ? "leads_view" : "investors";
+  if (input.entity === "investor" && ctx.role !== "admin") return { ok: false, error: "Admin only for investor counts." };
+
+  let query = ctx.sb.from(table).select("*", { count: "exact", head: input.groupBy === "none" || !input.groupBy ? true : false }).limit(5000);
+
+  const filters = input.filters ?? {};
+  for (const [key, raw] of Object.entries(filters)) {
+    if (raw === null || raw === undefined) continue;
+    if (Array.isArray(raw)) {
+      query = query.in(key, raw);
+    } else {
+      query = query.eq(key, raw as never);
+    }
+  }
+  if (ctx.role !== "admin" && input.entity === "lead") {
+    query = query.eq("assigned_to", ctx.user.id);
+  }
+
+  if (!input.groupBy || input.groupBy === "none") {
+    const { count, error } = await query;
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, entity: input.entity, total: count ?? 0, filters };
+  }
+
+  // For groupBy, fetch rows + count in JS. PostgREST doesn't natively GROUP BY.
+  const groupCol = input.groupBy;
+  const rowQuery = ctx.sb.from(table).select(`${groupCol}`).limit(5000);
+  let rq = rowQuery;
+  for (const [key, raw] of Object.entries(filters)) {
+    if (raw === null || raw === undefined) continue;
+    if (Array.isArray(raw)) rq = rq.in(key, raw);
+    else rq = rq.eq(key, raw as never);
+  }
+  if (ctx.role !== "admin" && input.entity === "lead") rq = rq.eq("assigned_to", ctx.user.id);
+
+  const { data: rows, error: rowErr } = await rq;
+  if (rowErr) return { ok: false, error: rowErr.message };
+
+  const buckets = new Map<string, number>();
+  for (const row of (rows ?? []) as Array<Record<string, unknown>>) {
+    const key = String(row[groupCol] ?? "(null)");
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  const grouped = Array.from(buckets.entries())
+    .map(([key, value]) => ({ [groupCol]: key, count: value }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    ok: true,
+    entity: input.entity,
+    groupBy: groupCol,
+    filters,
+    total: grouped.reduce((s, g) => s + g.count, 0),
+    buckets: grouped,
+  };
 }
 
 function mergeSelect(select: string, required: string[]) {

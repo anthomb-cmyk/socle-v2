@@ -506,6 +506,8 @@ function friendlyToolLabel(name: string) {
     get_investor_dossier: "Lecture du dossier investisseur…",
     get_today_work: "Calcul des priorités du jour…",
     get_pipeline_health: "Analyse du pipeline…",
+    get_recent_activity: "Lecture de l'activité récente…",
+    get_crm_counts: "Comptage CRM…",
     add_note: "Ajout de la note…",
     schedule_follow_up: "Planification du suivi…",
     update_deal_stage: "Mise à jour du stade…",
