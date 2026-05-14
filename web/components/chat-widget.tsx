@@ -21,6 +21,9 @@ const SUGGESTED_QUESTIONS = [
   "Qui devrait être rappelé en priorité ?",
 ];
 
+const STORAGE_KEY = "socle.copilot.messages.v1";
+const MAX_PERSISTED_MESSAGES = 40;
+
 export default function ChatWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -32,6 +35,43 @@ export default function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const hidden = pathname ? HIDDEN_PREFIXES.some((p) => pathname.startsWith(p)) : false;
+
+  // Restore prior conversation from localStorage on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed
+          .filter((m): m is Message =>
+            m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+          )
+          .slice(-MAX_PERSISTED_MESSAGES);
+        if (cleaned.length > 0) setMessages(cleaned);
+      }
+    } catch {
+      // ignore corrupted storage
+    }
+  }, []);
+
+  // Persist on change.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (messages.length === 0) {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(messages.slice(-MAX_PERSISTED_MESSAGES)),
+        );
+      }
+    } catch {
+      // storage may be full / disabled
+    }
+  }, [messages]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
