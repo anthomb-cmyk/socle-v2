@@ -25,23 +25,25 @@ export async function GET() {
     maybe: number;
     notInterested: number;
     bad: number;
+    buildings: number;
     units: number;
   }> = {};
 
   for (const id of ids) {
-    stats[id] = { sent: 0, called: 0, interested: 0, maybe: 0, notInterested: 0, bad: 0, units: 0 };
+    stats[id] = { sent: 0, called: 0, interested: 0, maybe: 0, notInterested: 0, bad: 0, buildings: 0, units: 0 };
   }
 
   if (ids.length > 0) {
     const { data: recipients } = await sb
       .from("letter_recipients")
-      .select("campaign_id,status,last_outcome,total_units")
+      .select("campaign_id,status,last_outcome,property_count,total_units")
       .in("campaign_id", ids);
 
     for (const row of recipients ?? []) {
       const stat = stats[row.campaign_id];
       if (!stat) continue;
       stat.sent += 1;
+      stat.buildings += Number(row.property_count ?? 0);
       stat.units += Number(row.total_units ?? 0);
       if (row.last_outcome || row.status !== "sent") stat.called += 1;
       if (["interested", "wants_offer", "meeting_booked", "deal_created"].includes(row.status) || ["interested", "wants_offer", "meeting_booked"].includes(row.last_outcome)) {
@@ -58,7 +60,7 @@ export async function GET() {
     data: {
       campaigns: (campaigns ?? []).map((campaign: { id: string }) => ({
         ...campaign,
-        stats: stats[campaign.id] ?? { sent: 0, called: 0, interested: 0, maybe: 0, notInterested: 0, bad: 0, units: 0 },
+        stats: stats[campaign.id] ?? { sent: 0, called: 0, interested: 0, maybe: 0, notInterested: 0, bad: 0, buildings: 0, units: 0 },
       })),
     },
   });

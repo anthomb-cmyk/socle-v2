@@ -15,6 +15,7 @@ type Campaign = {
     maybe: number;
     notInterested: number;
     bad: number;
+    buildings: number;
     units: number;
   };
 };
@@ -189,10 +190,11 @@ export default function LettersClient() {
 
         {activeCampaign && (
           <div className="letters-stats">
-            <div><span>{activeCampaign.stats.sent}</span><small>sent</small></div>
+            <div><span>{activeCampaign.stats.sent}</span><small>letters sent</small></div>
             <div><span>{pct(activeCampaign.stats.called, activeCampaign.stats.sent)}</span><small>call rate</small></div>
             <div><span>{activeCampaign.stats.interested}</span><small>qualified</small></div>
-            <div><span>{activeCampaign.stats.units}</span><small>units mailed</small></div>
+            <div><span>{activeCampaign.stats.buildings}</span><small>buildings</small></div>
+            <div><span>{activeCampaign.stats.units}</span><small>units reached</small></div>
           </div>
         )}
 
