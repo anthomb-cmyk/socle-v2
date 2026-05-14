@@ -10865,6 +10865,13 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 .tx-link-action svg { width: 11px; height: 11px; }
 .tx-link-action:active { background: var(--amber-soft); }
 
+/* Thread header avatar (rounded square per design) */
+.tx-conv__avatar {
+  width: 36px; height: 36px;
+  border-radius: 12px;
+  font-size: 12.5px;
+}
+
 /* Thread header call/more icon buttons */
 .tx-conv__iconbtn {
   width: 36px; height: 36px; border-radius: 11px;
@@ -10892,16 +10899,27 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   .tx-head__title { font-size: 22px; }
   .tx-head__sub { display: none; }
 
-  /* Thread header: avatar + actions */
+  /* Mobile thread view: hide the page header entirely so the
+     conversation header owns the top of the screen. */
+  .tx-page[data-view="thread"] .tx-head { display: none; }
+
+  /* Thread header: sticky, avatar + actions */
   .tx-conv__head {
-    padding: 8px 12px;
+    position: sticky; top: 0; z-index: 6;
+    padding: 8px 10px;
     background: oklch(0.97 0.010 84 / 0.95);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-soft);
+    flex-wrap: nowrap;
+    gap: 8px;
   }
-  .tx-conv__name { font-size: 15px; font-weight: 700; }
+  /* Hide the inline link-pills row on mobile — context goes in the
+     deal strip below instead. */
+  .tx-conv__links { display: none; }
+  .tx-conv__name { font-size: 15px; font-weight: 700; line-height: 1.15; }
   .tx-conv__number { font-size: 11px; }
+  .tx-conv__id { gap: 0; }
 
   /* iMessage-style bubbles */
   .tx-messages {

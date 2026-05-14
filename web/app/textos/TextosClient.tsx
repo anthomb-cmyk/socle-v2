@@ -473,6 +473,15 @@ export default function TextosClient({
                 >
                   <BackIcon />
                 </button>
+                {(() => {
+                  const headerName = selected.contactName ?? selected.dealTitle ?? selected.number;
+                  const isUnknown = !selected.contactId && !selected.leadId && !selected.dealId;
+                  return (
+                    <span className={`tx-thread__avatar tx-conv__avatar${isUnknown ? " tx-thread__avatar--unknown" : ""}`}>
+                      {isUnknown ? "?" : initialsFor(headerName)}
+                    </span>
+                  );
+                })()}
                 <div className="tx-conv__id">
                   <span className="tx-conv__name">{selected.contactName ?? selected.dealTitle ?? selected.number}</span>
                   <span className="tx-conv__number">{selected.number}</span>
@@ -530,8 +539,9 @@ export default function TextosClient({
                   <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
+                    onInput={autoResize}
                     maxLength={1000}
-                    rows={3}
+                    rows={1}
                     placeholder={`Répondre à ${selected.contactName ?? selected.number}`}
                   />
                   <button
@@ -706,6 +716,14 @@ function PipelineIcon() {
       <path d="M9 17V7m6 10V7M5 7h14M5 17h14" />
     </svg>
   );
+}
+
+// ── Composer auto-resize ─────────────────────────────────────────────────
+
+function autoResize(event: React.FormEvent<HTMLTextAreaElement>) {
+  const el = event.currentTarget;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
 }
 
 // ── Date helpers (unchanged) ─────────────────────────────────────────────
