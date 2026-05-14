@@ -21,6 +21,9 @@ const SUGGESTED_QUESTIONS = [
   "Qui devrait être rappelé en priorité ?",
 ];
 
+const STORAGE_KEY = "socle.copilot.messages.v1";
+const MAX_PERSISTED_MESSAGES = 40;
+
 export default function ChatWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -32,6 +35,43 @@ export default function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const hidden = pathname ? HIDDEN_PREFIXES.some((p) => pathname.startsWith(p)) : false;
+
+  // Restore prior conversation from localStorage on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed
+          .filter((m): m is Message =>
+            m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+          )
+          .slice(-MAX_PERSISTED_MESSAGES);
+        if (cleaned.length > 0) setMessages(cleaned);
+      }
+    } catch {
+      // ignore corrupted storage
+    }
+  }, []);
+
+  // Persist on change.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (messages.length === 0) {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(messages.slice(-MAX_PERSISTED_MESSAGES)),
+        );
+      }
+    } catch {
+      // storage may be full / disabled
+    }
+  }, [messages]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -46,6 +86,8 @@ export default function ChatWidget() {
     }
   }, [open]);
 
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
+
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
@@ -55,11 +97,28 @@ export default function ChatWidget() {
     setInput("");
     setLoading(true);
     setError(null);
+    setToolStatus(null);
+
+    let streamingIndex = -1;
+    const pushAssistantToken = (token: string) => {
+      setMessages((prev) => {
+        if (streamingIndex === -1 || prev[streamingIndex]?.role !== "assistant") {
+          streamingIndex = prev.length;
+          return [...prev, { role: "assistant", content: token }];
+        }
+        const next = prev.slice();
+        next[streamingIndex] = {
+          role: "assistant",
+          content: (next[streamingIndex].content ?? "") + token,
+        };
+        return next;
+      });
+    };
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({
           messages: newMessages,
           context: {
@@ -69,17 +128,64 @@ export default function ChatWidget() {
         }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!res.ok && !contentType.includes("text/event-stream")) {
+        const fallback = await res.json().catch(() => ({ error: "Erreur" }));
+        setError(fallback.error ?? "Erreur lors de la réponse.");
+        return;
+      }
+      if (!res.body) {
+        setError("Réponse vide.");
+        return;
+      }
 
-      if (data.ok && data.reply) {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
-      } else {
-        setError(data.error ?? "Erreur lors de la réponse.");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalReply: string | null = null;
+      let streamError: string | null = null;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.split("\n").find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+          let event: { type?: string; text?: string; name?: string; status?: string; reply?: string; error?: string };
+          try {
+            event = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+          if (event.type === "token" && event.text) {
+            pushAssistantToken(event.text);
+          } else if (event.type === "tool" && event.name && event.status) {
+            setToolStatus(event.status === "start" ? friendlyToolLabel(event.name) : null);
+          } else if (event.type === "done") {
+            finalReply = event.reply ?? null;
+          } else if (event.type === "error") {
+            streamError = event.error ?? "Erreur";
+          }
+        }
+      }
+
+      if (streamError) {
+        setError(streamError);
+      } else if (finalReply && streamingIndex === -1) {
+        // No token deltas arrived (e.g., fast path with single message) —
+        // append the final reply as-is.
+        setMessages((prev) => [...prev, { role: "assistant", content: finalReply ?? "" }]);
       }
     } catch {
       setError("Impossible de contacter l'assistant.");
     } finally {
       setLoading(false);
+      setToolStatus(null);
     }
   }, [messages, loading, pathname]);
 
@@ -294,11 +400,14 @@ export default function ChatWidget() {
                     fontSize: 13,
                     color: "var(--crm-text2)",
                     display: "flex",
-                    gap: 4,
+                    gap: 8,
                     alignItems: "center",
                   }}
                 >
                   <LoadingDots />
+                  {toolStatus && (
+                    <span style={{ fontSize: 12, color: "var(--crm-text2)" }}>{toolStatus}</span>
+                  )}
                 </div>
               </div>
             )}
@@ -386,6 +495,27 @@ export default function ChatWidget() {
       )}
     </>
   );
+}
+
+function friendlyToolLabel(name: string) {
+  const map: Record<string, string> = {
+    get_current_page_context: "Lecture de la page…",
+    search_crm: "Recherche dans le CRM…",
+    get_deal_dossier: "Lecture du dossier deal…",
+    get_lead_dossier: "Lecture du dossier lead…",
+    get_investor_dossier: "Lecture du dossier investisseur…",
+    get_today_work: "Calcul des priorités du jour…",
+    get_pipeline_health: "Analyse du pipeline…",
+    add_note: "Ajout de la note…",
+    schedule_follow_up: "Planification du suivi…",
+    update_deal_stage: "Mise à jour du stade…",
+    match_investors_to_deal: "Ranking investisseurs…",
+    create_deal_from_lead: "Création du deal…",
+    draft_text_message: "Rédaction du SMS…",
+    save_copilot_memory: "Mémorisation…",
+    delete_copilot_memory: "Oubli de la mémoire…",
+  };
+  return map[name] ?? `${name}…`;
 }
 
 function LoadingDots() {

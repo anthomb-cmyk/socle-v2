@@ -4,6 +4,7 @@ import type { Role } from "@/lib/auth";
 import { buildDefaultChecklists } from "@/lib/deals/defaults";
 import { normalizePhone } from "@/lib/twilio";
 import { autoLinkRecentInboundCallsToDeals } from "./auto-link-calls";
+import { saveCopilotMemory, deleteCopilotMemory } from "./memory";
 
 export type CopilotPageContext = {
   pathname?: string;
@@ -160,13 +161,14 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "update_deal_stage",
-      description: "Move a pipeline deal to another stage. Ask for confirmation before using if the user did not explicitly command the move.",
+      description: "Move a pipeline deal to another stage. Requires confirmed=true; without it, returns a preview for the user to approve.",
       parameters: {
         type: "object",
         properties: {
           dealId: { type: "string" },
           stage: { type: "string", enum: VALID_DEAL_STAGES },
           reason: { type: "string" },
+          confirmed: { type: "boolean" },
         },
         required: ["dealId", "stage"],
         additionalProperties: false,
@@ -202,6 +204,37 @@ export const COPILOT_TOOLS = [
           stage: { type: "string", enum: VALID_DEAL_STAGES },
         },
         required: ["leadId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_copilot_memory",
+      description: "Save a short durable note about the user (preference, fact, workflow, constraint) so future Copilot sessions can apply it. Use sparingly — only when the user states something that should persist across conversations.",
+      parameters: {
+        type: "object",
+        properties: {
+          body: { type: "string", description: "Under 400 chars. State the rule and (if relevant) the reason." },
+          kind: { type: "string", enum: ["preference", "fact", "workflow", "constraint"] },
+        },
+        required: ["body"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_copilot_memory",
+      description: "Remove a Copilot memory the user no longer wants. Pass the memory id surfaced in the loaded memory list.",
+      parameters: {
+        type: "object",
+        properties: {
+          memoryId: { type: "string" },
+        },
+        required: ["memoryId"],
         additionalProperties: false,
       },
     },
@@ -260,6 +293,14 @@ export async function runCopilotTool(name: string, rawArgs: string, ctx: Copilot
       return createDealFromLead(ctx, CreateDealFromLeadArgs.parse(args));
     case "draft_text_message":
       return draftTextMessage(ctx, DraftTextArgs.parse(args));
+    case "save_copilot_memory": {
+      const parsed = SaveMemoryArgs.parse(args);
+      return saveCopilotMemory(ctx.sb, ctx.user.id, parsed.body, parsed.kind ?? "preference");
+    }
+    case "delete_copilot_memory": {
+      const parsed = DeleteMemoryArgs.parse(args);
+      return deleteCopilotMemory(ctx.sb, ctx.user.id, parsed.memoryId);
+    }
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }
@@ -284,6 +325,7 @@ const UpdateDealStageArgs = z.object({
   dealId: z.string().min(1),
   stage: z.enum(VALID_DEAL_STAGES),
   reason: z.string().max(500).optional(),
+  confirmed: z.boolean().optional(),
 });
 const MatchInvestorsArgs = z.object({ dealId: z.string().min(1), limit: z.number().int().min(1).max(20).optional() });
 const CreateDealFromLeadArgs = z.object({
@@ -296,6 +338,11 @@ const DraftTextArgs = z.object({
   id: z.string().min(1),
   purpose: z.string().min(1).max(500),
 });
+const SaveMemoryArgs = z.object({
+  body: z.string().min(1).max(400),
+  kind: z.enum(["preference", "fact", "workflow", "constraint"]).optional(),
+});
+const DeleteMemoryArgs = z.object({ memoryId: z.string().min(1) });
 
 function IdArg(key: string) {
   return z.object({ [key]: z.string().min(1) });
@@ -368,9 +415,9 @@ async function searchCrm(ctx: CopilotToolContext, input: z.infer<typeof SearchAr
       calls: ((calls.data ?? []) as Array<{ transcript?: string | null; notes?: string | null; summary?: string | null }>)
         .map((call) => ({
           ...call,
-          transcript: excerpt(call.transcript, 700),
-          notes: excerpt(call.notes, 400),
-          summary: excerpt(call.summary, 500),
+          transcript: untrusted(excerpt(call.transcript, 700)),
+          notes: untrusted(excerpt(call.notes, 400)),
+          summary: untrusted(excerpt(call.summary, 500)),
         })),
     },
   };
@@ -509,13 +556,66 @@ async function getTodayWork(ctx: CopilotToolContext) {
     autoLinkRecentInboundCallsToDeals(ctx.sb, { limit: 100, source: "socle_copilot", triggeredBy: ctx.user.id }),
   ]);
 
+  const followUpRows = (followUps.data ?? []) as Array<{ id: string; lead_id: string | null; due_at: string; note: string; priority: number | null }>;
+  const reviewRows = (urgentReviews.data ?? []) as Array<{ id: string; title: string | null; created_at: string }>;
+  const leadRows = (readyLeads.data ?? []) as Array<{ lead_id: string; full_name: string | null; address: string | null; city: string | null; priority: number | null }>;
+  const dealRows = (hotDeals.data ?? []) as Array<{ id: string; title: string | null; stage: string | null; next_action: string | null; updated_at: string }>;
+
+  const nowMs = now.getTime();
+  const topPriorities: Array<{ type: string; id: string; why: string; suggestedAction: string; score: number }> = [];
+
+  for (const fu of followUpRows) {
+    const overdueHours = Math.max(0, (nowMs - new Date(fu.due_at).getTime()) / 3_600_000);
+    topPriorities.push({
+      type: "follow_up",
+      id: fu.id,
+      why: overdueHours > 1
+        ? `Suivi en retard de ${Math.round(overdueHours)}h: ${fu.note.slice(0, 80)}`
+        : `Suivi dû aujourd'hui: ${fu.note.slice(0, 80)}`,
+      suggestedAction: "Appeler ou texter, puis complete_follow_up.",
+      score: 1000 + Math.min(overdueHours, 168) * 5 + (fu.priority ?? 0),
+    });
+  }
+  for (const rv of reviewRows) {
+    const ageHours = (nowMs - new Date(rv.created_at).getTime()) / 3_600_000;
+    topPriorities.push({
+      type: "review_item",
+      id: rv.id,
+      why: `Review urgent: ${rv.title ?? "(sans titre)"}`,
+      suggestedAction: "Ouvre /reviews et résous l'item.",
+      score: 800 + Math.min(ageHours, 168),
+    });
+  }
+  for (const deal of dealRows) {
+    if (!deal.next_action) {
+      topPriorities.push({
+        type: "deal",
+        id: deal.id,
+        why: `Deal chaud sans next_action: ${deal.title ?? deal.id}`,
+        suggestedAction: "Définis un next_action ou planifie un follow-up.",
+        score: 600,
+      });
+    }
+  }
+  for (const lead of leadRows.slice(0, 5)) {
+    topPriorities.push({
+      type: "lead",
+      id: lead.lead_id,
+      why: `Lead prêt à appeler: ${lead.full_name ?? lead.address ?? lead.lead_id}`,
+      suggestedAction: "Compose depuis /calls.",
+      score: 400 + (lead.priority ?? 0),
+    });
+  }
+  topPriorities.sort((a, b) => b.score - a.score);
+
   return {
     ok: true,
     date: now.toISOString(),
-    followUps: followUps.data ?? [],
-    urgentReviews: urgentReviews.data ?? [],
-    readyLeads: readyLeads.data ?? [],
-    hotDeals: hotDeals.data ?? [],
+    topPriorities: topPriorities.slice(0, 8),
+    followUps: followUpRows,
+    urgentReviews: reviewRows,
+    readyLeads: leadRows,
+    hotDeals: dealRows,
     autoLinkedCalls: autoLinked,
   };
 }
@@ -530,14 +630,58 @@ async function getPipelineHealth(ctx: CopilotToolContext, limit = 20) {
     .limit(Math.min(limit, 50));
   if (error) return { ok: false, error: error.message };
   const deals = data ?? [];
+  const stale = deals.filter((deal) => String(deal.updated_at ?? "") < staleCutoff);
+  const missingNextAction = deals.filter((deal) => !deal.next_action);
+  const missingSellerPhone = deals.filter((deal) => !normalizePhone(deal.contact_phone ?? ""));
+  const missingSellerNotes = deals.filter((deal) => !deal.notes_vendeur);
+
+  const issues = stale.length + missingNextAction.length + missingSellerPhone.length;
+  const verdictRank = issues === 0 ? "healthy" : issues < 5 ? "minor" : issues < 12 ? "moderate" : "needs_attention";
+  const topRisk = pickTopRisk(stale, missingNextAction, missingSellerPhone);
+
   return {
     ok: true,
     staleCutoff,
-    stale: deals.filter((deal) => String(deal.updated_at ?? "") < staleCutoff),
-    missingNextAction: deals.filter((deal) => !deal.next_action),
-    missingSellerPhone: deals.filter((deal) => !normalizePhone(deal.contact_phone ?? "")),
-    missingSellerNotes: deals.filter((deal) => !deal.notes_vendeur),
+    verdict: verdictRank,
+    issueCount: issues,
+    topRisk,
+    stale,
+    missingNextAction,
+    missingSellerPhone,
+    missingSellerNotes,
   };
+}
+
+function pickTopRisk(
+  stale: Array<Record<string, unknown>>,
+  missingNextAction: Array<Record<string, unknown>>,
+  missingSellerPhone: Array<Record<string, unknown>>,
+) {
+  if (stale.length > 0) {
+    const oldest = stale[0];
+    return {
+      category: "stale",
+      message: `${stale.length} deal(s) sans activité depuis 14j. Plus ancien: ${String(oldest?.title ?? oldest?.id ?? "")}`,
+      dealId: oldest?.id ?? null,
+    };
+  }
+  if (missingNextAction.length > 0) {
+    const first = missingNextAction[0];
+    return {
+      category: "missing_next_action",
+      message: `${missingNextAction.length} deal(s) sans next_action. Commence par: ${String(first?.title ?? first?.id ?? "")}`,
+      dealId: first?.id ?? null,
+    };
+  }
+  if (missingSellerPhone.length > 0) {
+    const first = missingSellerPhone[0];
+    return {
+      category: "missing_seller_phone",
+      message: `${missingSellerPhone.length} deal(s) sans téléphone vendeur.`,
+      dealId: first?.id ?? null,
+    };
+  }
+  return null;
 }
 
 async function addNote(ctx: CopilotToolContext, input: z.infer<typeof AddNoteArgs>) {
@@ -639,6 +783,23 @@ async function updateDealStage(ctx: CopilotToolContext, input: z.infer<typeof Up
   const resolved = await resolveDealReference(ctx, input.dealId, "id,activities,stage,title");
   if (!resolved.ok) return resolved;
   const deal = resolved.deal;
+  if (deal.stage === input.stage) {
+    return { ok: true, noop: true, dealId: deal.id, title: deal.title, stage: input.stage };
+  }
+  if (!input.confirmed) {
+    return {
+      ok: true,
+      requires_confirmation: true,
+      preview: {
+        dealId: deal.id,
+        title: deal.title,
+        previousStage: deal.stage,
+        stage: input.stage,
+        reason: input.reason ?? null,
+      },
+      message: "Confirm with confirmed=true to apply this stage change.",
+    };
+  }
   const activities = Array.isArray(deal.activities) ? deal.activities : [];
   const text = `Stade changé via Copilot: ${deal.stage} → ${input.stage}${input.reason ? ` · ${input.reason}` : ""}`;
   const { error } = await ctx.sb.from("deals").update({
@@ -656,39 +817,77 @@ async function matchInvestorsToDeal(ctx: CopilotToolContext, input: z.infer<type
   const resolved = await resolveDealReference(ctx, input.dealId, "id,title,address,units,asking_price,offer_price,temperature,priority");
   if (!resolved.ok) return resolved;
   const [investorsRes] = await Promise.all([
-    ctx.sb.from("investors").select("id,full_name,firm_name,status,capital_available_cad,ticket_size_min_cad,ticket_size_max_cad,preferred_geography,asset_class_focus,notes").eq("status", "active").limit(500),
+    ctx.sb.from("investors").select("id,full_name,firm_name,status,capital_available_cad,ticket_size_min_cad,ticket_size_max_cad,preferred_geography,asset_class_focus,notes,updated_at").eq("status", "active").limit(500),
   ]);
   const deal = resolved.deal;
   const price = Number(deal.offer_price ?? deal.asking_price ?? 0);
-  const dealText = [deal.title, deal.address].filter(Boolean).join(" ").toLowerCase();
+  const dealText = normalizeDealText(String([deal.title, deal.address].filter(Boolean).join(" ")));
+  const nowMs = Date.now();
   const ranked = ((investorsRes.data ?? []) as Array<Record<string, unknown>>).map((inv) => {
     let score = 0;
     const reasons: string[] = [];
+
+    let geoHit: string | null = null;
     for (const geo of splitTags(String(inv.preferred_geography ?? ""))) {
-      if (dealText.includes(geo.toLowerCase())) {
-        score += 35;
-        reasons.push(`géo: ${geo}`);
-        break;
-      }
+      if (geoMatches(dealText, geo)) { geoHit = geo; break; }
     }
+    if (geoHit) {
+      score += 35;
+      reasons.push(`géo: ${geoHit}`);
+    }
+
     const min = Number(inv.ticket_size_min_cad ?? 0);
     const max = Number(inv.ticket_size_max_cad ?? 0);
-    if (price > 0 && (!min || price >= min) && (!max || price <= max)) {
-      score += 30;
-      reasons.push("ticket overlap");
+    if (price > 0) {
+      if ((!min || price >= min) && (!max || price <= max)) {
+        score += 30;
+        reasons.push("ticket overlap");
+      } else if (min && price < min * 0.7) {
+        score -= 15;
+        reasons.push("ticket trop petit");
+      } else if (max && price > max * 1.3) {
+        score -= 15;
+        reasons.push("ticket trop gros");
+      }
     }
+
     if (Number(inv.capital_available_cad ?? 0) >= price && price > 0) {
       score += 20;
       reasons.push("capital suffisant");
     }
+
     const focus = String(inv.asset_class_focus ?? "") + " " + String(inv.notes ?? "");
     if (deal.units && /plex|multi|multifamil/i.test(focus)) {
       score += 10;
       reasons.push("focus multifamilial");
     }
+
+    const updatedAt = inv.updated_at ? new Date(String(inv.updated_at)).getTime() : 0;
+    if (updatedAt) {
+      const daysSince = (nowMs - updatedAt) / 86_400_000;
+      if (daysSince < 30) {
+        score += 8;
+        reasons.push("récemment actif");
+      } else if (daysSince > 180) {
+        score -= 5;
+      }
+    }
+
     return { investor: inv, score, reasons };
   }).sort((a, b) => b.score - a.score).slice(0, limit);
   return { ok: true, deal, matches: ranked };
+}
+
+// Geography matching: token-aware, accent-insensitive, and tolerant of
+// hyphenated Quebec names (Montréal-Nord, Laval-des-Rapides, etc.).
+function geoMatches(dealTextNormalized: string, geo: string) {
+  const normalizedGeo = normalizeDealText(geo);
+  if (!normalizedGeo) return false;
+  if (dealTextNormalized.includes(normalizedGeo)) return true;
+  for (const part of normalizedGeo.split(/\s+/)) {
+    if (part.length >= 4 && dealTextNormalized.includes(part)) return true;
+  }
+  return false;
 }
 
 async function createDealFromLead(ctx: CopilotToolContext, input: z.infer<typeof CreateDealFromLeadArgs>) {
@@ -735,24 +934,35 @@ async function createDealFromLead(ctx: CopilotToolContext, input: z.infer<typeof
 
 async function draftTextMessage(ctx: CopilotToolContext, input: z.infer<typeof DraftTextArgs>) {
   let target: Record<string, unknown> | null = null;
+  let recentCalls: unknown[] = [];
   if (input.targetType === "deal") {
-    const { data } = await ctx.sb.from("deals").select("id,title,contact_name,address,contact_phone,next_action").eq("id", input.id).maybeSingle();
+    const { data } = await ctx.sb.from("deals").select("id,title,contact_name,address,contact_phone,next_action,notes_vendeur,stage").eq("id", input.id).maybeSingle();
     target = data;
+    if (data) {
+      const { data: calls } = await ctx.sb
+        .from("call_logs")
+        .select("recorded_at,outcome,summary")
+        .filter("raw->>deal_id", "eq", String(data.id))
+        .order("recorded_at", { ascending: false })
+        .limit(3);
+      recentCalls = calls ?? [];
+    }
   } else if (input.targetType === "lead") {
     const { data } = await ctx.sb.from("leads_view").select("lead_id,full_name,company_name,address,city,best_phone").eq("lead_id", input.id).maybeSingle();
     target = data;
   } else if (ctx.role === "admin") {
-    const { data } = await ctx.sb.from("investors").select("id,full_name,firm_name,phone_e164,city").eq("id", input.id).maybeSingle();
+    const { data } = await ctx.sb.from("investors").select("id,full_name,firm_name,phone_e164,city,preferred_geography,ticket_size_min_cad,ticket_size_max_cad").eq("id", input.id).maybeSingle();
     target = data;
   }
   if (!target) return { ok: false, error: "Target not found or not allowed." };
-  const name = String(target.contact_name ?? target.full_name ?? "").split(/\s+/)[0] || "Bonjour";
-  const place = [target.address, target.city, target.title].filter(Boolean)[0];
   return {
     ok: true,
+    targetType: input.targetType,
+    purpose: input.purpose,
     target,
-    draft: `${name}, c'est Anthony de Socle Acquisitions. Je te texte au sujet de ${place ?? "votre immeuble"}. ${input.purpose} Est-ce qu'on peut se parler 5 minutes aujourd'hui ?`,
-    warning: "Draft only. It has not been sent.",
+    recentCalls,
+    guidance: "Write the SMS in the user's language, under 320 chars, friendly but professional, sign as Anthony from Socle Acquisitions. Do not send — just propose the text and ask the user to confirm.",
+    warning: "Draft only. SMS is not sent by this tool.",
   };
 }
 
@@ -764,37 +974,53 @@ function matchPath(path: string, pattern: RegExp) {
 async function resolveDealReference(
   ctx: CopilotToolContext,
   reference: string,
-  _select = "*",
+  select = "*",
 ): Promise<{ ok: true; deal: Record<string, unknown> } | { ok: false; error: string; candidates?: unknown[] }> {
-  void _select;
+  // Always include the columns we need for scoring + display alongside whatever caller asked for.
+  const requiredCols = ["id", "title", "stage", "address", "contact_name", "contact_phone", "updated_at", "activities"];
+  const selectCols = mergeSelect(select, requiredCols);
   const ref = reference.trim();
   if (!ref) return { ok: false, error: "Deal reference is empty." };
 
   const currentPageDealId = matchPath(ctx.page.pathname ?? "", /^\/pipeline\/([^/?#]+)/);
   if (currentPageDealId && !isUuid(ref) && isWeakDealReference(ref)) {
-    const { data, error } = await ctx.sb.from("deals").select("*").eq("id", currentPageDealId).maybeSingle();
+    const { data, error } = await ctx.sb.from("deals").select(selectCols).eq("id", currentPageDealId).maybeSingle();
     if (error) return { ok: false, error: error.message };
-    if (data) return { ok: true, deal: data as Record<string, unknown> };
+    if (data) return { ok: true, deal: data as unknown as Record<string, unknown> };
   }
 
   if (isUuid(ref)) {
-    const { data, error } = await ctx.sb.from("deals").select("*").eq("id", ref).maybeSingle();
+    const { data, error } = await ctx.sb.from("deals").select(selectCols).eq("id", ref).maybeSingle();
     if (error) return { ok: false, error: error.message };
-    if (data) return { ok: true, deal: data as Record<string, unknown> };
+    if (data) return { ok: true, deal: data as unknown as Record<string, unknown> };
     return { ok: false, error: `Deal not found for id ${ref}.` };
   }
 
   const phone = normalizePhone(ref);
-  const { data, error } = await ctx.sb
+  const tokens = dealReferenceTokens(ref);
+
+  // Pre-filter in SQL: phone match, or any strong token matches title/address/contact_name.
+  // Falls back to a small recent slice if neither yields candidates.
+  const orFilters: string[] = [];
+  if (phone) orFilters.push(`contact_phone.ilike.%${phone}%`);
+  for (const token of tokens.filter((t) => t.length >= 4).slice(0, 3)) {
+    const safe = token.replace(/[%_,()]/g, " ");
+    orFilters.push(`title.ilike.%${safe}%`);
+    orFilters.push(`address.ilike.%${safe}%`);
+    orFilters.push(`contact_name.ilike.%${safe}%`);
+  }
+
+  let query = ctx.sb
     .from("deals")
-    .select("*")
+    .select(selectCols)
     .not("stage", "in", '("cloture","abandonne")')
     .order("updated_at", { ascending: false })
-    .limit(1000);
-  if (error) return { ok: false, error: error.message };
+    .limit(80);
+  if (orFilters.length > 0) query = query.or(orFilters.join(","));
 
-  const tokens = dealReferenceTokens(ref);
-  const scored = ((data ?? []) as Array<Record<string, unknown>>)
+  const { data, error } = await query;
+  if (error) return { ok: false, error: error.message };
+  const scored = ((data ?? []) as unknown as Array<Record<string, unknown>>)
     .map((deal) => {
       const haystack = normalizeDealText([
         deal.title,
@@ -835,6 +1061,13 @@ async function resolveDealReference(
   return { ok: true, deal: top.deal };
 }
 
+function mergeSelect(select: string, required: string[]) {
+  if (select === "*" || !select.trim()) return "*";
+  const cols = new Set(select.split(",").map((c) => c.trim()).filter(Boolean));
+  for (const col of required) cols.add(col);
+  return Array.from(cols).join(",");
+}
+
 function sanitizeSearch(value: string) {
   return value.trim().replace(/[%_,()]/g, " ").replace(/\s+/g, " ").slice(0, 80);
 }
@@ -849,10 +1082,16 @@ function compactCall(row: unknown) {
   const call = row as Record<string, unknown>;
   return {
     ...call,
-    transcript: excerpt(String(call.transcript ?? ""), 900),
-    notes: excerpt(String(call.notes ?? ""), 500),
-    summary: excerpt(String(call.summary ?? ""), 600),
+    transcript: untrusted(excerpt(String(call.transcript ?? ""), 900)),
+    notes: untrusted(excerpt(String(call.notes ?? ""), 500)),
+    summary: untrusted(excerpt(String(call.summary ?? ""), 600)),
   };
+}
+
+// Wrap raw user/3rd-party text so the model knows it is data, not instructions.
+function untrusted(value: string | null) {
+  if (!value) return null;
+  return `<<UNTRUSTED>>${value}<<END>>`;
 }
 
 function appendBlock(existing: string, heading: string, body: string) {
