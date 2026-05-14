@@ -1,6 +1,5 @@
 "use client";
-// Floating CRM assistant chatbox — bottom-right corner.
-// Uses /api/chat (gpt-4o-mini with CRM system prompt).
+// Floating Socle Copilot — CRM-aware assistant in the bottom-right corner.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
@@ -16,10 +15,10 @@ type Message = {
 };
 
 const SUGGESTED_QUESTIONS = [
-  "Comment enrichir les téléphones d'un lead ?",
-  "Quels sont les statuts des leads ?",
-  "Comment fonctionne la file d'appels ?",
-  "Comment ajouter un nouvel utilisateur ?",
+  "Résume cette page et donne-moi la prochaine action.",
+  "Quels deals demandent mon attention aujourd'hui ?",
+  "Trouve les appels entrants non rattachés.",
+  "Qui devrait être rappelé en priorité ?",
 ];
 
 export default function ChatWidget() {
@@ -61,7 +60,13 @@ export default function ChatWidget() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          messages: newMessages,
+          context: {
+            pathname: pathname ?? "",
+            href: typeof window !== "undefined" ? window.location.href : "",
+          },
+        }),
       });
 
       const data = await res.json();
@@ -76,7 +81,7 @@ export default function ChatWidget() {
     } finally {
       setLoading(false);
     }
-  }, [messages, loading]);
+  }, [messages, loading, pathname]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -115,7 +120,7 @@ export default function ChatWidget() {
           transform: open ? "scale(0.92)" : "scale(1)",
         }}
       >
-        {open ? "×" : "Chat"}
+        {open ? "×" : "AI"}
       </button>
 
       {/* Chat panel — full-screen on mobile, anchored bubble on desktop */}
@@ -154,10 +159,10 @@ export default function ChatWidget() {
             
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, color: "var(--crm-text)" }}>
-                Assistant Socle
+                Copilot Socle
               </div>
               <div style={{ fontSize: 11, color: "var(--crm-text2)", marginTop: 1 }}>
-                Posez vos questions sur le CRM
+                Comprend et agit sur le CRM
               </div>
             </div>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
@@ -222,7 +227,7 @@ export default function ChatWidget() {
             {messages.length === 0 && !loading && (
               <div style={{ paddingTop: 4 }}>
                 <p style={{ fontSize: 13, color: "var(--crm-text2)", marginBottom: 12 }}>
-                  Bonjour ! Je connais le CRM Socle en détail. Que puis-je vous expliquer ?
+                  Je peux lire cette page, chercher dans le CRM, résumer les appels, ajouter des notes et planifier des suivis.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {SUGGESTED_QUESTIONS.map((q) => (
@@ -333,7 +338,7 @@ export default function ChatWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Posez votre question…"
+              placeholder="Demande une action ou une analyse…"
               rows={1}
               disabled={loading}
               style={{

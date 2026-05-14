@@ -1,122 +1,85 @@
 // POST /api/chat
 //
-// Chatbox assistant for Socle CRM — answers questions about the system in French.
-// Uses gpt-4o-mini with a CRM-specific system prompt.
-//
-// Body: { messages: { role: "user" | "assistant"; content: string }[] }
-// Returns: { ok: true; reply: string }
+// Socle Copilot: CRM-aware assistant with safe tool access.
+// Body: {
+//   messages: { role: "user" | "assistant"; content: string }[],
+//   context?: { pathname?: string; href?: string }
+// }
 
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
 import OpenAI from "openai";
+import { requireUser } from "@/lib/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { autoLinkRecentInboundCallsToDeals } from "@/lib/copilot/auto-link-calls";
+import { COPILOT_TOOLS, runCopilotTool, type CopilotPageContext } from "@/lib/copilot/tools";
 
-const CRM_SYSTEM_PROMPT = `Tu es l'assistant intelligent intégré au CRM Socle — un système d'acquisition d'immeubles multifamiliaux au Québec / You are the intelligent assistant embedded in Socle CRM — a multifamily acquisition system in Quebec.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-LANGUAGE RULE: Reply in the SAME language the user wrote in. If the user writes in French, reply in French. If the user writes in English, reply in English. If the user writes in another language, reply in that language. Never refuse to switch languages — match the user.
+type ClientMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
-Tu réponds de manière concise et utile. Tu connais le système en détail et tu aides l'équipe à l'utiliser efficacement.
+type ChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+};
 
-## Le CRM Socle en bref
-Socle CRM permet à une équipe d'acquisition d'immeuble à revenus (plex, multifamilial) au Québec de gérer l'ensemble du processus :
-Import de rôles d'évaluation → Enrichissement des numéros de téléphone → Revue des candidats → Assignation aux appelants → File d'appels → Appels Twilio → Suivis → Deals (pipeline)
+const SYSTEM_PROMPT = `You are Socle Copilot, the intelligent operational assistant embedded inside Socle CRM.
 
-## Entités principales
+Language:
+- Reply in the same language the user used.
+- Anthony often mixes French and English; mirror him naturally.
 
-**Leads** : Un lead = une propriété + un propriétaire (contact) + un statut. Statuts possibles :
-- \`new\` : Nouveau lead importé, pas encore traité
-- \`ready_to_call\` : Téléphone enrichi et validé, prêt à être appelé
-- \`in_outreach\` : En cours de démarchage actif
-- \`no_answer\` : Pas de réponse lors d'un appel
-- \`phone_verified\` : Téléphone confirmé lors d'un appel
-- \`call_back_later\` : Le propriétaire a demandé à être rappelé plus tard
-- \`wrong_number\` : Mauvais numéro de téléphone
-- \`not_interested\` : Propriétaire pas intéressé à vendre
-- \`qualified\` : Lead qualifié (vendeur sérieux)
-- \`disqualified\` : Disqualifié
-- \`sold\` : Immeuble vendu
+Mission:
+- You understand the CRM data, not just the app documentation.
+- Use tools whenever the user asks about actual CRM state, a page, a lead, a deal, a call, an investor, a follow-up, or today's work.
+- Be concise, practical, and action-oriented.
 
-**Contacts** : Les propriétaires. Types :
-- \`person\` : Personne physique
-- \`company\` : Compagnie (ex: Gestion XYZ Inc.)
-- \`numbered_co\` : Compagnie à numéro (ex: 9234-1871 Québec inc.)
-- \`trust\` : Fiducie
+CRM scope:
+- Socle acquires Quebec multifamily buildings.
+- Core objects: leads, contacts, properties, phones, call_logs, transcripts, follow_ups, review_items, deals, investors, investor_deals, SMS automation events.
+- Pipeline stages: prospection, analyse, offre, due_diligence, financement, cloture, abandonne.
 
-**Propriétés** : Les immeubles. Chaque lead est lié à une propriété (adresse, ville, nombre d'unités, valeur d'évaluation).
+Important behavior:
+- Incoming calls that match a deal by seller phone are automatically linked by the system. Do not ask permission for that maintenance task.
+- Before answering about a current page, call get_current_page_context.
+- For questions like "what should I do next?", inspect the relevant dossier and give a prioritized answer.
+- For deal work, separate building facts, seller motivation, price/terms, risks, and next action.
+- For cold caller workflow, focus on what helps the caller act now.
 
-**Campagnes** : Un import de rôle crée une campagne. Les leads sont regroupés par campagne.
+Safety:
+- Read-only tools are always allowed.
+- Saving a note, scheduling a follow-up, or moving a deal stage is allowed when the user clearly asks.
+- Creating a deal from a lead requires confirmation unless the user already explicitly confirmed.
+- Never send SMS, delete records, reject/approve important review items, or perform bulk destructive actions unless a dedicated confirmed tool exists and the user explicitly confirms.
+- If a requested action is not implemented as a tool, explain that clearly and offer the closest safe next step.
 
-## Sections du CRM
-
-### Tableau de bord (admin seulement)
-Vue d'ensemble des stats clés : leads totaux, en cours de démarchage, prêts à appeler, deals chauds.
-
-### Leads (/leads)
-- Admins voient tous les leads du système avec filtres et stats
-- Appelants voient uniquement leurs leads assignés
-- Vue table ou kanban disponible
-- Stats : Total, Appelables, Non assignés (admin) / Sans téléphone (caller), Prêts à appeler
-
-### File d'appels (/calls/queue)
-La file personnelle de l'appelant. Affiche les leads prêts à appeler dans l'ordre de priorité. Chaque lead peut être appelé directement via Twilio (appel bridgé : Twilio appelle le téléphone du caller, puis connecte au propriétaire).
-
-### Import rôle (/import)
-Importe les fichiers de rôle d'évaluation municipaux (Excel/CSV). Le parseur détecte automatiquement le format. Une confirmation est requise avant de créer les leads.
-
-### Revue (/review)
-File de revue des candidats téléphoniques trouvés par l'enrichissement automatique (OpenClaw/web). L'admin approuve ou rejette chaque numéro.
-
-### Enrichissement (/admin/enrichment)
-Suivi des jobs d'enrichissement téléphonique. Le pipeline cherche le numéro de téléphone du propriétaire via plusieurs sources (registre foncier, web scraping).
-
-### Pipeline deals (/pipeline)
-Kanban des deals actifs. Étapes : prospection → contact → analyse → offre → due diligence → clôture (ou abandon).
-
-### Calendrier (/calendar)
-Vue des suivis planifiés (follow-ups) par date.
-
-### Carte (/map)
-Vue géographique des propriétés.
-
-### Téléphones à réviser (/phone-review)
-File d'attente admin pour approuver les candidats téléphoniques de l'enrichissement.
-
-## Appels Twilio
-- L'appelant clique "📞 Appel" dans son espace de travail
-- Twilio appelle son téléphone (forward_to configuré dans son profil)
-- Quand il décroche, Twilio bridge l'appel vers le numéro du propriétaire
-- L'appel est enregistré en double piste (appelant + propriétaire)
-- La transcription est générée via Whisper (OpenAI)
-- L'IA peut organiser la transcription en notes structurées (résumé, niveau d'intérêt, objections, prochaines étapes)
-
-## Rôles utilisateur
-- **admin** : Accès complet à tout le système. Import, revue, enrichissement, pipeline, admin.
-- **caller** : Accès à ses leads assignés, file d'appels, suivis, calendrier.
-
-## Conseils pratiques
-- Pour ajouter un lead manuellement : /leads → "+ Nouveau lead" (admin seulement)
-- Pour assigner des leads à un appelant : table leads → icône d'assignation (admin)
-- Pour enrichir les téléphones d'un lead : ouvrir le lead → bouton enrichissement
-- Pour écouter/transcrire un enregistrement : /calls/[leadId] → "Obtenir transcription"
-- Si un appelant ne reçoit pas les appels Twilio : vérifier son twilio_forward_to dans /admin/users
-
-## Réponses courtes et directes
-- Si on te demande "comment faire X", explique les étapes concrètes
-- Si on te demande une info sur un statut ou une entité, réponds directement
-- Pour les questions hors périmètre du CRM, réponds quand même de manière utile
-`;
+Output:
+- When you used tools, summarize the result; do not dump raw JSON.
+- If an action succeeded, say exactly what changed and where.
+- If data is missing, say "je ne vois pas cette donnée" / "I don't see that data", never invent it.`;
 
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
+  const { user, role } = auth;
 
-  let body: { messages?: { role: string; content: string }[] };
+  let body: { messages?: ClientMessage[]; context?: CopilotPageContext };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const messages = body.messages ?? [];
+  const messages = sanitizeMessages(body.messages ?? []);
   if (!messages.length) {
     return NextResponse.json({ ok: false, error: "No messages provided" }, { status: 400 });
   }
@@ -126,26 +89,117 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "OPENAI_API_KEY not configured" }, { status: 503 });
   }
 
+  const sb = createSupabaseAdminClient();
+  const autoLinked = await autoLinkRecentInboundCallsToDeals(sb, {
+    limit: 100,
+    source: "socle_copilot_preflight",
+    triggeredBy: user.id,
+  }).catch(() => []);
+
+  const page = {
+    pathname: typeof body.context?.pathname === "string" ? body.context.pathname : "",
+    href: typeof body.context?.href === "string" ? body.context.href : "",
+  };
+
   const openai = new OpenAI({ apiKey });
+  const model = process.env.SOCLE_COPILOT_MODEL?.trim()
+    || process.env.OPENAI_CHAT_MODEL?.trim()
+    || "gpt-4o";
+
+  const modelMessages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: [
+        `Current user id: ${user.id}`,
+        `Current user role: ${role}`,
+        `Current CRM path: ${page.pathname || "/"}`,
+        page.href ? `Current URL: ${page.href}` : null,
+        autoLinked.length
+          ? `Preflight maintenance: auto-linked ${autoLinked.length} inbound call(s) to pipeline deals: ${JSON.stringify(autoLinked)}`
+          : "Preflight maintenance: no unlinked inbound deal calls found.",
+      ].filter(Boolean).join("\n"),
+    },
+    ...messages,
+  ];
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.4,
-      max_tokens: 600,
-      messages: [
-        { role: "system", content: CRM_SYSTEM_PROMPT },
-        ...messages.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        })),
-      ],
-    });
+    for (let step = 0; step < 6; step++) {
+      const completion = await openai.chat.completions.create({
+        model,
+        temperature: 0.2,
+        max_tokens: 1100,
+        messages: modelMessages as never,
+        tools: COPILOT_TOOLS as never,
+        tool_choice: "auto",
+      });
 
-    const reply = completion.choices[0]?.message?.content?.trim() ?? "";
-    return NextResponse.json({ ok: true, reply });
+      const msg = completion.choices[0]?.message;
+      if (!msg) return NextResponse.json({ ok: false, error: "No model response" }, { status: 502 });
+
+      const toolCalls = (msg.tool_calls ?? []).filter((call) => call.type === "function");
+      if (toolCalls.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          reply: msg.content?.trim() ?? "",
+          model,
+          autoLinked,
+        });
+      }
+
+      modelMessages.push({
+        role: "assistant",
+        content: msg.content ?? null,
+        tool_calls: toolCalls.map((call) => ({
+          id: call.id,
+          type: "function",
+          function: {
+            name: call.function.name,
+            arguments: call.function.arguments,
+          },
+        })),
+      });
+
+      for (const call of toolCalls) {
+        let result: unknown;
+        try {
+          result = await runCopilotTool(call.function.name, call.function.arguments, {
+            sb,
+            user,
+            role,
+            page,
+          });
+        } catch (err) {
+          result = { ok: false, error: (err as Error).message };
+        }
+
+        modelMessages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: truncateToolResult(result),
+        });
+      }
+    }
+
+    return NextResponse.json({ ok: false, error: "Tool loop limit reached" }, { status: 502 });
   } catch (err) {
     const msg = (err as Error).message ?? "Unknown error";
     return NextResponse.json({ ok: false, error: msg }, { status: 502 });
   }
+}
+
+function sanitizeMessages(messages: ClientMessage[]) {
+  return messages
+    .filter((m): m is ClientMessage =>
+      (m.role === "user" || m.role === "assistant") &&
+      typeof m.content === "string" &&
+      m.content.trim().length > 0,
+    )
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
+}
+
+function truncateToolResult(value: unknown) {
+  const text = JSON.stringify(value);
+  return text.length > 14000 ? `${text.slice(0, 14000)}...` : text;
 }
