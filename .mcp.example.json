@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "socle": {
+      "command": "node",
+      "args": [
+        "/Users/anthonymakeen/Documents/New project/socle-v2/web/scripts/socle-mcp.mjs"
+      ],
+      "env": {
+        "SOCLE_APP_BASE_URL": "https://socle-v2-production.up.railway.app",
+        "SOCLE_MCP_AUTH_EMAIL": "your-socle-login-email@example.com",
+        "SOCLE_MCP_ALLOW_WRITES": "false"
+      }
+    }
+  }
+}
