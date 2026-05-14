@@ -105,7 +105,7 @@ export async function GET(request: Request) {
         .order("num_units", { ascending: false, nullsFirst: false }),
       sb
         .from("letter_interactions")
-        .select("id,recipient_id,outcome,notes,next_action,follow_up_at,created_at")
+        .select("id,recipient_id,outcome,notes,transcript,inbound_phone,call_started_at,source,next_action,follow_up_at,created_at")
         .in("recipient_id", ids)
         .order("created_at", { ascending: false })
         .limit(150),

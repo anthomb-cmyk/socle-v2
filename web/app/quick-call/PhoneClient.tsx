@@ -21,6 +21,11 @@ export type RecentCall = {
   address: string | null;
   durationSec: number | null;
   recordedAt: string | null;
+  notes: string | null;
+  transcript: string | null;
+  transcriptStatus: string | null;
+  summary: string | null;
+  outcome: string | null;
   missed: boolean;
 };
 
@@ -100,6 +105,25 @@ function firstNameOf(name: string | null): string | null {
   if (!name) return null;
   const first = name.trim().split(/\s+/)[0];
   return first || null;
+}
+
+function inferNameFromTranscript(text: string | null): string | null {
+  if (!text) return null;
+  const compact = text.replace(/\s+/g, " ").trim();
+  const patterns = [
+    /\b(?:mon nom est|moi c'est|je suis|c'est)\s+([A-ZÀ-ÖØ-Þ][\p{L}'-]+(?:\s+[A-ZÀ-ÖØ-Þ][\p{L}'-]+){0,2})/iu,
+    /\b(?:my name is|this is|i am|i'm)\s+([A-Z][a-z'-]+(?:\s+[A-Z][a-z'-]+){0,2})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = compact.match(pattern);
+    const name = match?.[1]?.trim();
+    if (name && name.length <= 60) return name;
+  }
+  return null;
+}
+
+function hasCallText(call: RecentCall): boolean {
+  return Boolean(call.notes?.trim() || call.summary?.trim() || call.transcript?.trim() || call.outcome);
 }
 
 // ── Keypad button definitions (1-9, *, 0, #) ────────────────────────────
@@ -550,9 +574,12 @@ function RecentsPane({
 }
 
 function CallRow({ call, onRecall }: { call: RecentCall; onRecall: (c: RecentCall) => void }) {
+  const [open, setOpen] = useState(false);
   const isUnknown = !call.name;
   const linked = Boolean(call.leadId || call.contactId || call.investorId);
   const initials = initialsFor(call.name);
+  const inferredName = isUnknown ? inferNameFromTranscript(call.transcript || call.summary || call.notes) : null;
+  const canOpen = hasCallText(call);
 
   const dirIconCls = call.missed
     ? "ph-call-av__dir ph-call-av__dir--miss"
@@ -591,6 +618,11 @@ function CallRow({ call, onRecall }: { call: RecentCall; onRecall: (c: RecentCal
             <PipelineIcon />
             {call.address}
           </span>
+        ) : inferredName ? (
+          <span className="ph-call-link">
+            <SearchIcon />
+            Possible: {inferredName}
+          </span>
         ) : isUnknown ? (
           <span className="ph-call-link">
             <PlusIcon />
@@ -621,6 +653,15 @@ function CallRow({ call, onRecall }: { call: RecentCall; onRecall: (c: RecentCal
           {body}
         </button>
       )}
+      {canOpen ? (
+        <button
+          type="button"
+          className="ph-call-note-toggle"
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? "Masquer" : "Notes"}
+        </button>
+      ) : null}
       <button
         type="button"
         className="ph-call-action"
@@ -629,6 +670,51 @@ function CallRow({ call, onRecall }: { call: RecentCall; onRecall: (c: RecentCal
       >
         <PhoneSmallIcon />
       </button>
+      {open && canOpen ? <CallTextPanel call={call} inferredName={inferredName} /> : null}
+    </div>
+  );
+}
+
+function CallTextPanel({ call, inferredName }: { call: RecentCall; inferredName: string | null }) {
+  return (
+    <div className="ph-call-text">
+      <div className="ph-call-text__grid">
+        <div>
+          <span>Direction</span>
+          <strong>{call.direction === "inbound" ? "Entrant" : "Sortant"}</strong>
+        </div>
+        <div>
+          <span>Outcome</span>
+          <strong>{call.outcome ? call.outcome.replace(/_/g, " ") : "—"}</strong>
+        </div>
+        <div>
+          <span>Transcript</span>
+          <strong>{call.transcriptStatus ?? (call.transcript ? "completed" : "—")}</strong>
+        </div>
+      </div>
+      {inferredName ? (
+        <div className="ph-call-text__hint">
+          Suggested name from transcript: <strong>{inferredName}</strong>
+        </div>
+      ) : null}
+      {call.summary ? (
+        <section>
+          <h4>Summary</h4>
+          <p>{call.summary}</p>
+        </section>
+      ) : null}
+      {call.notes ? (
+        <section>
+          <h4>Notes</h4>
+          <p>{call.notes}</p>
+        </section>
+      ) : null}
+      {call.transcript ? (
+        <section>
+          <h4>Transcript</h4>
+          <pre>{call.transcript}</pre>
+        </section>
+      ) : null}
     </div>
   );
 }

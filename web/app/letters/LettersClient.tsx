@@ -36,6 +36,10 @@ type Interaction = {
   id: string;
   outcome: string;
   notes: string | null;
+  transcript: string | null;
+  inbound_phone: string | null;
+  call_started_at: string | null;
+  source: string | null;
   next_action: string | null;
   follow_up_at: string | null;
   created_at: string;
@@ -104,6 +108,11 @@ export default function LettersClient() {
   const [loading, setLoading] = useState(false);
   const [savingOutcome, setSavingOutcome] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [importOutcome, setImportOutcome] = useState("called_back");
+  const [importPhone, setImportPhone] = useState("");
+  const [importCallAt, setImportCallAt] = useState("");
+  const [importNotes, setImportNotes] = useState("");
+  const [importTranscript, setImportTranscript] = useState("");
 
   const selected = useMemo(
     () => results.find((recipient) => recipient.recipient_id === selectedId) ?? results[0] ?? null,
@@ -150,6 +159,32 @@ export default function LettersClient() {
     const json = await res.json();
     if (!json.ok) return;
     setNote("");
+    await Promise.all([loadCampaigns(), search()]);
+  }
+
+  async function importInboundCall() {
+    if (!selected || (!importNotes.trim() && !importTranscript.trim())) return;
+    setSavingOutcome("import_inbound");
+    const res = await fetch("/api/letters/interactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientId: selected.recipient_id,
+        outcome: importOutcome,
+        notes: importNotes.trim() || null,
+        transcript: importTranscript.trim() || null,
+        inboundPhone: importPhone.trim() || null,
+        callStartedAt: importCallAt ? new Date(importCallAt).toISOString() : null,
+        source: "inbound_call",
+      }),
+    });
+    setSavingOutcome(null);
+    const json = await res.json();
+    if (!json.ok) return;
+    setImportNotes("");
+    setImportTranscript("");
+    setImportPhone("");
+    setImportCallAt("");
     await Promise.all([loadCampaigns(), search()]);
   }
 
@@ -270,6 +305,57 @@ export default function LettersClient() {
               />
             </label>
 
+            <section className="letters-import">
+              <div className="letters-import__head">
+                <h3>Import inbound call</h3>
+                <span>Paste notes or a full transcript from an incoming callback.</span>
+              </div>
+              <div className="letters-import__grid">
+                <label className="letters-field">
+                  <span>Outcome</span>
+                  <select value={importOutcome} onChange={(event) => setImportOutcome(event.target.value)}>
+                    <option value="called_back">Called back</option>
+                    {OUTCOMES.map((outcome) => (
+                      <option key={outcome.id} value={outcome.id}>{outcome.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="letters-field">
+                  <span>Inbound phone</span>
+                  <input value={importPhone} onChange={(event) => setImportPhone(event.target.value)} placeholder="+1 450…" />
+                </label>
+                <label className="letters-field">
+                  <span>Call time</span>
+                  <input type="datetime-local" value={importCallAt} onChange={(event) => setImportCallAt(event.target.value)} />
+                </label>
+              </div>
+              <label className="letters-note">
+                <span>Imported notes</span>
+                <textarea
+                  value={importNotes}
+                  onChange={(event) => setImportNotes(event.target.value)}
+                  placeholder="Short summary, motivation, next step, objections..."
+                />
+              </label>
+              <label className="letters-note">
+                <span>Transcript</span>
+                <textarea
+                  className="letters-note__transcript"
+                  value={importTranscript}
+                  onChange={(event) => setImportTranscript(event.target.value)}
+                  placeholder="Paste the full inbound call transcript here..."
+                />
+              </label>
+              <button
+                type="button"
+                className="letters-import__save"
+                disabled={savingOutcome !== null || (!importNotes.trim() && !importTranscript.trim())}
+                onClick={importInboundCall}
+              >
+                {savingOutcome === "import_inbound" ? "Importing..." : "Import inbound call"}
+              </button>
+            </section>
+
             <div className="letters-sections">
               <section>
                 <h3>Properties from this letter</h3>
@@ -301,9 +387,20 @@ export default function LettersClient() {
                     <div key={interaction.id} className="letters-history-item">
                       <div>
                         <strong>{statusLabel(interaction.outcome)}</strong>
-                        <span>{new Date(interaction.created_at).toLocaleString("fr-CA")}</span>
+                        <span>
+                          {interaction.source === "inbound_call" ? "Inbound" : "Manual"}
+                          {" · "}
+                          {new Date(interaction.call_started_at ?? interaction.created_at).toLocaleString("fr-CA")}
+                          {interaction.inbound_phone ? ` · ${interaction.inbound_phone}` : ""}
+                        </span>
                       </div>
                       {interaction.notes && <p>{interaction.notes}</p>}
+                      {interaction.transcript && (
+                        <details>
+                          <summary>Transcript</summary>
+                          <pre>{interaction.transcript}</pre>
+                        </details>
+                      )}
                     </div>
                   ))}
                 </div>

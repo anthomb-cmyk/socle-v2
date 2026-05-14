@@ -18,6 +18,11 @@ type CallRow = {
   direction: string | null;
   duration_sec: number | null;
   recorded_at: string | null;
+  transcript: string | null;
+  transcript_status: string | null;
+  summary: string | null;
+  notes: string | null;
+  outcome: string | null;
   raw: { from?: string | null; to?: string | null; investor_id?: string | null } | null;
 };
 
@@ -39,7 +44,7 @@ export default async function QuickCallPage({
   const sb = createSupabaseAdminClient();
   const { data } = await sb
     .from("call_logs")
-    .select("id, lead_id, contact_id, twilio_call_sid, direction, duration_sec, recorded_at, raw")
+    .select("id, lead_id, contact_id, twilio_call_sid, direction, duration_sec, recorded_at, transcript, transcript_status, summary, notes, outcome, raw")
     .order("recorded_at", { ascending: false })
     .limit(50);
 
@@ -84,6 +89,11 @@ export default async function QuickCallPage({
       address: lead ? [lead.address, lead.city].filter(Boolean).join(", ") || null : null,
       durationSec: r.duration_sec,
       recordedAt: r.recorded_at,
+      notes: r.notes,
+      transcript: r.transcript,
+      transcriptStatus: r.transcript_status,
+      summary: r.summary,
+      outcome: r.outcome,
       missed: direction === "inbound" && (r.duration_sec ?? 0) === 0,
     };
   });

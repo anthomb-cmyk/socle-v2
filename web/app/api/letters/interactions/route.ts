@@ -6,7 +6,11 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 const Body = z.object({
   recipientId: z.string().uuid(),
   outcome: z.string().min(1).max(80),
-  notes: z.string().max(5000).optional().nullable(),
+  notes: z.string().max(10000).optional().nullable(),
+  transcript: z.string().max(60000).optional().nullable(),
+  inboundPhone: z.string().max(40).optional().nullable(),
+  callStartedAt: z.string().datetime().optional().nullable(),
+  source: z.enum(["manual", "inbound_call", "transcript_import"]).optional(),
   nextAction: z.string().max(500).optional().nullable(),
   followUpAt: z.string().datetime().optional().nullable(),
 });
@@ -41,11 +45,15 @@ export async function POST(request: Request) {
       recipient_id: body.recipientId,
       outcome: body.outcome,
       notes: body.notes ?? null,
+      transcript: body.transcript ?? null,
+      inbound_phone: body.inboundPhone ?? null,
+      call_started_at: body.callStartedAt ?? null,
+      source: body.source ?? "manual",
       next_action: body.nextAction ?? null,
       follow_up_at: body.followUpAt ?? null,
       created_by: auth.user.id,
     })
-    .select("id,recipient_id,outcome,notes,next_action,follow_up_at,created_at")
+    .select("id,recipient_id,outcome,notes,transcript,inbound_phone,call_started_at,source,next_action,follow_up_at,created_at")
     .single();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
