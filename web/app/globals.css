@@ -1116,11 +1116,15 @@ html, body {
      composer sits flush with the keyboard (iMessage-style). The thread's own
      back arrow returns to the list — no nav needed. */
   body:has(.tx-page[data-view="thread"]) .crm-mobile-bottom-nav { display: none; }
+  /* iOS doesn't shrink dvh when the virtual keyboard opens — TextosClient
+     mirrors visualViewport.height into --vvh so we collapse the page to the
+     visible area above the keyboard. Fall back to 100dvh when --vvh is unset
+     (no keyboard / non-iOS / desktop). */
   body:has(.tx-page[data-view="thread"]) .crm-main-content {
     padding-bottom: 0;
-    /* iOS doesn't shrink dvh when the keyboard opens — TextosClient
-       writes the keyboard height to --kb-inset via visualViewport. */
-    height: calc(100dvh - var(--kb-inset, 0px));
+    height: var(--vvh, 100dvh);
+    max-height: var(--vvh, 100dvh);
+    overflow: hidden;
   }
 
   /* Safe area for top bar (notch/dynamic island) */
