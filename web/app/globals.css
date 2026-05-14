@@ -10492,7 +10492,7 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 }
 .dw-evidence__body {
   margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-2);
-  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-weight: 500;
 }
 .dw-evidence__footer {
   margin-top: 10px;
