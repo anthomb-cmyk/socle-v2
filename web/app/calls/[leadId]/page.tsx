@@ -27,7 +27,7 @@ export default async function CallLeadPage(
       .eq("contact_id", lead.contact_id)
       .order("confidence", { ascending: false }),
     sb.from("call_logs")
-      .select("id, outcome, notes, recorded_at, duration_sec, recording_url, transcript_status, transcript")
+      .select("id, outcome, notes, recorded_at, duration_sec, recording_url, transcript_status")
       .eq("lead_id", leadId)
       .order("recorded_at", { ascending: false })
       .limit(15),
@@ -38,7 +38,7 @@ export default async function CallLeadPage(
   ]);
 
   const phones  = phonesRes.data ?? [];
-  const history = historyRes.data ?? [];
+  const history = (historyRes.data ?? []).map((row) => ({ ...row, transcript: null }));
   const userForwardTo: string | null = metaRes.data?.twilio_forward_to?.trim() || null;
 
   // Fetch preflight failure reasons if lead is unsuitable.

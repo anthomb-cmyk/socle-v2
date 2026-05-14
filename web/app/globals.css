@@ -1151,6 +1151,12 @@ html, body {
 
 /* ─── Caller queue mobile improvements ──────────────────────────────────── */
 @media (max-width: 767px) {
+  .queue-row,
+  .ch-entry {
+    content-visibility: auto;
+    contain-intrinsic-size: 76px;
+  }
+
   /* Larger lead cards for thumb tapping */
   .crm-queue-card {
     padding: 14px 16px !important;

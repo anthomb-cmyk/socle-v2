@@ -27,8 +27,9 @@ export default function ChatWidget() {
 
   // Scroll to bottom when messages change
   useEffect(() => {
+    if (!open) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, open]);
 
   // Focus input when opened
   useEffect(() => {

@@ -20,13 +20,13 @@ type Props = {
  * Tab 0 — "Appel / Call" : the workspace (OwnerCard, PhoneCard, outcomes).
  * Tab 1 — "Historique / Call history" : the call history timeline.
  *
- * Both panels are rendered to the DOM at all times (visibility toggled with
- * CSS display) so that the workspace never loses its Twilio call-state when
- * the user peeks at history.
+ * The workspace stays mounted so Twilio state is never lost. History mounts
+ * lazily on first open, which avoids hydrating transcripts on the hot path.
  */
 export default function CallPageTabs({ historyCount, children }: Props) {
   const { t } = useLocale();
   const [active, setActive] = useState<0 | 1>(0);
+  const [historyMounted, setHistoryMounted] = useState(false);
 
   return (
     <div className="cw-page-tabs">
@@ -46,7 +46,10 @@ export default function CallPageTabs({ historyCount, children }: Props) {
           role="tab"
           aria-selected={active === 1}
           className={`cw-page-tab${active === 1 ? " cw-page-tab--active" : ""}`}
-          onClick={() => setActive(1)}
+          onClick={() => {
+            setHistoryMounted(true);
+            setActive(1);
+          }}
         >
           {t.workspace.tabHistory}
           {historyCount > 0 && (
@@ -59,9 +62,11 @@ export default function CallPageTabs({ historyCount, children }: Props) {
       <div style={{ display: active === 0 ? "block" : "none" }}>
         {children[0]}
       </div>
-      <div style={{ display: active === 1 ? "block" : "none" }}>
-        {children[1]}
-      </div>
+      {historyMounted && (
+        <div style={{ display: active === 1 ? "block" : "none" }}>
+          {children[1]}
+        </div>
+      )}
     </div>
   );
 }

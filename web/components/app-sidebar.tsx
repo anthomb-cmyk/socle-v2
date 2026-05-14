@@ -71,10 +71,25 @@ type SidebarCounts = {
 
 const POLL_INTERVAL_MS = 120_000;
 
-function useSidebarCounts(): SidebarCounts | null {
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isDesktop;
+}
+
+function useSidebarCounts(enabled: boolean): SidebarCounts | null {
   const [counts, setCounts] = useState<SidebarCounts | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
 
     async function fetchCounts() {
@@ -96,7 +111,7 @@ function useSidebarCounts(): SidebarCounts | null {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [enabled]);
 
   return counts;
 }
@@ -134,7 +149,8 @@ export default function AppSidebar({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = role === "admin";
-  const counts = useSidebarCounts();
+  const isDesktop = useIsDesktop();
+  const counts = useSidebarCounts(isDesktop || mobileOpen);
   const { t } = useLocale();
 
   // Build initials from "firstname.lastname@..." pattern

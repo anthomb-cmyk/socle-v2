@@ -1,19 +1,20 @@
 "use client";
+import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 
 type Props = {
-  value: string;
+  initialValue?: string;
   onChange: (v: string) => void;
 };
 
 /**
  * Phase 4 — call notes textarea, stylistically aligned with the new
- * caller card system. Pure controlled input — value lives in
- * CallWorkspace.tsx state.
+ * caller card system. Keeps its own local character count so typing notes
+ * does not re-render the entire call workspace on every keystroke.
  */
-export default function CallNotesPanel({ value, onChange }: Props) {
+export default function CallNotesPanel({ initialValue = "", onChange }: Props) {
   const { t } = useLocale();
-  const charCount = value.length;
+  const [charCount, setCharCount] = useState(initialValue.length);
 
   return (
     <div className="cw-card cw-notes-panel">
@@ -32,8 +33,12 @@ export default function CallNotesPanel({ value, onChange }: Props) {
       </div>
       <textarea
         id="cw-notes-textarea"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        defaultValue={initialValue}
+        onChange={(e) => {
+          const nextValue = e.target.value;
+          setCharCount(nextValue.length);
+          onChange(nextValue);
+        }}
         rows={4}
         className="crm-notes-textarea crm-input cw-notes-panel__textarea"
         placeholder={t.workspace.notesPlaceholder}

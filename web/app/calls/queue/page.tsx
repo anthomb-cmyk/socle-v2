@@ -1,5 +1,6 @@
 import React from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import CallerAppShell from "@/components/caller/CallerAppShell";
 import type { AdminScope } from "@/components/caller/CallerQueueScopeBar";
@@ -49,6 +50,9 @@ export default async function CallQueuePage({
 
   const sb = createSupabaseAdminClient();
   const now = new Date().toISOString();
+  const ua = (await headers()).get("user-agent") ?? "";
+  const isMobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const queueLimit = isMobileUa ? 80 : 200;
 
   // Build the leads_view query. Predicates that always apply:
   //   - status IN CALLABLE_STATUSES
@@ -64,13 +68,14 @@ export default async function CallQueuePage({
   // it again — for now keep the queue working by leaving it out.
   let queueQuery = sb
     .from("leads_view")
-    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority,assigned_to")
+    .select("lead_id,full_name,company_name,address,city,num_units,best_phone,status,campaign_name,last_contacted_at,next_action_at,priority,assigned_to", { count: "planned" })
     .in("status", CALLABLE_STATUSES as unknown as string[])
     .not("best_phone", "is", null)
     .or(`next_action_at.is.null,next_action_at.lte.${now}`)
     .order("priority", { ascending: false })
     .order("next_action_at", { ascending: true, nullsFirst: false })
-    .order("last_contacted_at", { ascending: true, nullsFirst: true });
+    .order("last_contacted_at", { ascending: true, nullsFirst: true })
+    .limit(queueLimit);
 
   if (scope === "mine") {
     // Caller-tier always lands here. Admin scope=mine also lands here.
@@ -170,6 +175,7 @@ export default async function CallQueuePage({
       )}
       <QueueLeadList
         leads={leads}
+        queueTotal={queueRes.count ?? allMyLeads.length}
         callCounts={callCounts}
         hotSellers={hotSellers}
         emptyDiagnostics={emptyDiagnostics}

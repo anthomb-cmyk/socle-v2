@@ -80,7 +80,6 @@ export default function CallWorkspace({
   const { t } = useLocale();
 
   const [phoneId, setPhoneId] = useState<string | null>(phones[0]?.id ?? null);
-  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitForm, setSubmitForm] = useState<string | null>(null);
@@ -111,6 +110,7 @@ export default function CallWorkspace({
   const [lockedBy, setLockedBy] = useState<{ name: string; sinceISO: string } | null>(null);
   const activeCallLogId = useRef<string | null>(null);
   const latestOutcomeCallLogId = useRef<string | null>(null);
+  const notesRef = useRef("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Outcome catalogs (4 logical groups) ─────────────────────────────────
@@ -327,7 +327,8 @@ export default function CallWorkspace({
     setBusy(true);
     setError(null);
 
-    const body: Record<string, unknown> = { leadId, phoneId, outcome, notes: notes || null };
+    const currentNotes = notesRef.current.trim();
+    const body: Record<string, unknown> = { leadId, phoneId, outcome, notes: currentNotes || null };
     if (nextCallAt) body.nextCallAt = new Date(nextCallAt).toISOString();
 
     const r = await fetch("/api/calls/log", {
@@ -342,7 +343,7 @@ export default function CallWorkspace({
     if (ESCALATING.has(outcome)) {
       setSubmitForm(outcome);
       setBusy(false);
-      if (notes && !callerSummary) setCallerSummary(notes);
+      if (currentNotes && !callerSummary) setCallerSummary(currentNotes);
       return;
     }
 
@@ -560,7 +561,7 @@ export default function CallWorkspace({
             />
           )}
 
-          <CallNotesPanel value={notes} onChange={setNotes} />
+          <CallNotesPanel onChange={(value) => { notesRef.current = value; }} />
 
           {error && !submitForm && (
             <p style={{ fontSize: 13, color: "var(--so-danger)", margin: 0 }}>{error}</p>

@@ -32,6 +32,34 @@ export default function CallHistoryTranscript({ row }: Props) {
   const hasRecording = Boolean(row.recording_url);
   if (!hasRecording) return null;
 
+  async function loadTranscript() {
+    if (text) {
+      setOpen((o) => !o);
+      return;
+    }
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/calls/status?callLogId=${row.id}`);
+      const json = await res.json();
+      if (!json.ok) {
+        setErr(json.error ?? t.history.networkError);
+        return;
+      }
+      const nextText = json.data?.transcript ?? "";
+      if (nextText) {
+        setText(nextText);
+        setOpen(true);
+      } else {
+        setErr(t.history.transcriptFailed);
+      }
+    } catch {
+      setErr(t.history.networkError);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function requestTranscript() {
     if (status === "processing") return;
     setLoading(true);
@@ -71,7 +99,7 @@ export default function CallHistoryTranscript({ row }: Props) {
           <div className="ch-transcript__row">
             <button
               type="button"
-              onClick={() => setOpen((o) => !o)}
+              onClick={loadTranscript}
               className="crm-link-btn"
             >
               {open ? t.history.hideTranscript : t.history.showTranscript}
@@ -82,6 +110,15 @@ export default function CallHistoryTranscript({ row }: Props) {
             <div className="ch-transcript__body">{text}</div>
           )}
         </div>
+      ) : status === "completed" ? (
+        <button
+          type="button"
+          onClick={loadTranscript}
+          disabled={loading}
+          className="crm-link-btn"
+        >
+          {loading ? t.history.requesting : t.history.showTranscript}
+        </button>
       ) : status === "processing" ? (
         <span className="ch-transcript__pending">{t.history.transcribing}</span>
       ) : status === "failed" ? (

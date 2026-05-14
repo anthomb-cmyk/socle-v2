@@ -1,6 +1,6 @@
 "use client";
 // Phase 9 orchestrator. Keeps the public prop signature (leads /
-// callCounts / hotSellers) so the server page does not change. Filtering
+// callCounts / hotSellers plus an optional total count. Filtering
 // is purely client-side over the already-fetched leads — the queue server
 // query, sort order, assigned_to filter, CALLABLE_STATUSES, best_phone
 // filter, future-callback exclusion and call_locks exclusion are all
@@ -82,6 +82,7 @@ function formatTimeAgo(diffMs: number, t: Dict): string {
 
 export default function QueueLeadList({
   leads,
+  queueTotal,
   callCounts,
   emptyDiagnostics,
   isAdmin = false,
@@ -89,6 +90,7 @@ export default function QueueLeadList({
   hotSellers,
 }: {
   leads: QueueLead[];
+  queueTotal?: number;
   callCounts: Record<string, number>;
   // hotSellers prop is still accepted (page.tsx passes it) — drives the "À réviser" stat tile.
   hotSellers: number;
@@ -156,7 +158,7 @@ export default function QueueLeadList({
 
   // Stat counts derived from the full (unfiltered) lead list
   const now = Date.now();
-  const statCallable = leads.length;
+  const statCallable = queueTotal ?? leads.length;
   const statOverdue = leads.filter(
     (l) => l.next_action_at && new Date(l.next_action_at).getTime() <= now,
   ).length;
@@ -207,7 +209,7 @@ export default function QueueLeadList({
 
   // Eyebrow: "<n> leads à appeler · <campaign>"
   const campaignName = leads[0]?.campaign_name ?? null;
-  const eyebrow = `${leads.length} lead${leads.length !== 1 ? "s" : ""} à appeler${campaignName ? ` · ${campaignName}` : ""}`;
+  const eyebrow = `${statCallable} lead${statCallable !== 1 ? "s" : ""} à appeler${campaignName ? ` · ${campaignName}` : ""}`;
 
   return (
     <div
