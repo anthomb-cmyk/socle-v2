@@ -18,7 +18,7 @@ export default function LoginPage() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-          new URLSearchParams(window.location.search).get("next") || "/leads",
+          new URLSearchParams(window.location.search).get("next") || "/",
         )}`,
         scopes: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
       },
@@ -39,7 +39,7 @@ export default function LoginPage() {
       setError(error.message);
       setBusy(false);
     } else {
-      const next = new URLSearchParams(window.location.search).get("next") || "/leads";
+      const next = new URLSearchParams(window.location.search).get("next") || "/";
       window.location.href = next;
     }
   }

@@ -1,11 +1,11 @@
 "use client";
 // Mobile bottom tab bar — visible only on phones (<768px).
-// 4 tabs: Appels / Suivis / Leads / Plus. The last one isn't a route — it
+// 4 tabs: Appels / Suivis / Textos / Plus. The last one isn't a route — it
 // dispatches MOBILE_MENU_TOGGLE_EVENT so the sidebar overlay slides in
 // under-thumb (instead of forcing users to reach the top-left hamburger).
 //
-// The full sidebar (including admin pages like Textos/Revue/Import) is
-// reachable from there with no extra friction.
+// The full sidebar (including Leads / Revue / Import) is reachable from
+// there with no extra friction.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,7 +15,7 @@ import { MOBILE_MENU_TOGGLE_EVENT } from "./app-sidebar";
 type RouteTab = {
   kind: "route";
   href: string;
-  labelKey: "calls" | "followUps" | "leads";
+  labelKey: "calls" | "followUps" | "texts";
   icon: React.ReactNode;
 };
 type ActionTab = {
@@ -46,11 +46,11 @@ function CalendarIcon() {
   );
 }
 
-function LeadsIcon() {
+function TextsIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z" />
     </svg>
   );
 }
@@ -70,7 +70,7 @@ function PlusGridIcon() {
 const TABS: Tab[] = [
   { kind: "route",  href: "/quick-call", labelKey: "calls",     icon: <PhoneIcon /> },
   { kind: "route",  href: "/follow-ups", labelKey: "followUps", icon: <CalendarIcon /> },
-  { kind: "route",  href: "/leads",      labelKey: "leads",     icon: <LeadsIcon /> },
+  { kind: "route",  href: "/textos",     labelKey: "texts",     icon: <TextsIcon /> },
   { kind: "action",                       labelKey: "more",      icon: <PlusGridIcon /> },
 ];
 
