@@ -744,14 +744,25 @@ function DayGroup({ day, messages }: { day: string; messages: TextoMessage[] }) 
   return (
     <>
       <div className="tx-day">{day}</div>
-      {messages.map((message) => (
-        <div key={message.id} className={`tx-bubble tx-bubble--${message.direction === "outbound" ? "out" : "in"}`}>
-          <div className="tx-bubble__body">{message.body || "Message vide"}</div>
-          <div className="tx-bubble__meta">
-            {message.direction === "inbound" ? "Reçu" : "Envoyé"} · {formatFullDate(message.at)}
+      {messages.map((message, i) => {
+        const next = messages[i + 1];
+        // End of a burst: last message overall, OR next has different
+        // direction, OR next is more than 10 minutes later.
+        const TEN_MIN = 10 * 60 * 1000;
+        const isBurstEnd = !next
+          || next.direction !== message.direction
+          || (Date.parse(next.at) - Date.parse(message.at)) > TEN_MIN;
+        return (
+          <div key={message.id} className={`tx-bubble tx-bubble--${message.direction === "outbound" ? "out" : "in"}`}>
+            <div className="tx-bubble__body">{message.body || "Message vide"}</div>
+            {isBurstEnd && (
+              <div className="tx-bubble__meta">
+                {message.direction === "inbound" ? "Reçu" : "Envoyé"} · {formatFullDate(message.at)}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }

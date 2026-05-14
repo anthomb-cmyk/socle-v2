@@ -10905,13 +10905,12 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
      conversation header owns the top of the screen. */
   .tx-page[data-view="thread"] .tx-head { display: none; }
 
-  /* Thread header: sticky, avatar + actions */
+  /* Thread header: sticky, avatar + actions
+     (no backdrop-filter — too expensive on mobile paint) */
   .tx-conv__head {
     position: sticky; top: 0; z-index: 6;
     padding: 8px 10px;
-    background: oklch(0.97 0.010 84 / 0.95);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    background: var(--surface);
     border-bottom: 1px solid var(--border-soft);
     flex-wrap: nowrap;
     gap: 8px;
@@ -10963,12 +10962,11 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
     font-size: 11px;
   }
 
-  /* Composer becomes single-line pill with circular send */
+  /* Composer becomes single-line pill with circular send
+     (no backdrop-filter — too expensive on mobile paint) */
   .tx-composer {
     position: sticky; bottom: 0; z-index: 5;
-    background: oklch(0.98 0.008 85 / 0.96);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    background: var(--surface);
     border-top: 1px solid var(--border-soft);
     padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
   }
