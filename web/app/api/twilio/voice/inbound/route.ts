@@ -15,8 +15,30 @@ type MatchResult = {
   contactId: string | null;
   leadId: string | null;
   phoneId: string | null;
-  matchType: "investor" | "contact" | "unmatched";
+  dealId: string | null;
+  dealTitle: string | null;
+  matchType: "investor" | "contact" | "deal" | "unmatched";
 };
+
+type DealPhoneRow = {
+  id: string;
+  title: string | null;
+  contact_phone: string | null;
+  updated_at: string | null;
+};
+
+async function findDealByPhone(sb: ReturnType<typeof createSupabaseAdminClient>, phone: string) {
+  const { data: deals } = await sb
+    .from("deals")
+    .select("id,title,contact_phone,updated_at")
+    .not("contact_phone", "is", null)
+    .not("stage", "in", '("cloture","abandonne")')
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  return ((deals ?? []) as DealPhoneRow[])
+    .find((deal) => normalizePhone(String(deal.contact_phone ?? "")) === phone) ?? null;
+}
 
 async function resolveCaller(sb: ReturnType<typeof createSupabaseAdminClient>, from: string): Promise<MatchResult> {
   const { data: investor } = await sb
@@ -32,9 +54,13 @@ async function resolveCaller(sb: ReturnType<typeof createSupabaseAdminClient>, f
       contactId: null,
       leadId: null,
       phoneId: null,
+      dealId: null,
+      dealTitle: null,
       matchType: "investor",
     };
   }
+
+  const deal = await findDealByPhone(sb, from);
 
   const { data: phone } = await sb
     .from("phones")
@@ -53,7 +79,9 @@ async function resolveCaller(sb: ReturnType<typeof createSupabaseAdminClient>, f
       contactId: null,
       leadId: null,
       phoneId: null,
-      matchType: "unmatched",
+      dealId: (deal?.id as string | null) ?? null,
+      dealTitle: (deal?.title as string | null) ?? null,
+      matchType: deal?.id ? "deal" : "unmatched",
     };
   }
 
@@ -71,6 +99,8 @@ async function resolveCaller(sb: ReturnType<typeof createSupabaseAdminClient>, f
     contactId,
     leadId: (lead?.id as string | null) ?? null,
     phoneId: (phone?.id as string | null) ?? null,
+    dealId: (deal?.id as string | null) ?? null,
+    dealTitle: (deal?.title as string | null) ?? null,
     matchType: "contact",
   };
 }
@@ -107,6 +137,8 @@ export async function POST(request: Request) {
     contactId: null,
     leadId: null,
     phoneId: null,
+    dealId: null,
+    dealTitle: null,
     matchType: "unmatched" as const,
   };
 
@@ -120,6 +152,8 @@ export async function POST(request: Request) {
     contact_id: match.contactId,
     lead_id: match.leadId,
     phone_id: match.phoneId,
+    deal_id: match.dealId,
+    deal_title: match.dealTitle,
     twilio: Object.fromEntries(form.entries()),
   };
 

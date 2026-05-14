@@ -23,6 +23,21 @@ type SmsEvent = {
   payload: Record<string, unknown> | null;
   occurred_at: string;
 };
+type CallLogRaw = {
+  deal_id?: unknown;
+  dealId?: unknown;
+  from?: unknown;
+  to?: unknown;
+  lead_phone?: unknown;
+  phone_e164?: unknown;
+};
+type DealCallLogRow = DealDossier["callLogs"][number] & {
+  lead_id?: string | null;
+  raw?: CallLogRaw | null;
+};
+
+const CALL_LOG_SELECT =
+  "id,outcome,notes,summary,recorded_at,duration_sec,recording_url,transcript_status,transcript,lead_id,raw";
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
@@ -45,13 +60,15 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
     sb.from("deals").select("id,title,stage,address,units,asking_price,offer_price,temperature,priority,contact_name,contact_phone,contact_email,notes_deal,notes_vendeur,ai_analysis,next_action,checklists,activities,lat,lng,created_at,updated_at").eq("id", id).single(),
     sb.from("deal_documents").select("id,name,size,mime_type,created_at").eq("deal_id", id).order("created_at", { ascending: false }),
     sb.from("call_logs")
-      .select("id, outcome, notes, recorded_at, duration_sec, recording_url, transcript_status, transcript")
+      .select(CALL_LOG_SELECT)
       .filter("raw->>deal_id", "eq", id)
       .order("recorded_at", { ascending: false })
       .limit(20),
   ]);
 
   if (!deal) notFound();
+
+  const dealPhone = normalizePhone(String((deal as { contact_phone?: string | null }).contact_phone ?? ""));
 
   const { leadIds: activityLeadIds, submissionIds: activitySubmissionIds, callLogIds: activityCallLogIds } =
     idsFromActivities((deal as { activities?: unknown }).activities);
@@ -107,7 +124,7 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
     refreshedLeadIds.length > 0
       ? sb
           .from("call_logs")
-          .select("id,outcome,notes,summary,recorded_at,duration_sec,recording_url,transcript_status,transcript,lead_id")
+          .select(CALL_LOG_SELECT)
           .in("lead_id", refreshedLeadIds)
           .order("recorded_at", { ascending: false })
           .limit(20)
@@ -115,16 +132,36 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
     refreshedCallLogIds.length > 0
       ? sb
           .from("call_logs")
-          .select("id,outcome,notes,summary,recorded_at,duration_sec,recording_url,transcript_status,transcript,lead_id")
+          .select(CALL_LOG_SELECT)
           .in("id", refreshedCallLogIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
+  const phoneMatchedCallLogs: DealCallLogRow[] = [];
+  if (dealPhone) {
+    const phoneMatchResults = await Promise.all(
+      ["raw->>from", "raw->>to", "raw->>lead_phone", "raw->>phone_e164"].map((column) =>
+        sb
+          .from("call_logs")
+          .select(CALL_LOG_SELECT)
+          .filter(column, "eq", dealPhone)
+          .order("recorded_at", { ascending: false })
+          .limit(20),
+      ),
+    );
+    for (const result of phoneMatchResults) {
+      for (const row of (result.data ?? []) as DealCallLogRow[]) {
+        if (callLogBelongsToDeal(row, id, dealPhone)) phoneMatchedCallLogs.push(row);
+      }
+    }
+  }
+
   const callRowsById = new Map<string, DealDossier["callLogs"][number]>();
   for (const row of [
-    ...((callLogs ?? []) as DealDossier["callLogs"]),
-    ...((callRowsByLeadRes.data ?? []) as DealDossier["callLogs"]),
-    ...((callRowsByIdRes.data ?? []) as DealDossier["callLogs"]),
+    ...((callLogs ?? []) as DealCallLogRow[]),
+    ...((callRowsByLeadRes.data ?? []) as DealCallLogRow[]),
+    ...((callRowsByIdRes.data ?? []) as DealCallLogRow[]),
+    ...phoneMatchedCallLogs,
   ]) {
     callRowsById.set(row.id, row);
   }
@@ -137,7 +174,6 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
       .slice(0, 20),
   };
 
-  const dealPhone = normalizePhone(String((deal as { contact_phone?: string | null }).contact_phone ?? ""));
   const { data: smsEvents } = await sb
     .from("automation_events")
     .select("id,event_type,payload,occurred_at")
@@ -178,4 +214,16 @@ function smsEventBelongsToDeal(event: SmsEvent, dealId: string, dealPhone: strin
   const from = normalizePhone(String(payload.from ?? ""));
   const to = normalizePhone(String(payload.to ?? ""));
   return from === dealPhone || to === dealPhone;
+}
+
+function callLogBelongsToDeal(row: DealCallLogRow, dealId: string, dealPhone: string | null) {
+  const raw = row.raw ?? {};
+  if (String(raw.dealId ?? raw.deal_id ?? "") === dealId) return true;
+  if (!dealPhone) return false;
+  return [
+    raw.from,
+    raw.to,
+    raw.lead_phone,
+    raw.phone_e164,
+  ].some((value) => normalizePhone(String(value ?? "")) === dealPhone);
 }

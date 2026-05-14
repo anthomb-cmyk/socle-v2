@@ -18,6 +18,8 @@ export type RecentCall = {
   leadId: string | null;
   contactId: string | null;
   investorId: string | null;
+  dealId: string | null;
+  dealTitle: string | null;
   address: string | null;
   durationSec: number | null;
   recordedAt: string | null;
@@ -576,7 +578,7 @@ function RecentsPane({
 function CallRow({ call, onRecall }: { call: RecentCall; onRecall: (c: RecentCall) => void }) {
   const [open, setOpen] = useState(false);
   const isUnknown = !call.name;
-  const linked = Boolean(call.leadId || call.contactId || call.investorId);
+  const linked = Boolean(call.dealId || call.leadId || call.contactId || call.investorId);
   const initials = initialsFor(call.name);
   const inferredName = isUnknown ? inferNameFromTranscript(call.transcript || call.summary || call.notes) : null;
   const canOpen = hasCallText(call);
@@ -720,6 +722,7 @@ function CallTextPanel({ call, inferredName }: { call: RecentCall; inferredName:
 }
 
 function detailHref(call: RecentCall): string {
+  if (call.dealId) return `/pipeline/${call.dealId}`;
   if (call.leadId) return `/leads/${call.leadId}`;
   if (call.contactId) return `/contacts/${call.contactId}`;
   if (call.investorId) return `/investisseurs/${call.investorId}`;
