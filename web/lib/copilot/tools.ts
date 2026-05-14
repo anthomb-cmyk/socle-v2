@@ -4,6 +4,7 @@ import type { Role } from "@/lib/auth";
 import { buildDefaultChecklists } from "@/lib/deals/defaults";
 import { normalizePhone } from "@/lib/twilio";
 import { autoLinkRecentInboundCallsToDeals } from "./auto-link-calls";
+import { saveCopilotMemory, deleteCopilotMemory } from "./memory";
 
 export type CopilotPageContext = {
   pathname?: string;
@@ -210,6 +211,37 @@ export const COPILOT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "save_copilot_memory",
+      description: "Save a short durable note about the user (preference, fact, workflow, constraint) so future Copilot sessions can apply it. Use sparingly — only when the user states something that should persist across conversations.",
+      parameters: {
+        type: "object",
+        properties: {
+          body: { type: "string", description: "Under 400 chars. State the rule and (if relevant) the reason." },
+          kind: { type: "string", enum: ["preference", "fact", "workflow", "constraint"] },
+        },
+        required: ["body"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_copilot_memory",
+      description: "Remove a Copilot memory the user no longer wants. Pass the memory id surfaced in the loaded memory list.",
+      parameters: {
+        type: "object",
+        properties: {
+          memoryId: { type: "string" },
+        },
+        required: ["memoryId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "draft_text_message",
       description: "Draft an SMS based on CRM context without sending it.",
       parameters: {
@@ -261,6 +293,14 @@ export async function runCopilotTool(name: string, rawArgs: string, ctx: Copilot
       return createDealFromLead(ctx, CreateDealFromLeadArgs.parse(args));
     case "draft_text_message":
       return draftTextMessage(ctx, DraftTextArgs.parse(args));
+    case "save_copilot_memory": {
+      const parsed = SaveMemoryArgs.parse(args);
+      return saveCopilotMemory(ctx.sb, ctx.user.id, parsed.body, parsed.kind ?? "preference");
+    }
+    case "delete_copilot_memory": {
+      const parsed = DeleteMemoryArgs.parse(args);
+      return deleteCopilotMemory(ctx.sb, ctx.user.id, parsed.memoryId);
+    }
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }
@@ -298,6 +338,11 @@ const DraftTextArgs = z.object({
   id: z.string().min(1),
   purpose: z.string().min(1).max(500),
 });
+const SaveMemoryArgs = z.object({
+  body: z.string().min(1).max(400),
+  kind: z.enum(["preference", "fact", "workflow", "constraint"]).optional(),
+});
+const DeleteMemoryArgs = z.object({ memoryId: z.string().min(1) });
 
 function IdArg(key: string) {
   return z.object({ [key]: z.string().min(1) });
