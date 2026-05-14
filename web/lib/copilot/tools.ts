@@ -363,40 +363,55 @@ async function getCurrentPageContext(ctx: CopilotToolContext) {
 
 async function searchCrm(ctx: CopilotToolContext, input: z.infer<typeof SearchArgs>) {
   const limit = input.limit ?? 8;
-  const q = sanitizeSearch(input.query);
   const digits = input.query.replace(/\D/g, "");
-  const pattern = `%${q}%`;
   const phone = normalizePhone(input.query);
+  const tokens = dealReferenceTokens(input.query).slice(0, 4);
+
+  // Build an AND-of-OR ilike filter on a list of columns from the tokens.
+  // Each token becomes one .or(...) call; chained calls are AND'd together.
+  function applyTokenFilters<T>(query: T, columns: string[]): T {
+    if (tokens.length === 0) return query;
+    let q = query as unknown as {
+      or: (filter: string) => unknown;
+    };
+    for (const token of tokens) {
+      const variants = tokenSqlVariants(token).map((v) => v.replace(/[%_,()]/g, " "));
+      const ors = variants.flatMap((v) => columns.map((col) => `${col}.ilike.%${v}%`));
+      q = q.or(ors.join(",")) as typeof q;
+    }
+    return q as unknown as T;
+  }
+
+  const dealsBase = ctx.sb.from("deals")
+    .select("id,title,stage,address,units,asking_price,temperature,contact_name,contact_phone,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const leadsBase = ctx.sb.from("leads_view")
+    .select("lead_id,full_name,company_name,address,city,best_phone,status,priority,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const investorsBase = ctx.sb.from("investors")
+    .select("id,full_name,firm_name,email,phone_e164,city,status,preferred_geography,asset_class_focus,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const contactsBase = ctx.sb.from("contacts")
+    .select("id,full_name,company_name,kind,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const callsBase = ctx.sb.from("call_logs")
+    .select("id,direction,recorded_at,duration_sec,outcome,notes,summary,transcript,raw")
+    .order("recorded_at", { ascending: false })
+    .limit(Math.min(limit, 5));
 
   const [deals, leads, investors, contacts, calls] = await Promise.all([
-    ctx.sb.from("deals")
-      .select("id,title,stage,address,units,asking_price,temperature,contact_name,contact_phone,updated_at")
-      .or(`title.ilike.${pattern},address.ilike.${pattern},contact_name.ilike.${pattern}`)
-      .order("updated_at", { ascending: false })
-      .limit(limit),
-    ctx.sb.from("leads_view")
-      .select("lead_id,full_name,company_name,address,city,best_phone,status,priority,updated_at")
-      .or(`full_name.ilike.${pattern},company_name.ilike.${pattern},address.ilike.${pattern},city.ilike.${pattern},best_phone.ilike.${pattern}`)
-      .order("updated_at", { ascending: false })
-      .limit(limit),
+    applyTokenFilters(dealsBase, ["title", "address", "contact_name"]),
+    applyTokenFilters(leadsBase, ["full_name", "company_name", "address", "city", "best_phone"]),
     ctx.role === "admin"
-      ? ctx.sb.from("investors")
-          .select("id,full_name,firm_name,email,phone_e164,city,status,preferred_geography,asset_class_focus,updated_at")
-          .or(`full_name.ilike.${pattern},firm_name.ilike.${pattern},preferred_geography.ilike.${pattern},asset_class_focus.ilike.${pattern},notes.ilike.${pattern}`)
-          .order("updated_at", { ascending: false })
-          .limit(limit)
+      ? applyTokenFilters(investorsBase, ["full_name", "firm_name", "preferred_geography", "asset_class_focus", "notes"])
       : Promise.resolve({ data: [] }),
-    ctx.sb.from("contacts")
-      .select("id,full_name,company_name,kind,updated_at")
-      .or(`full_name.ilike.${pattern},company_name.ilike.${pattern}`)
-      .order("updated_at", { ascending: false })
-      .limit(limit),
-    q || phone || digits
-      ? ctx.sb.from("call_logs")
-          .select("id,direction,recorded_at,duration_sec,outcome,notes,summary,transcript,raw")
-          .or(`notes.ilike.${pattern},summary.ilike.${pattern},transcript.ilike.${pattern}`)
-          .order("recorded_at", { ascending: false })
-          .limit(Math.min(limit, 5))
+    applyTokenFilters(contactsBase, ["full_name", "company_name"]),
+    tokens.length || phone || digits
+      ? applyTokenFilters(callsBase, ["notes", "summary", "transcript"])
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -1003,11 +1018,13 @@ async function resolveDealReference(
   // Falls back to a small recent slice if neither yields candidates.
   const orFilters: string[] = [];
   if (phone) orFilters.push(`contact_phone.ilike.%${phone}%`);
-  for (const token of tokens.filter((t) => t.length >= 4).slice(0, 3)) {
-    const safe = token.replace(/[%_,()]/g, " ");
-    orFilters.push(`title.ilike.%${safe}%`);
-    orFilters.push(`address.ilike.%${safe}%`);
-    orFilters.push(`contact_name.ilike.%${safe}%`);
+  for (const token of tokens.filter((t) => t.length >= 3).slice(0, 4)) {
+    for (const variant of tokenSqlVariants(token)) {
+      const safe = variant.replace(/[%_,()]/g, " ");
+      orFilters.push(`title.ilike.%${safe}%`);
+      orFilters.push(`address.ilike.%${safe}%`);
+      orFilters.push(`contact_name.ilike.%${safe}%`);
+    }
   }
 
   let query = ctx.sb
@@ -1020,18 +1037,23 @@ async function resolveDealReference(
 
   const { data, error } = await query;
   if (error) return { ok: false, error: error.message };
+  // When the query contains a street number, weight address matches heavily
+  // and dampen contact-name-only matches: "585 Rue Gouin" must beat "Pascal Gouin".
+  const hasStreetNumber = tokens.some((t) => /^\d{2,5}$/.test(t));
   const scored = ((data ?? []) as unknown as Array<Record<string, unknown>>)
     .map((deal) => {
-      const haystack = normalizeDealText([
-        deal.title,
-        deal.address,
-        deal.contact_name,
-        deal.contact_phone,
-      ].filter(Boolean).join(" "));
+      const addressText = normalizeDealText(String(deal.title ?? "") + " " + String(deal.address ?? ""));
+      const contactText = normalizeDealText(String(deal.contact_name ?? ""));
       let score = 0;
       if (phone && normalizePhone(String(deal.contact_phone ?? "")) === phone) score += 100;
       for (const token of tokens) {
-        if (haystack.includes(token)) score += token.length >= 5 ? 14 : 8;
+        const inAddress = addressText.includes(token);
+        const inContact = contactText.includes(token);
+        if (inAddress) {
+          score += hasStreetNumber ? 25 : (token.length >= 5 ? 14 : 8);
+        } else if (inContact) {
+          score += hasStreetNumber ? 2 : 8;
+        }
       }
       return { deal, score };
     })
@@ -1117,23 +1139,42 @@ function isWeakDealReference(value: string) {
     || tokens.length <= 2;
 }
 
+const DEAL_STOPWORDS = new Set([
+  // structural / placeholder
+  "deal", "id", "fiche", "page", "current", "cette", "celui", "celle", "avec", "pour", "the",
+  // French/English question + filler words
+  "que", "qui", "quoi", "est", "se", "le", "la", "les", "un", "une", "des", "du",
+  "et", "ou", "mais", "donc", "ni", "car", "passe", "il", "elle", "ils", "elles",
+  "sur", "dans", "comme", "sans", "vers", "chez", "par", "what", "where", "with", "about", "tell",
+  // street types \u2014 drop so they don't dilute scoring
+  "rue", "boul", "boulevard", "av", "ave", "avenue", "chemin", "place", "route", "rang", "cote",
+]);
+
 function dealReferenceTokens(value: string) {
-  const normalized = normalizeDealText(value);
-  return normalized
+  return normalizeDealText(value)
     .split(/\s+/)
-    .map((token) => token === "st" ? "saint" : token)
-    .filter((token) =>
-      token.length >= 2 &&
-      !["deal", "id", "fiche", "page", "current", "cette", "celui", "celle", "avec", "pour", "the"].includes(token),
-    );
+    .filter((token) => token.length >= 2 && !DEAL_STOPWORDS.has(token));
 }
 
+// Expand a normalized token to all spelling variants the DB might store.
+// SQL ilike has no notion of "St" == "Saint", so we OR the variants explicitly.
+function tokenSqlVariants(token: string): string[] {
+  if (token === "saint") return ["saint", "st"];
+  if (token === "sainte") return ["sainte", "ste"];
+  return [token];
+}
+
+// Normalize text for matching: strip accents, lowercase, collapse punctuation,
+// and canonicalize Quebec naming variants (st/ste \u2192 saint/sainte) so we match
+// both directions ("st jean" \u2194 "Saint-Jean").
 function normalizeDealText(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9+]+/g, " ")
+    .replace(/\bst\b/g, "saint")
+    .replace(/\bste\b/g, "sainte")
     .replace(/\s+/g, " ")
     .trim();
 }
