@@ -1,8 +1,8 @@
 {
   "name": "Socle CRM",
   "short_name": "Socle",
-  "description": "Québec multifamily acquisition CRM — caller queue",
-  "start_url": "/calls/queue",
+  "description": "Québec multifamily acquisition CRM",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
