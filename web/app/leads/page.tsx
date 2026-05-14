@@ -91,37 +91,63 @@ export default async function LeadsPage({
         )}
       </PageHeader>
 
-      {/* ── Stats summary bar ── */}
+      {/* ── Stats summary bar — each pill links to the screen where the user
+           can act on that count (queue, phone-review, etc.). ── */}
       <div className="crm-stat-bar" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <div className="crm-stat-pill">
           <span className="crm-stat-pill-value">{stats.total}</span>
           <span className="crm-stat-pill-label">{isCaller ? "Mes leads" : "Total leads"}</span>
         </div>
-        <div className="crm-stat-pill crm-stat-pill--blue">
+        <Link
+          href={"/calls/queue" as never}
+          className="crm-stat-pill crm-stat-pill--blue"
+          style={{ textDecoration: "none" }}
+          aria-label={`${stats.callable} leads appelables — ouvrir la file d'appels`}
+        >
           <span className="crm-stat-pill-value">{stats.callable}</span>
           <span className="crm-stat-pill-label">Appelables</span>
-        </div>
+        </Link>
         {isCaller ? (
-          <div className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}>
+          <Link
+            href={"/phone-review" as never}
+            className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}
+            style={{ textDecoration: "none" }}
+            aria-label={`${stats.noPhone} leads sans téléphone — ouvrir la revue téléphonique`}
+          >
             <span className="crm-stat-pill-value">{stats.noPhone}</span>
             <span className="crm-stat-pill-label">Sans téléphone</span>
-          </div>
+          </Link>
         ) : (
-          <div className={`crm-stat-pill${stats.unassigned > 0 ? " crm-stat-pill--amber" : ""}`}>
+          <Link
+            href={"/calls/queue?scope=unassigned" as never}
+            className={`crm-stat-pill${stats.unassigned > 0 ? " crm-stat-pill--amber" : ""}`}
+            style={{ textDecoration: "none" }}
+            aria-label={`${stats.unassigned} leads non assignés — ouvrir la file`}
+          >
             <span className="crm-stat-pill-value">{stats.unassigned}</span>
             <span className="crm-stat-pill-label">Non assignés</span>
-          </div>
+          </Link>
         )}
         {isCaller ? (
-          <div className="crm-stat-pill crm-stat-pill--blue">
+          <Link
+            href={"/calls/queue" as never}
+            className="crm-stat-pill crm-stat-pill--blue"
+            style={{ textDecoration: "none" }}
+            aria-label="Leads prêts à appeler — ouvrir la file"
+          >
             <span className="crm-stat-pill-value">{stats.callable - stats.noPhone > 0 ? stats.callable - stats.noPhone : 0}</span>
             <span className="crm-stat-pill-label">Prêts à appeler</span>
-          </div>
+          </Link>
         ) : (
-          <div className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}>
+          <Link
+            href={"/phone-review" as never}
+            className={`crm-stat-pill${stats.noPhone > 0 ? " crm-stat-pill--red" : ""}`}
+            style={{ textDecoration: "none" }}
+            aria-label={`${stats.noPhone} leads sans téléphone — ouvrir la revue téléphonique`}
+          >
             <span className="crm-stat-pill-value">{stats.noPhone}</span>
             <span className="crm-stat-pill-label">Sans téléphone</span>
-          </div>
+          </Link>
         )}
       </div>
 

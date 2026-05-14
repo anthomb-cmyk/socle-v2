@@ -149,6 +149,40 @@ function QueueEmptyInner({
   t: Dict;
   emptyDiagnostics: QueueEmptyDiagnostics | null;
 }) {
+  // Build a list of actionable diagnostics — each row tells the user *why*
+  // their queue is empty and links to the screen where they can fix it.
+  type Action = { label: string; count: number; href: string };
+  const actions: Action[] = [];
+  if (emptyDiagnostics) {
+    if (emptyDiagnostics.isAdmin && emptyDiagnostics.unassignedGlobal > 0) {
+      actions.push({
+        label: t.queueEmptyActions.browseUnassigned,
+        count: emptyDiagnostics.unassignedGlobal,
+        href: "/calls/queue?scope=unassigned",
+      });
+    }
+    if (emptyDiagnostics.myFutureCallbacks > 0) {
+      actions.push({
+        label: t.queueEmptyActions.browseFuture,
+        count: emptyDiagnostics.myFutureCallbacks,
+        href: "/follow-ups",
+      });
+    }
+    if (emptyDiagnostics.myMissingPhone > 0) {
+      actions.push({
+        label: t.queueEmptyActions.fixPhones,
+        count: emptyDiagnostics.myMissingPhone,
+        href: "/phone-review",
+      });
+    }
+    // Always offer the "all leads" escape hatch.
+    actions.push({
+      label: t.queueEmptyActions.browseAll,
+      count: 0,
+      href: "/leads",
+    });
+  }
+
   return (
     <div className="queue-empty-inner">
       <div className="queue-empty-inner__icon" aria-hidden="true">
@@ -164,10 +198,30 @@ function QueueEmptyInner({
       </div>
       <p className="queue-empty-inner__title">{t.queue.emptyTitle}</p>
       <p className="queue-empty-inner__sub">
-        {emptyDiagnostics
-          ? t.queue.emptyDiagAssignedNone
-          : t.queue.empty}
+        {emptyDiagnostics ? t.queue.emptyDiagAssignedNone : t.queue.empty}
       </p>
+      {emptyDiagnostics && (
+        <>
+          <ul className="queue-diag-list" style={{ listStyle: "none", padding: 0, margin: "10px 0 4px", fontSize: 12, color: "var(--crm-text2, #4B5563)" }}>
+            {emptyDiagnostics.myFutureCallbacks > 0 && <li>{t.queue.emptyDiagFuture(emptyDiagnostics.myFutureCallbacks)}</li>}
+            {emptyDiagnostics.myMissingPhone   > 0 && <li>{t.queue.emptyDiagPhone(emptyDiagnostics.myMissingPhone)}</li>}
+            {emptyDiagnostics.myLockedByOthers > 0 && <li>{t.queue.emptyDiagLocked(emptyDiagnostics.myLockedByOthers)}</li>}
+            {emptyDiagnostics.isAdmin && emptyDiagnostics.unassignedGlobal > 0 && (
+              <li>{t.queue.emptyDiagUnassigned(emptyDiagnostics.unassignedGlobal)}</li>
+            )}
+          </ul>
+          {actions.length > 0 && (
+            <div className="queue-empty-actions">
+              {actions.map((a) => (
+                <Link key={a.href} href={a.href as never} className="queue-empty-action">
+                  <span>{a.label}</span>
+                  {a.count > 0 && <span className="queue-empty-action__count">{a.count}</span>}
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

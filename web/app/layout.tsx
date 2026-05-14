@@ -5,6 +5,7 @@ import AppSidebar from "@/components/app-sidebar";
 import ChatWidget from "@/components/chat-widget";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 import { LocaleProvider } from "@/components/locale-provider";
+import { ToastProvider } from "@/components/toast-provider";
 
 export const metadata = {
   title: "Socle CRM",
@@ -109,25 +110,30 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body style={{ background: "var(--crm-bg)", color: "var(--crm-text)", margin: 0, padding: 0 }}>
         <LocaleProvider>
-          {userInfo ? (
-            <div className="crm-shell">
-              <AppSidebar
-                email={userInfo.email}
-                role={userInfo.role}
-                recentLeads={recentLeads}
-                recentDeals={recentDeals}
-              />
-              <div className="crm-main-content">
+          <ToastProvider>
+            <a href="#main-content" className="crm-skip-link">
+              Aller au contenu / Skip to content
+            </a>
+            {userInfo ? (
+              <div className="crm-shell">
+                <AppSidebar
+                  email={userInfo.email}
+                  role={userInfo.role}
+                  recentLeads={recentLeads}
+                  recentDeals={recentDeals}
+                />
+                <div id="main-content" className="crm-main-content">
+                  {children}
+                </div>
+                <MobileBottomNav role={userInfo.role} />
+                <ChatWidget />
+              </div>
+            ) : (
+              <div id="main-content" style={{ minHeight: "100dvh", background: "var(--crm-bg)" }}>
                 {children}
               </div>
-              <MobileBottomNav />
-              <ChatWidget />
-            </div>
-          ) : (
-            <div style={{ minHeight: "100dvh", background: "var(--crm-bg)" }}>
-              {children}
-            </div>
-          )}
+            )}
+          </ToastProvider>
         </LocaleProvider>
       </body>
     </html>

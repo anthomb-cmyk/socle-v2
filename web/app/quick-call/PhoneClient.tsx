@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import TwilioCallStatePanel, { type CallState } from "@/app/calls/[leadId]/components/TwilioCallStatePanel";
 import CallHistoryPanel from "@/app/calls/[leadId]/CallHistoryPanel";
 import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntry";
 import { normalizePhone } from "@/lib/twilio";
+import { useLocale } from "@/components/locale-provider";
+import { useToast } from "@/components/toast-provider";
 
 // ── Types ────────────────────────────────────────────────────────────────
 export type RecentCall = {
@@ -99,9 +100,16 @@ export default function PhoneClient({
   initialTab: Tab;
   recents: RecentCall[];
 }) {
-  const router = useRouter();
+  const { t } = useLocale();
+  const { showToast } = useToast();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [recentsFilter, setRecentsFilter] = useState<"all" | "missed">("all");
+  // After a successful convert, we surface inline CTAs (open lead / next call)
+  // instead of redirecting straight to the lead detail. Lets fast callers
+  // jump back to the queue without losing the freshly-created lead link.
+  const [savedLeadId, setSavedLeadId] = useState<string | null>(null);
+  // Per-field validation errors on the convert form.
+  const [fieldErrors, setFieldErrors] = useState<{ first_name?: string; last_name?: string }>({});
 
   // ── Keypad / call state (preserved from old QuickCallClient) ──────────
   const [phoneRaw, setPhoneRaw] = useState("");
@@ -198,10 +206,13 @@ export default function PhoneClient({
   async function handleConvert() {
     const cid = activeCallLogId.current;
     if (!cid) return;
-    if (!form.first_name.trim() || !form.last_name.trim()) {
-      setConvertError("Le prénom et le nom sont requis.");
-      return;
-    }
+    // Inline per-field validation — no more generic "first AND last required".
+    const errs: { first_name?: string; last_name?: string } = {};
+    if (!form.first_name.trim()) errs.first_name = t.validation.firstNameRequired;
+    if (!form.last_name.trim())  errs.last_name  = t.validation.lastNameRequired;
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
     setConverting(true);
     setConvertError(null);
     try {
@@ -224,9 +235,12 @@ export default function PhoneClient({
         setConverting(false);
         return;
       }
-      router.push(`/leads/${j.data.leadId}`);
+      setConverting(false);
+      setSavedLeadId(j.data.leadId);
+      setShowForm(false);
+      showToast({ message: t.toasts.leadSaved, tone: "success" });
     } catch {
-      setConvertError("Erreur réseau. Réessaie.");
+      setConvertError(t.common.networkErr);
       setConverting(false);
     }
   }
@@ -252,6 +266,23 @@ export default function PhoneClient({
     if (!call.number) return;
     setPhoneRaw(call.number);
     setTab("keypad");
+  }
+
+  // After save → user picked one of the inline CTAs. Either way, reset the
+  // keypad so the next call starts clean.
+  function dismissPostConvert() {
+    setSavedLeadId(null);
+    setPhoneRaw("");
+    setCallState("idle");
+    setDurationSec(0);
+    setCallHistory([]);
+    historyLoadedRef.current = false;
+    activeCallLogId.current = null;
+    setForm({
+      first_name: "", last_name: "", street: "", city: "", postal_code: "", notes: "", intent: "cold",
+    });
+    setFieldErrors({});
+    setConvertError(null);
   }
 
   return (
@@ -299,6 +330,9 @@ export default function PhoneClient({
             convertError={convertError}
             converting={converting}
             handleConvert={handleConvert}
+            fieldErrors={fieldErrors}
+            savedLeadId={savedLeadId}
+            dismissPostConvert={dismissPostConvert}
           />
         ) : (
           <RecentsPane recents={filteredRecents} onRecall={recallFrom} />
@@ -347,12 +381,17 @@ function KeypadPane(props: {
   convertError: string | null;
   converting: boolean;
   handleConvert: () => void;
+  fieldErrors: { first_name?: string; last_name?: string };
+  savedLeadId: string | null;
+  dismissPostConvert: () => void;
 }) {
   const {
     phoneDisplay, phoneRaw, phoneError, callState, callError, durationSec,
     callActive, press, backspace, handleStartCall, callHistory,
     showForm, setShowForm, form, setForm, convertError, converting, handleConvert,
+    fieldErrors, savedLeadId, dismissPostConvert,
   } = props;
+  const { t } = useLocale();
 
   return (
     <div className="ph-keypad">
@@ -360,6 +399,9 @@ function KeypadPane(props: {
         <div className="ph-display__number" aria-live="polite">
           {phoneDisplay || <span className="ph-display__hint">Entre un numéro</span>}
         </div>
+        {!phoneRaw && !phoneError && (
+          <div className="ph-display__fmt">{t.common.phoneFormatHint}</div>
+        )}
         {phoneError && <div className="ph-display__error">{phoneError}</div>}
       </div>
 
@@ -442,10 +484,38 @@ function KeypadPane(props: {
           convertError={convertError}
           converting={converting}
           onSubmit={handleConvert}
+          fieldErrors={fieldErrors}
         />
       )}
 
-      {!showForm && callState !== "idle" && callState !== "failed" && (
+      {savedLeadId && (
+        <div className="ph-card ph-post-convert" role="status">
+          <div className="ph-card__title">{t.toasts.leadSaved}</div>
+          <Link
+            href={`/leads/${savedLeadId}` as never}
+            className="btn btn--gold"
+            onClick={dismissPostConvert}
+          >
+            Ouvrir la fiche
+          </Link>
+          <Link
+            href={"/calls/queue" as never}
+            className="btn btn--ghost"
+            onClick={dismissPostConvert}
+          >
+            Prochain appel · file →
+          </Link>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={dismissPostConvert}
+          >
+            Nouveau numéro
+          </button>
+        </div>
+      )}
+
+      {!showForm && !savedLeadId && callState !== "idle" && callState !== "failed" && (
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => setShowForm(true)}>
           Remplir le formulaire maintenant
         </button>
@@ -456,21 +526,36 @@ function KeypadPane(props: {
 
 // ── Convert form ────────────────────────────────────────────────────────
 function ConvertForm({
-  form, setForm, convertError, converting, onSubmit,
+  form, setForm, convertError, converting, onSubmit, fieldErrors,
 }: {
   form: ConvertForm;
   setForm: React.Dispatch<React.SetStateAction<ConvertForm>>;
   convertError: string | null;
   converting: boolean;
   onSubmit: () => void;
+  fieldErrors: { first_name?: string; last_name?: string };
 }) {
   return (
     <div className="ph-convert">
       <div className="ph-convert__title">Convertir en lead</div>
 
       <div className="ph-convert__grid">
-        <ConvField label="Prénom *" value={form.first_name} onChange={(v) => setForm((f) => ({ ...f, first_name: v }))} placeholder="Jean" />
-        <ConvField label="Nom *" value={form.last_name} onChange={(v) => setForm((f) => ({ ...f, last_name: v }))} placeholder="Tremblay" />
+        <ConvField
+          label="Prénom *"
+          value={form.first_name}
+          onChange={(v) => setForm((f) => ({ ...f, first_name: v }))}
+          placeholder="Jean"
+          error={fieldErrors.first_name}
+          required
+        />
+        <ConvField
+          label="Nom *"
+          value={form.last_name}
+          onChange={(v) => setForm((f) => ({ ...f, last_name: v }))}
+          placeholder="Tremblay"
+          error={fieldErrors.last_name}
+          required
+        />
       </div>
       <ConvField label="Adresse" value={form.street} onChange={(v) => setForm((f) => ({ ...f, street: v }))} placeholder="123 rue des Érables" />
       <div className="ph-convert__grid ph-convert__grid--2-1">
@@ -512,17 +597,26 @@ function ConvertForm({
 }
 
 function ConvField({
-  label, value, onChange, placeholder,
+  label, value, onChange, placeholder, error, required,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  error?: string;
+  required?: boolean;
 }) {
   return (
-    <div className="ph-convert__field">
+    <div className={`ph-convert__field${error ? " ph-convert__field--err" : ""}`}>
       <label>{label}</label>
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-invalid={error ? "true" : undefined}
+        aria-required={required ? "true" : undefined}
+      />
+      {error && <div className="ph-convert__field-err" role="alert">{error}</div>}
     </div>
   );
 }
