@@ -32,6 +32,7 @@ type DealRow = {
   id: string;
   title: string;
   stage: string;
+  contact_name: string | null;
   contact_phone: string | null;
   activities: unknown;
 };
@@ -68,7 +69,7 @@ export default async function TextosPage() {
       : Promise.resolve({ data: [] }),
     sb
       .from("deals")
-      .select("id,title,stage,contact_phone,activities")
+      .select("id,title,stage,contact_name,contact_phone,activities")
       .not("stage", "eq", "abandonne")
       .order("updated_at", { ascending: false })
       .limit(500),
@@ -165,8 +166,8 @@ async function buildRecipients({
     if (!number) continue;
     byNumber.set(number, {
       id: `deal:${deal.id}:${number}`,
-      label: deal.title,
-      sublabel: "Pipeline deal",
+      label: deal.contact_name || deal.title,
+      sublabel: deal.contact_name ? deal.title : "Pipeline deal",
       number,
       contactId: null,
       leadId: null,
@@ -234,6 +235,7 @@ function buildConversations(
       : null;
     const deal = findDeal(number, lead?.id ?? event.related_lead_id, payload, ctx.deals);
     const contact = contactId ? ctx.contactsById.get(contactId) ?? null : null;
+    const displayContactName = contactName(contact) ?? deal?.contact_name ?? null;
 
     const existing = byNumber.get(number);
     const message: TextoMessage = {
@@ -248,7 +250,7 @@ function buildConversations(
     if (existing) {
       existing.messages.push(message);
       existing.contactId ||= contactId;
-      existing.contactName ||= contactName(contact);
+      existing.contactName ||= displayContactName;
       existing.leadId ||= lead?.id ?? null;
       existing.leadLabel ||= leadLabel(lead);
       existing.dealId ||= deal?.id ?? null;
@@ -263,7 +265,7 @@ function buildConversations(
       number,
       socleNumber: direction === "inbound" ? to : from,
       contactId,
-      contactName: contactName(contact),
+      contactName: displayContactName,
       leadId: lead?.id ?? null,
       leadLabel: leadLabel(lead),
       dealId: deal?.id ?? null,

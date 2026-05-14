@@ -10,6 +10,14 @@ import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntr
 type CheckItem = { id: string; label: string; done: boolean };
 export type DealDocument = { id: string; name: string; size: number | null; mime_type: string | null; created_at: string };
 type Activity  = { id: string; text: string; time: string };
+export type DealSmsMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  at: string;
+  from: string;
+  to: string;
+};
 
 export type Deal = {
   id: string;
@@ -414,6 +422,64 @@ function ActivityLog({ activities, onAdd }: { activities: Activity[]; onAdd: (te
   );
 }
 
+function SmsConversationPanel({ deal, messages }: { deal: Deal; messages: DealSmsMessage[] }) {
+  const sorted = [...messages].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
+            Conversation SMS
+          </div>
+          <div style={{ fontSize: 13, color: "#374151" }}>
+            {deal.contact_name || "Vendeur"} · {deal.contact_phone || "numéro inconnu"}
+          </div>
+        </div>
+        <Link
+          href={"/textos" as never}
+          style={{
+            flexShrink: 0,
+            border: "1px solid #E6D7B5",
+            background: "#FFF7E6",
+            color: "#8A5A12",
+            borderRadius: 999,
+            padding: "6px 10px",
+            fontSize: 12,
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          Ouvrir Textos
+        </Link>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sorted.map((message) => (
+          <div
+            key={message.id}
+            style={{
+              alignSelf: message.direction === "outbound" ? "flex-end" : "flex-start",
+              maxWidth: "78%",
+              border: "1px solid #E5E7EB",
+              borderColor: message.direction === "outbound" ? "#E6D7B5" : "#E5E7EB",
+              background: message.direction === "outbound" ? "#FFF7E6" : "#F9FAFB",
+              borderRadius: 12,
+              padding: "10px 12px",
+            }}
+          >
+            <div style={{ fontSize: 14, color: "#111827", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+              {message.body || "Message vide"}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, color: "#9CA3AF" }}>
+              {message.direction === "outbound" ? "Envoyé" : "Reçu"} · {formatDate(message.at)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DossierBeforeCall({
   deal,
   documents,
@@ -526,11 +592,13 @@ export default function DealWorkspaceClient({
   documents,
   callHistory,
   dossier,
+  smsMessages,
 }: {
   deal: Deal;
   documents: DealDocument[];
   callHistory: HistoryRow[];
   dossier: DealDossier;
+  smsMessages: DealSmsMessage[];
 }) {
   const [deal, setDeal]     = useState<Deal>(initialDeal);
   const [saving, setSaving] = useState(false);
@@ -721,6 +789,13 @@ export default function DealWorkspaceClient({
               <div style={{ fontSize: 13, color: "#9CA3AF" }}>Aucune checklist pour ce stade.</div>
             )}
           </div>
+
+          {/* Activity log */}
+          {smsMessages.length > 0 && (
+            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
+              <SmsConversationPanel deal={deal} messages={smsMessages} />
+            </div>
+          )}
 
           {/* Activity log */}
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>

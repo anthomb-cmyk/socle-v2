@@ -2,7 +2,8 @@
 
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
-import DealWorkspaceClient, { type Deal, type DealDossier, type DealDocument } from "./DealWorkspaceClient";
+import { normalizePhone } from "@/lib/twilio";
+import DealWorkspaceClient, { type Deal, type DealDossier, type DealDocument, type DealSmsMessage } from "./DealWorkspaceClient";
 import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntry";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,12 @@ type ActivityRecord = {
   submission_id?: string;
   callLogId?: string | null;
   call_log_id?: string | null;
+};
+type SmsEvent = {
+  id: string;
+  event_type: "sms_received" | "sms_sent";
+  payload: Record<string, unknown> | null;
+  occurred_at: string;
 };
 
 function uniqueStrings(values: Array<string | null | undefined>) {
@@ -130,12 +137,45 @@ export default async function DealWorkspacePage({ params }: { params: Promise<{ 
       .slice(0, 20),
   };
 
+  const dealPhone = normalizePhone(String((deal as { contact_phone?: string | null }).contact_phone ?? ""));
+  const { data: smsEvents } = await sb
+    .from("automation_events")
+    .select("id,event_type,payload,occurred_at")
+    .in("event_type", ["sms_received", "sms_sent"])
+    .order("occurred_at", { ascending: false })
+    .limit(300);
+
+  const smsMessages = ((smsEvents ?? []) as SmsEvent[])
+    .filter((event) => smsEventBelongsToDeal(event, id, dealPhone))
+    .map((event) => {
+      const payload = event.payload ?? {};
+      return {
+        id: event.id,
+        direction: event.event_type === "sms_received" ? "inbound" : "outbound",
+        body: String(payload.body ?? ""),
+        at: event.occurred_at,
+        from: normalizePhone(String(payload.from ?? "")) || String(payload.from ?? ""),
+        to: normalizePhone(String(payload.to ?? "")) || String(payload.to ?? ""),
+      } satisfies DealSmsMessage;
+    })
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+
   return (
     <DealWorkspaceClient
       deal={deal as unknown as Deal}
       documents={(docs ?? []) as unknown as DealDocument[]}
       callHistory={dossier.callLogs as unknown as HistoryRow[]}
       dossier={dossier}
+      smsMessages={smsMessages}
     />
   );
+}
+
+function smsEventBelongsToDeal(event: SmsEvent, dealId: string, dealPhone: string | null) {
+  const payload = event.payload ?? {};
+  if (String(payload.dealId ?? payload.deal_id ?? "") === dealId) return true;
+  if (!dealPhone) return false;
+  const from = normalizePhone(String(payload.from ?? ""));
+  const to = normalizePhone(String(payload.to ?? ""));
+  return from === dealPhone || to === dealPhone;
 }
