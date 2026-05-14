@@ -39,6 +39,45 @@ export type TextoRecipient = {
 
 type Filter = "all" | "linked" | "unknown";
 
+const STAGE_LABELS_FR: Record<string, string> = {
+  prospection:   "Prospection",
+  analyse:       "Analyse",
+  offre:         "Offre déposée",
+  due_diligence: "Due Diligence",
+  financement:   "Financement",
+  cloture:       "Clôturé",
+  abandonne:     "Abandonné",
+};
+
+function stageLabel(stage: string | null | undefined): string | null {
+  if (!stage) return null;
+  return STAGE_LABELS_FR[stage] ?? stage;
+}
+
+function firstNameOf(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const first = name.trim().split(/\s+/)[0];
+  return first || null;
+}
+
+const QUICK_TEMPLATES: Array<{ label: string; preview: string; body: string }> = [
+  {
+    label: "Confirmation visite",
+    preview: "Salut {prénom}, je confirme la visite…",
+    body: "Salut {prénom}, je confirme la visite demain. Réponds OK si ça tient toujours.",
+  },
+  {
+    label: "Suivi offre",
+    preview: "As-tu eu la chance de regarder l'offre…",
+    body: "Salut {prénom}, as-tu eu la chance de regarder l'offre que je t'ai envoyée par courriel ? Disponible pour en jaser.",
+  },
+  {
+    label: "Premier contact",
+    preview: "Bonjour, Anthony de Socle Acquisitions…",
+    body: "Bonjour {prénom}, Anthony de Socle Acquisitions ici. J'aimerais discuter de ton immeuble — tu as 2 minutes ?",
+  },
+];
+
 export default function TextosClient({
   conversations,
 }: {
@@ -363,7 +402,11 @@ export default function TextosClient({
                     <span className="tx-thread__number">{item.number}</span>
                     <span className="tx-thread__preview">{last?.body || "Conversation vide"}</span>
                   </span>
-                  {item.dealId && <span className="tx-thread__chip">deal</span>}
+                  {item.dealId
+                    ? <span className="tx-thread__chip">{stageLabel(item.dealStage) ?? "Pipeline"}</span>
+                    : isUnknown
+                    ? <span className="tx-thread__chip tx-thread__chip--unknown">À identifier</span>
+                    : null}
                 </button>
               );
             })}
@@ -569,9 +612,13 @@ export default function TextosClient({
         <aside className="tx-rail" aria-label="Contexte conversation">
           {selected && selected.dealId ? (
             <div className="tx-rail__card">
-              <div className="tx-rail__kicker">Deal lié</div>
+              <div className="tx-rail__kicker">Deal lié · pipeline</div>
               <h3 className="tx-rail__title">{selected.dealTitle ?? selected.contactName ?? selected.number}</h3>
-              {selected.dealStage && <p className="tx-rail__sub">Stade · {selected.dealStage}</p>}
+              {selected.dealStage && (
+                <div className="tx-rail__pills">
+                  <span className="pill pill--pipeline"><span className="pill__dot" />{stageLabel(selected.dealStage) ?? selected.dealStage}</span>
+                </div>
+              )}
               <div className="tx-rail__row">
                 <span>Numéro</span>
                 <span className="mono">{selected.number}</span>
@@ -582,9 +629,14 @@ export default function TextosClient({
                   <span>{selected.leadLabel}</span>
                 </div>
               )}
-              <Link href={`/pipeline/${selected.dealId}` as never} className="tx-rail__link">
-                Ouvrir le deal →
-              </Link>
+              <div className="tx-rail__actions">
+                <Link href={`/pipeline/${selected.dealId}` as never} className="btn btn--sm">
+                  Ouvrir le deal →
+                </Link>
+                <a href={`tel:${selected.number}`} className="btn btn--gold btn--sm">
+                  Appeler{selected.contactName ? ` ${selected.contactName.split(" ")[0]}` : ""}
+                </a>
+              </div>
             </div>
           ) : selected && selected.leadId ? (
             <div className="tx-rail__card">
@@ -622,6 +674,31 @@ export default function TextosClient({
             </div>
           ) : (
             <div className="tx-rail__empty">Sélectionne une conversation pour voir le contexte.</div>
+          )}
+
+          {selected && !newOpen && (
+            <div className="tx-rail__card">
+              <div className="tx-rail__kicker">Modèles rapides</div>
+              <div className="tx-templates">
+                {QUICK_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.label}
+                    type="button"
+                    className="tx-template"
+                    onClick={() => {
+                      const filled = tpl.body.replace(
+                        "{prénom}",
+                        firstNameOf(selected.contactName) ?? selected.contactName ?? "",
+                      );
+                      setDraft(filled);
+                    }}
+                  >
+                    <span className="tx-template__l">{tpl.label}</span>
+                    <span className="tx-template__b">{tpl.preview}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </aside>
       </div>
