@@ -157,11 +157,12 @@ export default function TextosClient({
     };
   }, [newMode, newOpen, recipientQuery]);
 
-  // ── iOS keyboard inset tracking ──────────────────────────────────────────
-  // 100dvh doesn't shrink when the iOS virtual keyboard opens, so the
+  // ── iOS keyboard tracking ────────────────────────────────────────────────
+  // 100dvh doesn't shrink when the iOS virtual keyboard opens — the
   // composer ends up below the keyboard top edge with empty space.
-  // Track visualViewport height and expose a --kb-inset CSS var the
-  // mobile thread layout consumes to shrink itself flush with the keyboard.
+  // Mirror visualViewport.height to a --vvh CSS var the mobile thread
+  // layout uses as its hard height, so the page collapses to exactly the
+  // visible area above the keyboard.
   useEffect(() => {
     if (mobileView !== "thread") return;
     const vv = window.visualViewport;
@@ -169,8 +170,7 @@ export default function TextosClient({
 
     const root = document.documentElement;
     function update() {
-      const inset = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
-      root.style.setProperty("--kb-inset", `${inset}px`);
+      root.style.setProperty("--vvh", `${vv?.height ?? window.innerHeight}px`);
     }
     update();
     vv.addEventListener("resize", update);
@@ -178,7 +178,7 @@ export default function TextosClient({
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
-      root.style.setProperty("--kb-inset", "0px");
+      root.style.removeProperty("--vvh");
     };
   }, [mobileView]);
 
@@ -621,13 +621,11 @@ export default function TextosClient({
                     {status === "sending" ? "Envoi…" : "Envoyer"}
                   </button>
                 </div>
-                <div className={`tx-composer__hint${status === "failed" ? " tx-composer__hint--error" : ""}`}>
-                  {status === "sent"
-                    ? "Texto envoyé depuis le numéro Twilio."
-                    : status === "failed"
-                    ? error
-                    : "Le client voit seulement le numéro Twilio, pas ton cell personnel."}
-                </div>
+                {(status === "sent" || status === "failed") && (
+                  <div className={`tx-composer__hint${status === "failed" ? " tx-composer__hint--error" : ""}`}>
+                    {status === "sent" ? "Texto envoyé depuis le numéro Twilio." : error}
+                  </div>
+                )}
               </div>
             </>
           )}
