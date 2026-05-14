@@ -5474,9 +5474,11 @@ html, body {
   display: block;
   margin-top: 5px;
   font-family: var(--mono);
-  font-size: 18px;
-  line-height: 1;
+  font-size: clamp(13px, 4.2vw, 18px);
+  line-height: 1.05;
   color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .dash-geo-panel__cities,
 .dash-geo-panel__deals {

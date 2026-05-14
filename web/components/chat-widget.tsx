@@ -3,6 +3,11 @@
 // Uses /api/chat (gpt-4o-mini with CRM system prompt).
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
+
+// Routes where the floating button would overlap an in-page primary
+// action (e.g. the SMS send button on /textos) — hide it there.
+const HIDDEN_PREFIXES = ["/textos", "/calls/"];
 
 type Message = {
   role: "user" | "assistant";
@@ -17,6 +22,7 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export default function ChatWidget() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -24,6 +30,8 @@ export default function ChatWidget() {
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const hidden = pathname ? HIDDEN_PREFIXES.some((p) => pathname.startsWith(p)) : false;
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -75,6 +83,8 @@ export default function ChatWidget() {
       sendMessage(input);
     }
   };
+
+  if (hidden) return null;
 
   return (
     <>

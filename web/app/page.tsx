@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import KpiTile           from "@/app/components/dashboard/KpiTile";
@@ -20,9 +19,6 @@ export default async function Home() {
     );
   }
 
-  const role = (user.app_metadata?.role ?? "caller") as string;
-  // All non-admin roles land directly in their call queue
-  if (role !== "admin") redirect("/calls/queue");
 
   const sb = createSupabaseAdminClient();
   const now = new Date();
