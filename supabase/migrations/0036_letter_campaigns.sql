@@ -2,6 +2,8 @@
 -- Tracks direct-mail rounds, recipients, their property portfolios, and
 -- callback outcomes. Built for fast typo-tolerant lookup when a seller calls.
 
+create extension if not exists pg_trgm with schema extensions;
+
 create table if not exists letter_campaigns (
   id              uuid primary key default gen_random_uuid(),
   name            text not null,
@@ -16,6 +18,7 @@ create table if not exists letter_campaigns (
 );
 
 create index if not exists letter_campaigns_created_idx on letter_campaigns(created_at desc);
+create index if not exists letter_campaigns_created_by_idx on letter_campaigns(created_by) where created_by is not null;
 
 create table if not exists letter_recipients (
   id                    uuid primary key default gen_random_uuid(),
@@ -84,6 +87,7 @@ create table if not exists letter_interactions (
 create index if not exists letter_interactions_recipient_idx on letter_interactions(recipient_id);
 create index if not exists letter_interactions_outcome_idx on letter_interactions(outcome);
 create index if not exists letter_interactions_created_idx on letter_interactions(created_at desc);
+create index if not exists letter_interactions_created_by_idx on letter_interactions(created_by) where created_by is not null;
 
 create or replace function public.set_letter_recipient_search_blob()
 returns trigger language plpgsql as $$
@@ -220,3 +224,14 @@ create policy letter_recipient_properties_admin_all on letter_recipient_properti
 create policy letter_interactions_admin_all on letter_interactions
   for all using (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), 'caller') = 'admin')
   with check (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), 'caller') = 'admin');
+
+alter function public.set_letter_recipient_search_blob() set search_path = public, extensions;
+alter function public.search_letter_recipients(text, uuid, integer) set search_path = public, extensions;
+alter function public.set_updated_at() set search_path = public, extensions;
+
+grant usage on schema public to service_role, authenticated;
+grant all on table public.letter_campaigns to service_role;
+grant all on table public.letter_recipients to service_role;
+grant all on table public.letter_recipient_properties to service_role;
+grant all on table public.letter_interactions to service_role;
+grant execute on function public.search_letter_recipients(text, uuid, integer) to service_role, authenticated;
