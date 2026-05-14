@@ -17,14 +17,32 @@ function paramsFromForm(form: FormData): Record<string, string> {
   return params;
 }
 
-function validationUrl(request: Request): string {
+function validationUrls(request: Request): string[] {
+  const urls = new Set<string>();
+
   try {
     const incoming = new URL(request.url);
-    const appUrl = getAppUrl();
-    return `${appUrl}${incoming.pathname}${incoming.search}`;
+    const path = `${incoming.pathname}${incoming.search}`;
+    urls.add(request.url);
+
+    const forwardedHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+    const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+    if (forwardedHost) {
+      urls.add(`${forwardedProto}://${forwardedHost}${path}`);
+      urls.add(`https://${forwardedHost}${path}`);
+    }
+
+    try {
+      urls.add(`${getAppUrl()}${path}`);
+    } catch {
+      // APP_URL is useful in production, but request/forwarded URLs are enough
+      // for local tunnels and some proxy setups.
+    }
   } catch {
-    return request.url;
+    urls.add(request.url);
   }
+
+  return [...urls];
 }
 
 export async function POST(request: Request) {
@@ -34,12 +52,10 @@ export async function POST(request: Request) {
 
   if (!authToken) return new Response("Twilio webhook validation is not configured", { status: 503 });
 
-  const valid = twilio.validateRequest(
-    authToken,
-    signature,
-    validationUrl(request),
-    paramsFromForm(form),
-  );
+  const params = paramsFromForm(form);
+  const valid = validationUrls(request).some((url) => (
+    twilio.validateRequest(authToken, signature, url, params)
+  ));
   if (!valid) return new Response("Forbidden", { status: 403 });
 
   const from = normalizePhone(String(form.get("From") ?? ""));
@@ -52,7 +68,6 @@ export async function POST(request: Request) {
 
   let contactId: string | null = null;
   let leadId: string | null = null;
-  let dealId: string | null = null;
   if (from) {
     const { data: phone } = await sb
       .from("phones")
@@ -73,53 +88,14 @@ export async function POST(request: Request) {
     }
   }
 
-  if (from) {
-    const { data: deals } = await sb
-      .from("deals")
-      .select("id,title,contact_phone,activities")
-      .not("stage", "eq", "abandonne")
-      .order("updated_at", { ascending: false })
-      .limit(500);
-
-    const matchedDeal = (deals ?? []).find((deal) => {
-      if (normalizePhone(String(deal.contact_phone ?? "")) === from) return true;
-      if (!leadId || !Array.isArray(deal.activities)) return false;
-      return deal.activities.some((activity: unknown) => {
-        if (!activity || typeof activity !== "object") return false;
-        const row = activity as Record<string, unknown>;
-        return row.leadId === leadId || row.lead_id === leadId;
-      });
-    });
-    dealId = matchedDeal?.id ?? null;
-
-    if (dealId) {
-      const prev = Array.isArray(matchedDeal?.activities) ? matchedDeal.activities : [];
-      await sb
-        .from("deals")
-        .update({
-          activities: [
-            {
-              id: crypto.randomUUID(),
-              text: `SMS reçu de ${from}: ${body || "(message vide)"}`.slice(0, 500),
-              time: new Date().toISOString(),
-              leadId,
-            },
-            ...prev,
-          ],
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", dealId);
-    }
-  }
-
   await sb.from("automation_events").insert({
     source:             "web_app",
     event_type:         "sms_received",
     status:             "success",
     related_lead_id:    leadId,
     related_contact_id: contactId,
-    payload:            { from, to, body, messageSid, numMedia, dealId },
-    result:             { raw: paramsFromForm(form) },
+    payload:            { from, to, body, messageSid, numMedia, dealId: null },
+    result:             { raw: params },
   });
 
   return twimlResponse(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type TextoMessage = {
   id: string;
@@ -39,10 +39,8 @@ export type TextoRecipient = {
 
 export default function TextosClient({
   conversations,
-  recipients,
 }: {
   conversations: TextoConversation[];
-  recipients: TextoRecipient[];
 }) {
   const [items, setItems] = useState(conversations);
   const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? "");
@@ -51,8 +49,11 @@ export default function TextosClient({
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(conversations.length === 0);
   const [newMode, setNewMode] = useState<"known" | "random">("known");
+  const [recipients, setRecipients] = useState<TextoRecipient[]>([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [recipientsError, setRecipientsError] = useState<string | null>(null);
   const [recipientQuery, setRecipientQuery] = useState("");
-  const [recipientId, setRecipientId] = useState(recipients[0]?.id ?? "");
+  const [recipientId, setRecipientId] = useState("");
   const [randomNumber, setRandomNumber] = useState("");
   const [newMessage, setNewMessage] = useState("");
   const [newStatus, setNewStatus] = useState<"idle" | "sending" | "sent" | "failed">("idle");
@@ -62,14 +63,49 @@ export default function TextosClient({
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId],
   );
-  const filteredRecipients = useMemo(() => {
-    const q = recipientQuery.trim().toLowerCase();
-    if (!q) return recipients.slice(0, 60);
-    return recipients.filter((recipient) => (
-      `${recipient.label} ${recipient.sublabel ?? ""} ${recipient.number}`.toLowerCase().includes(q)
-    )).slice(0, 60);
-  }, [recipientQuery, recipients]);
-  const selectedRecipient = recipients.find((recipient) => recipient.id === recipientId) ?? filteredRecipients[0] ?? null;
+  const selectedRecipient = recipients.find((recipient) => recipient.id === recipientId) ?? recipients[0] ?? null;
+
+  useEffect(() => {
+    if (!newOpen || newMode !== "known") return;
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setRecipientsLoading(true);
+      setRecipientsError(null);
+      try {
+        const params = new URLSearchParams();
+        const trimmed = recipientQuery.trim();
+        if (trimmed) params.set("q", trimmed);
+        const res = await fetch(`/api/textos/recipients?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const json = await res.json();
+        if (!json.ok) {
+          setRecipientsError(json.error ?? "Impossible de charger les contacts.");
+          return;
+        }
+        const data = (json.data ?? []) as TextoRecipient[];
+        setRecipients(data);
+        setRecipientId((current) => (
+          data.some((recipient) => recipient.id === current)
+            ? current
+            : data[0]?.id ?? ""
+        ));
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setRecipientsError("Erreur réseau pendant le chargement des contacts.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setRecipientsLoading(false);
+      }
+    }, recipientQuery.trim() ? 220 : 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [newMode, newOpen, recipientQuery]);
 
   async function sendReply() {
     const message = draft.trim();
@@ -278,10 +314,14 @@ export default function TextosClient({
                     placeholder="Chercher par nom, adresse, deal ou téléphone"
                   />
                   <div className="sms-recipient-list">
-                    {filteredRecipients.length === 0 ? (
+                    {recipientsLoading ? (
+                      <div className="sms-empty">Chargement des contacts...</div>
+                    ) : recipientsError ? (
+                      <div className="sms-empty">{recipientsError}</div>
+                    ) : recipients.length === 0 ? (
                       <div className="sms-empty">Aucun contact avec numéro trouvé.</div>
                     ) : null}
-                    {filteredRecipients.map((recipient) => (
+                    {recipients.map((recipient) => (
                       <button
                         key={recipient.id}
                         type="button"
