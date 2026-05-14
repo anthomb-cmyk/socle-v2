@@ -157,6 +157,31 @@ export default function TextosClient({
     };
   }, [newMode, newOpen, recipientQuery]);
 
+  // ── iOS keyboard inset tracking ──────────────────────────────────────────
+  // 100dvh doesn't shrink when the iOS virtual keyboard opens, so the
+  // composer ends up below the keyboard top edge with empty space.
+  // Track visualViewport height and expose a --kb-inset CSS var the
+  // mobile thread layout consumes to shrink itself flush with the keyboard.
+  useEffect(() => {
+    if (mobileView !== "thread") return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const root = document.documentElement;
+    function update() {
+      const inset = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
+      root.style.setProperty("--kb-inset", `${inset}px`);
+    }
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      root.style.setProperty("--kb-inset", "0px");
+    };
+  }, [mobileView]);
+
   // ── Counts and filtered list ─────────────────────────────────────────────
   const counts = useMemo(() => ({
     all: items.length,
