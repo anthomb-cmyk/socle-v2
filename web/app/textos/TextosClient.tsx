@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type TextoMessage = {
   id: string;
@@ -84,6 +84,7 @@ export default function TextosClient({
   conversations: TextoConversation[];
 }) {
   // ── State (unchanged) ────────────────────────────────────────────────────
+  const pageRef = useRef<HTMLElement | null>(null);
   const [items, setItems] = useState(conversations);
   const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? "");
   const [draft, setDraft] = useState("");
@@ -158,27 +159,50 @@ export default function TextosClient({
   }, [newMode, newOpen, recipientQuery]);
 
   // ── iOS keyboard tracking ────────────────────────────────────────────────
-  // 100dvh doesn't shrink when the iOS virtual keyboard opens — the
-  // composer ends up below the keyboard top edge with empty space.
-  // Mirror visualViewport.height to a --vvh CSS var the mobile thread
-  // layout uses as its hard height, so the page collapses to exactly the
-  // visible area above the keyboard.
+  // Keep this scoped to the Textos thread panel. Resizing the global shell
+  // with visualViewport.height also includes the fixed top-bar offset, which
+  // is what caused the large white gap on iOS Safari.
   useEffect(() => {
     if (mobileView !== "thread") return;
-    const vv = window.visualViewport;
-    if (!vv) return;
+    const page = pageRef.current;
+    if (!page) return;
+    const pageEl: HTMLElement = page;
 
-    const root = document.documentElement;
+    const vv = window.visualViewport;
+    let frame = 0;
+
     function update() {
-      root.style.setProperty("--vvh", `${vv?.height ?? window.innerHeight}px`);
+      const active = document.activeElement;
+      const composerFocused = active instanceof HTMLElement && Boolean(active.closest(".tx-composer"));
+      const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const rawInset = vv ? layoutHeight - vv.height - vv.offsetTop : 0;
+      const keyboardInset = composerFocused && rawInset > 80 ? Math.max(0, rawInset) : 0;
+
+      pageEl.style.setProperty("--tx-keyboard-inset", `${keyboardInset}px`);
+      pageEl.dataset.keyboard = keyboardInset > 0 ? "open" : "closed";
     }
-    update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
+
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    }
+
+    schedule();
+    vv?.addEventListener("resize", schedule);
+    vv?.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+    document.addEventListener("focusin", schedule);
+    document.addEventListener("focusout", schedule);
+
     return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-      root.style.removeProperty("--vvh");
+      cancelAnimationFrame(frame);
+      vv?.removeEventListener("resize", schedule);
+      vv?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("focusin", schedule);
+      document.removeEventListener("focusout", schedule);
+      pageEl.style.removeProperty("--tx-keyboard-inset");
+      delete pageEl.dataset.keyboard;
     };
   }, [mobileView]);
 
@@ -335,7 +359,7 @@ export default function TextosClient({
   }
 
   return (
-    <main className="tx-page" data-view={mobileView}>
+    <main ref={pageRef} className="tx-page" data-view={mobileView}>
       <header className="tx-head">
         <div>
           <div className="tx-head__eyebrow">Twilio · SMS</div>

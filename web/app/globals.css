@@ -1116,14 +1116,8 @@ html, body {
      composer sits flush with the keyboard (iMessage-style). The thread's own
      back arrow returns to the list — no nav needed. */
   body:has(.tx-page[data-view="thread"]) .crm-mobile-bottom-nav { display: none; }
-  /* iOS doesn't shrink dvh when the virtual keyboard opens — TextosClient
-     mirrors visualViewport.height into --vvh so we collapse the page to the
-     visible area above the keyboard. Fall back to 100dvh when --vvh is unset
-     (no keyboard / non-iOS / desktop). */
   body:has(.tx-page[data-view="thread"]) .crm-main-content {
     padding-bottom: 0;
-    height: var(--vvh, 100dvh);
-    max-height: var(--vvh, 100dvh);
     overflow: hidden;
   }
 
@@ -10331,6 +10325,29 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   .tx-page[data-view="list"] .tx-list { display: flex; }
   .tx-page[data-view="list"] .tx-conv { display: none; }
   .tx-page[data-view="thread"] .tx-conv__back { display: inline-flex; }
+  .tx-page[data-view="thread"] .tx-conv {
+    position: fixed;
+    top: calc(52px + env(safe-area-inset-top, 0px));
+    left: 0;
+    right: 0;
+    bottom: var(--tx-keyboard-inset, 0px);
+    z-index: 80;
+    height: auto;
+    overflow: hidden;
+  }
+  .tx-page[data-view="thread"] .tx-messages {
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .tx-page[data-view="thread"] .tx-composer {
+    position: relative;
+    bottom: auto;
+    flex-shrink: 0;
+  }
+  .tx-page[data-view="thread"][data-keyboard="open"] .tx-composer {
+    padding-bottom: 8px;
+  }
   .tx-head { padding: 14px 16px; }
   .tx-head__title { font-size: 22px; }
   .tx-bubble { max-width: 82%; }
