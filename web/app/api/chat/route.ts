@@ -51,6 +51,7 @@ CRM scope:
 Important behavior:
 - Incoming calls that match a deal by seller phone are automatically linked by the system. Do not ask permission for that maintenance task.
 - Before answering about a current page, call get_current_page_context.
+- Never invent ids. If you do not know an id, use get_current_page_context or search_crm first. Placeholder ids like "st-jean-deal-id" are forbidden.
 - For questions like "what should I do next?", inspect the relevant dossier and give a prioritized answer.
 - For deal work, separate building facts, seller motivation, price/terms, risks, and next action.
 - For cold caller workflow, focus on what helps the caller act now.
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
     pathname: typeof body.context?.pathname === "string" ? body.context.pathname : "",
     href: typeof body.context?.href === "string" ? body.context.href : "",
   };
+  const currentRecord = currentRecordFromPath(page.pathname);
 
   const openai = new OpenAI({ apiKey });
   const model = process.env.SOCLE_COPILOT_MODEL?.trim()
@@ -114,6 +116,7 @@ export async function POST(req: Request) {
         `Current user id: ${user.id}`,
         `Current user role: ${role}`,
         `Current CRM path: ${page.pathname || "/"}`,
+        currentRecord ? `Current page record: ${currentRecord.type} ${currentRecord.id}` : null,
         page.href ? `Current URL: ${page.href}` : null,
         autoLinked.length
           ? `Preflight maintenance: auto-linked ${autoLinked.length} inbound call(s) to pipeline deals: ${JSON.stringify(autoLinked)}`
@@ -202,4 +205,18 @@ function sanitizeMessages(messages: ClientMessage[]) {
 function truncateToolResult(value: unknown) {
   const text = JSON.stringify(value);
   return text.length > 14000 ? `${text.slice(0, 14000)}...` : text;
+}
+
+function currentRecordFromPath(pathname: string) {
+  const patterns = [
+    { type: "deal", re: /^\/pipeline\/([^/?#]+)/ },
+    { type: "lead", re: /^\/leads\/([^/?#]+)/ },
+    { type: "investor", re: /^\/investisseurs\/([^/?#]+)/ },
+    { type: "call_lead", re: /^\/calls\/([^/?#]+)/ },
+  ];
+  for (const pattern of patterns) {
+    const match = pathname.match(pattern.re);
+    if (match?.[1]) return { type: pattern.type, id: decodeURIComponent(match[1]) };
+  }
+  return null;
 }

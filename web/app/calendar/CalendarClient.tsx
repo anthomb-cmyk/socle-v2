@@ -149,7 +149,9 @@ export default function CalendarClient({
                     <h3>{item.title}</h3>
                     {item.detail && <p>{item.detail}</p>}
                     <div className="cal-agenda-item__actions">
-                      {item.href && item.kind === "follow-up" && <Link href={item.href as never}>Ouvrir lead</Link>}
+                      {item.href && item.kind === "follow-up" && (
+                        <Link href={item.href as never}>{item.href.startsWith("/pipeline/") ? "Ouvrir deal" : "Ouvrir lead"}</Link>
+                      )}
                       {item.href && item.kind === "google" && <a href={item.href} target="_blank" rel="noopener noreferrer">Ouvrir Google</a>}
                       {item.followUp?.lead?.best_phone && <a href={`tel:${item.followUp.lead.best_phone.replace(/\D/g, "")}`}>Appeler</a>}
                       {item.followUp && (
@@ -182,7 +184,9 @@ function buildItems(followUps: CalendarFollowUp[], googleEvents: CalendarGoogleE
   const followUpItems: CalendarItem[] = followUps
     .filter((followUp) => !dismissed.has(followUp.id))
     .map((followUp) => {
-      const owner = followUp.lead?.full_name ?? followUp.lead?.company_name ?? "Suivi";
+      const dealTitle = dealTitleFromFollowUp(followUp);
+      const dealHref = dealHrefFromFollowUp(followUp);
+      const owner = followUp.lead?.full_name ?? followUp.lead?.company_name ?? dealTitle ?? "Suivi";
       const past = new Date(followUp.due_at) < startOfToday();
       return {
         id: `fu-${followUp.id}`,
@@ -190,7 +194,7 @@ function buildItems(followUps: CalendarFollowUp[], googleEvents: CalendarGoogleE
         title: owner,
         startsAt: followUp.due_at,
         detail: [followUp.note, followUp.lead?.address].filter(Boolean).join(" · ") || null,
-        href: followUp.lead_id ? `/leads/${followUp.lead_id}` : null,
+        href: followUp.lead_id ? `/leads/${followUp.lead_id}` : dealHref,
         tone: past ? "red" : followUp.priority >= 70 ? "gold" : "green",
         followUp,
       };
@@ -208,6 +212,18 @@ function buildItems(followUps: CalendarFollowUp[], googleEvents: CalendarGoogleE
   }));
 
   return [...followUpItems, ...googleItems].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+}
+
+function dealHrefFromFollowUp(followUp: CalendarFollowUp) {
+  if (followUp.source !== "socle_copilot_deal") return null;
+  const match = followUp.note.match(/\/pipeline\/([0-9a-f-]{36})/i);
+  return match?.[1] ? `/pipeline/${match[1]}` : null;
+}
+
+function dealTitleFromFollowUp(followUp: CalendarFollowUp) {
+  if (followUp.source !== "socle_copilot_deal") return null;
+  const match = followUp.note.match(/^Deal:\s*(.*?)\s*—/);
+  return match?.[1]?.trim() || null;
 }
 
 function groupItems(items: CalendarItem[]) {

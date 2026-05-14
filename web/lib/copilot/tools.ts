@@ -52,7 +52,7 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "get_deal_dossier",
-      description: "Fetch a pipeline deal dossier: deal fields, notes, recent calls/transcripts, SMS events, documents, and linked investors.",
+      description: "Fetch a pipeline deal dossier by UUID or human reference such as address/city/contact name.",
       parameters: {
         type: "object",
         properties: {
@@ -141,7 +141,7 @@ export const COPILOT_TOOLS = [
     type: "function",
     function: {
       name: "schedule_follow_up",
-      description: "Create a follow-up for a lead/contact, or set next_action on a deal. Use only when the user asks for a reminder/follow-up.",
+      description: "Create a calendar-visible follow-up for a lead/contact/deal. Deal ids may be UUIDs or human references such as address/city/contact name.",
       parameters: {
         type: "object",
         properties: {
@@ -377,20 +377,17 @@ async function searchCrm(ctx: CopilotToolContext, input: z.infer<typeof SearchAr
 }
 
 async function getDealDossier(ctx: CopilotToolContext, dealId: string) {
-  const { data: deal, error } = await ctx.sb
-    .from("deals")
-    .select("id,title,stage,address,units,asking_price,offer_price,temperature,priority,contact_name,contact_phone,contact_email,notes_deal,notes_vendeur,ai_analysis,next_action,checklists,activities,lat,lng,created_at,updated_at")
-    .eq("id", dealId)
-    .maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  if (!deal) return { ok: false, error: "Deal not found." };
+  const resolved = await resolveDealReference(ctx, dealId, "id,title,stage,address,units,asking_price,offer_price,temperature,priority,contact_name,contact_phone,contact_email,notes_deal,notes_vendeur,ai_analysis,next_action,checklists,activities,lat,lng,created_at,updated_at");
+  if (!resolved.ok) return resolved;
+  const deal = resolved.deal;
+  const resolvedDealId = String(deal.id);
 
   const dealPhone = normalizePhone(String((deal as { contact_phone?: string | null }).contact_phone ?? ""));
   const [docs, rawDealCalls, phoneCalls, linkedInvestors, smsEvents] = await Promise.all([
-    ctx.sb.from("deal_documents").select("id,name,size,mime_type,created_at").eq("deal_id", dealId).order("created_at", { ascending: false }).limit(10),
+    ctx.sb.from("deal_documents").select("id,name,size,mime_type,created_at").eq("deal_id", resolvedDealId).order("created_at", { ascending: false }).limit(10),
     ctx.sb.from("call_logs")
       .select("id,direction,outcome,notes,summary,recorded_at,duration_sec,transcript_status,transcript,raw")
-      .filter("raw->>deal_id", "eq", dealId)
+      .filter("raw->>deal_id", "eq", resolvedDealId)
       .order("recorded_at", { ascending: false })
       .limit(10),
     dealPhone
@@ -403,7 +400,7 @@ async function getDealDossier(ctx: CopilotToolContext, dealId: string) {
     ctx.role === "admin"
       ? ctx.sb.from("investor_deals")
           .select("id,stage,ticket_size_cad,notes,investors(id,full_name,firm_name,preferred_geography,ticket_size_min_cad,ticket_size_max_cad)")
-          .eq("pipeline_deal_id", dealId)
+          .eq("pipeline_deal_id", resolvedDealId)
           .order("updated_at", { ascending: false })
           .limit(10)
       : Promise.resolve({ data: [] }),
@@ -422,7 +419,7 @@ async function getDealDossier(ctx: CopilotToolContext, dealId: string) {
   const sms = ((smsEvents.data ?? []) as Array<{ id: string; event_type: string; payload: Record<string, unknown> | null; occurred_at: string }>)
     .filter((event) => {
       const payload = event.payload ?? {};
-      if (String(payload.dealId ?? payload.deal_id ?? "") === dealId) return true;
+      if (String(payload.dealId ?? payload.deal_id ?? "") === resolvedDealId) return true;
       if (!dealPhone) return false;
       return normalizePhone(String(payload.from ?? "")) === dealPhone || normalizePhone(String(payload.to ?? "")) === dealPhone;
     })
@@ -431,6 +428,7 @@ async function getDealDossier(ctx: CopilotToolContext, dealId: string) {
   return {
     ok: true,
     type: "deal_dossier",
+    resolvedFrom: dealId,
     deal,
     documents: docs.data ?? [],
     calls: Array.from(callsById.values()),
@@ -556,17 +554,18 @@ async function addNote(ctx: CopilotToolContext, input: z.infer<typeof AddNoteArg
 
   if (input.targetType === "deal") {
     const field = input.section === "seller" ? "notes_vendeur" : input.section === "ai" ? "ai_analysis" : "notes_deal";
-    const { data: deal } = await ctx.sb.from("deals").select(`${field},activities`).eq("id", input.id).maybeSingle();
-    if (!deal) return { ok: false, error: "Deal not found." };
+    const resolved = await resolveDealReference(ctx, input.id, `id,title,${field},activities`);
+    if (!resolved.ok) return resolved;
+    const deal = resolved.deal;
     const existing = String((deal as Record<string, unknown>)[field] ?? "");
     const activities = Array.isArray((deal as { activities?: unknown }).activities) ? (deal as { activities: unknown[] }).activities : [];
     const { error } = await ctx.sb.from("deals").update({
       [field]: appendBlock(existing, stamp, input.note),
       activities: [{ id: crypto.randomUUID(), text: `Note ajoutée via Copilot (${field})`, time: new Date().toISOString(), by: ctx.user.id }, ...activities],
       updated_at: new Date().toISOString(),
-    }).eq("id", input.id);
+    }).eq("id", deal.id);
     if (error) return { ok: false, error: error.message };
-    return { ok: true, targetType: "deal", id: input.id, field, appended: true };
+    return { ok: true, targetType: "deal", id: deal.id, title: deal.title, field, appended: true };
   }
 
   if (ctx.role !== "admin") return { ok: false, error: "Admin only for investor notes." };
@@ -584,16 +583,40 @@ async function scheduleFollowUp(ctx: CopilotToolContext, input: z.infer<typeof F
   if (Number.isNaN(due.getTime())) return { ok: false, error: "Invalid dueAt." };
 
   if (input.targetType === "deal") {
-    const { data: deal } = await ctx.sb.from("deals").select("activities").eq("id", input.id).maybeSingle();
-    if (!deal) return { ok: false, error: "Deal not found." };
+    const resolved = await resolveDealReference(ctx, input.id, "id,title,address,contact_name,contact_phone,activities");
+    if (!resolved.ok) return resolved;
+    const deal = resolved.deal;
     const activities = Array.isArray(deal.activities) ? deal.activities : [];
-    const { error } = await ctx.sb.from("deals").update({
+    const calendarNote = `Deal: ${deal.title} — ${input.note} — /pipeline/${deal.id}`;
+    const [dealUpdate, followUpInsert] = await Promise.all([
+      ctx.sb.from("deals").update({
       next_action: `${due.toLocaleString("fr-CA")} · ${input.note}`,
       activities: [{ id: crypto.randomUUID(), text: `Suivi planifié: ${input.note} (${due.toISOString()})`, time: new Date().toISOString(), by: ctx.user.id }, ...activities],
       updated_at: new Date().toISOString(),
-    }).eq("id", input.id);
+      }).eq("id", deal.id),
+      ctx.sb.from("follow_ups").insert({
+        lead_id: null,
+        contact_id: null,
+        due_at: due.toISOString(),
+        note: calendarNote,
+        priority: input.priority ?? 80,
+        status: "pending",
+        assigned_to: ctx.user.id,
+        created_by: ctx.user.id,
+        source: "socle_copilot_deal",
+      }).select("id").single(),
+    ]);
+    const error = dealUpdate.error ?? followUpInsert.error;
     if (error) return { ok: false, error: error.message };
-    return { ok: true, targetType: "deal", id: input.id, nextAction: true };
+    return {
+      ok: true,
+      targetType: "deal",
+      id: deal.id,
+      title: deal.title,
+      dueAt: due.toISOString(),
+      nextAction: true,
+      calendarFollowUpId: followUpInsert.data?.id,
+    };
   }
 
   const insert = {
@@ -613,28 +636,29 @@ async function scheduleFollowUp(ctx: CopilotToolContext, input: z.infer<typeof F
 }
 
 async function updateDealStage(ctx: CopilotToolContext, input: z.infer<typeof UpdateDealStageArgs>) {
-  const { data: deal } = await ctx.sb.from("deals").select("activities,stage,title").eq("id", input.dealId).maybeSingle();
-  if (!deal) return { ok: false, error: "Deal not found." };
+  const resolved = await resolveDealReference(ctx, input.dealId, "id,activities,stage,title");
+  if (!resolved.ok) return resolved;
+  const deal = resolved.deal;
   const activities = Array.isArray(deal.activities) ? deal.activities : [];
   const text = `Stade changé via Copilot: ${deal.stage} → ${input.stage}${input.reason ? ` · ${input.reason}` : ""}`;
   const { error } = await ctx.sb.from("deals").update({
     stage: input.stage,
     activities: [{ id: crypto.randomUUID(), text, time: new Date().toISOString(), by: ctx.user.id }, ...activities],
     updated_at: new Date().toISOString(),
-  }).eq("id", input.dealId);
+  }).eq("id", deal.id);
   if (error) return { ok: false, error: error.message };
-  return { ok: true, dealId: input.dealId, previousStage: deal.stage, stage: input.stage };
+  return { ok: true, dealId: deal.id, title: deal.title, previousStage: deal.stage, stage: input.stage };
 }
 
 async function matchInvestorsToDeal(ctx: CopilotToolContext, input: z.infer<typeof MatchInvestorsArgs>) {
   if (ctx.role !== "admin") return { ok: false, error: "Admin only." };
   const limit = input.limit ?? 8;
-  const [dealRes, investorsRes] = await Promise.all([
-    ctx.sb.from("deals").select("id,title,address,units,asking_price,offer_price,temperature,priority").eq("id", input.dealId).maybeSingle(),
+  const resolved = await resolveDealReference(ctx, input.dealId, "id,title,address,units,asking_price,offer_price,temperature,priority");
+  if (!resolved.ok) return resolved;
+  const [investorsRes] = await Promise.all([
     ctx.sb.from("investors").select("id,full_name,firm_name,status,capital_available_cad,ticket_size_min_cad,ticket_size_max_cad,preferred_geography,asset_class_focus,notes").eq("status", "active").limit(500),
   ]);
-  if (!dealRes.data) return { ok: false, error: "Deal not found." };
-  const deal = dealRes.data;
+  const deal = resolved.deal;
   const price = Number(deal.offer_price ?? deal.asking_price ?? 0);
   const dealText = [deal.title, deal.address].filter(Boolean).join(" ").toLowerCase();
   const ranked = ((investorsRes.data ?? []) as Array<Record<string, unknown>>).map((inv) => {
@@ -737,6 +761,80 @@ function matchPath(path: string, pattern: RegExp) {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+async function resolveDealReference(
+  ctx: CopilotToolContext,
+  reference: string,
+  _select = "*",
+): Promise<{ ok: true; deal: Record<string, unknown> } | { ok: false; error: string; candidates?: unknown[] }> {
+  void _select;
+  const ref = reference.trim();
+  if (!ref) return { ok: false, error: "Deal reference is empty." };
+
+  const currentPageDealId = matchPath(ctx.page.pathname ?? "", /^\/pipeline\/([^/?#]+)/);
+  if (currentPageDealId && !isUuid(ref) && isWeakDealReference(ref)) {
+    const { data, error } = await ctx.sb.from("deals").select("*").eq("id", currentPageDealId).maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (data) return { ok: true, deal: data as Record<string, unknown> };
+  }
+
+  if (isUuid(ref)) {
+    const { data, error } = await ctx.sb.from("deals").select("*").eq("id", ref).maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (data) return { ok: true, deal: data as Record<string, unknown> };
+    return { ok: false, error: `Deal not found for id ${ref}.` };
+  }
+
+  const phone = normalizePhone(ref);
+  const { data, error } = await ctx.sb
+    .from("deals")
+    .select("*")
+    .not("stage", "in", '("cloture","abandonne")')
+    .order("updated_at", { ascending: false })
+    .limit(1000);
+  if (error) return { ok: false, error: error.message };
+
+  const tokens = dealReferenceTokens(ref);
+  const scored = ((data ?? []) as Array<Record<string, unknown>>)
+    .map((deal) => {
+      const haystack = normalizeDealText([
+        deal.title,
+        deal.address,
+        deal.contact_name,
+        deal.contact_phone,
+      ].filter(Boolean).join(" "));
+      let score = 0;
+      if (phone && normalizePhone(String(deal.contact_phone ?? "")) === phone) score += 100;
+      for (const token of tokens) {
+        if (haystack.includes(token)) score += token.length >= 5 ? 14 : 8;
+      }
+      return { deal, score };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const top = scored[0];
+  if (!top || top.score < 8) {
+    return { ok: false, error: `No active deal matched "${reference}". Try an address, seller name, phone, or open the deal page first.` };
+  }
+
+  const second = scored[1];
+  if (second && second.score >= top.score - 4 && !isWeakDealReference(ref)) {
+    return {
+      ok: false,
+      error: `Multiple deals matched "${reference}".`,
+      candidates: scored.slice(0, 5).map((row) => ({
+        id: row.deal.id,
+        title: row.deal.title,
+        address: row.deal.address,
+        contact_name: row.deal.contact_name,
+        score: row.score,
+      })),
+    };
+  }
+
+  return { ok: true, deal: top.deal };
+}
+
 function sanitizeSearch(value: string) {
   return value.trim().replace(/[%_,()]/g, " ").replace(/\s+/g, " ").slice(0, 80);
 }
@@ -764,6 +862,41 @@ function appendBlock(existing: string, heading: string, body: string) {
 
 function splitTags(value: string) {
   return value.split(/[,;|]/).map((tag) => tag.trim()).filter(Boolean);
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isWeakDealReference(value: string) {
+  const normalized = normalizeDealText(value);
+  const tokens = dealReferenceTokens(value);
+  return normalized.includes("deal id")
+    || normalized.includes("cette fiche")
+    || normalized.includes("ce deal")
+    || normalized.includes("current")
+    || tokens.length <= 2;
+}
+
+function dealReferenceTokens(value: string) {
+  const normalized = normalizeDealText(value);
+  return normalized
+    .split(/\s+/)
+    .map((token) => token === "st" ? "saint" : token)
+    .filter((token) =>
+      token.length >= 2 &&
+      !["deal", "id", "fiche", "page", "current", "cette", "celui", "celle", "avec", "pour", "the"].includes(token),
+    );
+}
+
+function normalizeDealText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function compactRows<T>(rows: T[], limit: number) {
