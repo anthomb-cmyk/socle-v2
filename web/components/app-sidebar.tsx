@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import SignOutButton from "./sign-out-button";
 import { LocaleToggle, useLocale } from "./locale-provider";
 
@@ -239,12 +239,13 @@ export default function AppSidebar({
           // for caller-tier users only. Admin sidebar is unchanged.
           const showCallerSectionHeader = !isAdmin && item.href === "/calls/queue";
           return (
-            <div key={item.href} style={{ display: "contents" }}>
+            <Fragment key={item.href}>
               {showCallerSectionHeader && (
                 <div className="sb__sect">{t.nav.callerSection}</div>
               )}
               <Link
                 href={item.href as never}
+                prefetch={false}
                 className={`sb__link${isActive(item.href) ? " sb__link--active" : ""}`}
                 onClick={() => setMobileOpen(false)}
               >
@@ -258,7 +259,7 @@ export default function AppSidebar({
                 </span>
                 {getBadgeForItem(item)}
               </Link>
-            </div>
+            </Fragment>
           );
         })}
 
@@ -270,6 +271,7 @@ export default function AppSidebar({
               <Link
                 key={item.href}
                 href={item.href as never}
+                prefetch={false}
                 className={`sb__link sb__link--sub${isActive(item.href) ? " sb__link--active" : ""}`}
                 onClick={() => setMobileOpen(false)}
               >
@@ -286,6 +288,7 @@ export default function AppSidebar({
         <div className="sb__cta-wrap">
           <Link
             href={"/pipeline" as never}
+            prefetch={false}
             className="sb__cta"
             onClick={() => setMobileOpen(false)}
           >
@@ -303,6 +306,7 @@ export default function AppSidebar({
             <Link
               key={d.id}
               href={`/pipeline/${d.id}` as never}
+              prefetch={false}
               className="sb__recent-item"
               onClick={() => setMobileOpen(false)}
             >
@@ -327,6 +331,7 @@ export default function AppSidebar({
               <Link
                 key={l.lead_id}
                 href={href}
+                prefetch={false}
                 className="sb__recent-item"
                 onClick={() => setMobileOpen(false)}
               >

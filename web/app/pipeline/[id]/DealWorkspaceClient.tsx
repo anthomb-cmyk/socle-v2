@@ -437,6 +437,7 @@ function SmsConversationPanel({ deal, messages }: { deal: Deal; messages: DealSm
         </div>
         <Link
           href={"/textos" as never}
+          prefetch={false}
           style={{
             flexShrink: 0,
             border: "1px solid #E6D7B5",
