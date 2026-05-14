@@ -52,6 +52,7 @@ export async function POST(request: Request) {
 
   let contactId: string | null = null;
   let leadId: string | null = null;
+  let dealId: string | null = null;
   if (from) {
     const { data: phone } = await sb
       .from("phones")
@@ -72,13 +73,52 @@ export async function POST(request: Request) {
     }
   }
 
+  if (from) {
+    const { data: deals } = await sb
+      .from("deals")
+      .select("id,title,contact_phone,activities")
+      .not("stage", "eq", "abandonne")
+      .order("updated_at", { ascending: false })
+      .limit(500);
+
+    const matchedDeal = (deals ?? []).find((deal) => {
+      if (normalizePhone(String(deal.contact_phone ?? "")) === from) return true;
+      if (!leadId || !Array.isArray(deal.activities)) return false;
+      return deal.activities.some((activity: unknown) => {
+        if (!activity || typeof activity !== "object") return false;
+        const row = activity as Record<string, unknown>;
+        return row.leadId === leadId || row.lead_id === leadId;
+      });
+    });
+    dealId = matchedDeal?.id ?? null;
+
+    if (dealId) {
+      const prev = Array.isArray(matchedDeal?.activities) ? matchedDeal.activities : [];
+      await sb
+        .from("deals")
+        .update({
+          activities: [
+            {
+              id: crypto.randomUUID(),
+              text: `SMS reçu de ${from}: ${body || "(message vide)"}`.slice(0, 500),
+              time: new Date().toISOString(),
+              leadId,
+            },
+            ...prev,
+          ],
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", dealId);
+    }
+  }
+
   await sb.from("automation_events").insert({
     source:             "web_app",
     event_type:         "sms_received",
     status:             "success",
     related_lead_id:    leadId,
     related_contact_id: contactId,
-    payload:            { from, to, body, messageSid, numMedia },
+    payload:            { from, to, body, messageSid, numMedia, dealId },
     result:             { raw: paramsFromForm(form) },
   });
 

@@ -22,6 +22,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/calls/queue",       label: "File d'appels",        icon: "calls"                         },
   { href: "/quick-call",        label: "Appel rapide",         icon: "quickcall"                     },
   { href: "/inbound-calls",     label: "Appels entrants",      icon: "calls",       adminOnly: true  },
+  { href: "/textos",            label: "Textos",               icon: "messages",    adminOnly: true  },
   { href: "/phone-review",      label: "Téléphones à réviser", icon: "phone",       adminOnly: true  },
   { href: "/review",            label: "Revue",                icon: "review",      adminOnly: true  },
   { href: "/import",            label: "Import rôle",          icon: "import",      adminOnly: true  },
@@ -61,6 +62,7 @@ type RecentDeal = {
 type SidebarCounts = {
   leads_total: number;
   leads_ready_to_call: number;
+  sms_threads_total: number;
   phone_candidates_needs_review: number;
   review_items_pending: number;
   proposed_actions_pending: number;
@@ -180,6 +182,14 @@ export default function AppSidebar({
         <Badge
           count={counts.phone_candidates_needs_review}
           highlight={counts.phone_candidates_needs_review > 0 ? "amber" : undefined}
+        />
+      );
+    }
+    if (item.href === "/textos") {
+      return (
+        <Badge
+          count={counts.sms_threads_total}
+          highlight={counts.sms_threads_total > 0 ? "amber" : undefined}
         />
       );
     }
@@ -385,6 +395,7 @@ function NavIcon({ name, small }: { name: string; small?: boolean }) {
     leads:       "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
     import:      "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12",
     calls:       "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
+    messages:    "M21 12a8 8 0 01-8 8H7l-4 3v-6.2A8 8 0 1113 20m4-8h.01M12 12h.01M7 12h.01",
     review:      "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
     phone:       "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
     followups:   "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
