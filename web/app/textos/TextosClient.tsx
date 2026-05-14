@@ -37,11 +37,14 @@ export type TextoRecipient = {
   dealTitle: string | null;
 };
 
+type Filter = "all" | "linked" | "unknown";
+
 export default function TextosClient({
   conversations,
 }: {
   conversations: TextoConversation[];
 }) {
+  // ── State (unchanged) ────────────────────────────────────────────────────
   const [items, setItems] = useState(conversations);
   const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? "");
   const [draft, setDraft] = useState("");
@@ -59,12 +62,20 @@ export default function TextosClient({
   const [newStatus, setNewStatus] = useState<"idle" | "sending" | "sent" | "failed">("idle");
   const [newError, setNewError] = useState<string | null>(null);
 
+  // ── Redesign-only state ──────────────────────────────────────────────────
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
+  const [mobileView, setMobileView] = useState<"list" | "thread">(
+    conversations.length === 0 ? "list" : "list",
+  );
+
   const selected = useMemo(
     () => items.find((item) => item.id === selectedId) ?? items[0] ?? null,
     [items, selectedId],
   );
   const selectedRecipient = recipients.find((recipient) => recipient.id === recipientId) ?? recipients[0] ?? null;
 
+  // ── Recipient lazy-load (unchanged) ──────────────────────────────────────
   useEffect(() => {
     if (!newOpen || newMode !== "known") return;
 
@@ -107,6 +118,29 @@ export default function TextosClient({
     };
   }, [newMode, newOpen, recipientQuery]);
 
+  // ── Counts and filtered list ─────────────────────────────────────────────
+  const counts = useMemo(() => ({
+    all: items.length,
+    linked: items.filter((i) => i.dealId).length,
+    unknown: items.filter((i) => !i.contactId && !i.leadId && !i.dealId).length,
+  }), [items]);
+
+  const filteredItems = useMemo(() => {
+    let result = items;
+    if (filter === "linked") result = result.filter((i) => i.dealId);
+    if (filter === "unknown") result = result.filter((i) => !i.contactId && !i.leadId && !i.dealId);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      result = result.filter((i) =>
+        (i.contactName ?? i.dealTitle ?? "").toLowerCase().includes(q)
+        || i.number.toLowerCase().includes(q)
+        || (i.dealTitle ?? "").toLowerCase().includes(q),
+      );
+    }
+    return result;
+  }, [items, filter, query]);
+
+  // ── Send actions (unchanged) ─────────────────────────────────────────────
   async function sendReply() {
     const message = draft.trim();
     if (!selected || !message || status === "sending") return;
@@ -219,6 +253,7 @@ export default function TextosClient({
         } : item);
       });
       setSelectedId(normalizedTo);
+      setMobileView("thread");
       setNewMessage("");
       setRandomNumber("");
       setNewOpen(false);
@@ -230,102 +265,149 @@ export default function TextosClient({
     }
   }
 
+  function initialsFor(name: string) {
+    const parts = name.trim().split(/\s+/).slice(0, 2);
+    return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+  }
+
   return (
-    <main className="sms-page">
-      <header className="sms-head">
+    <main className="tx-page" data-view={mobileView}>
+      <header className="tx-head">
         <div>
-          <div className="sms-head__eyebrow">Twilio · SMS</div>
-          <h1 className="sms-head__title">Textos</h1>
-          <p className="sms-head__sub">
+          <div className="tx-head__eyebrow">Twilio · SMS</div>
+          <h1 className="tx-head__title">Textos</h1>
+          <p className="tx-head__sub">
             Conversations SMS reçues et envoyées depuis les numéros Socle. Les numéros connus sont liés au lead, contact et deal quand possible.
           </p>
         </div>
-        <button
-          type="button"
-          className="sms-new-button"
-          onClick={() => {
-            setNewOpen((open) => !open);
-            setStatus("idle");
-            setError(null);
-          }}
-        >
-          Nouveau texto
-        </button>
-        <div className="sms-metrics">
-          <Metric label="Conversations" value={items.length} />
-          <Metric label="Liées pipeline" value={items.filter((item) => item.dealId).length} tone="green" />
-          <Metric label="Inconnues" value={items.filter((item) => !item.contactId && !item.leadId && !item.dealId).length} tone="amber" />
+        <div className="tx-head__actions">
+          <button
+            type="button"
+            className="btn btn--gold"
+            onClick={() => {
+              setNewOpen((open) => !open);
+              setStatus("idle");
+              setError(null);
+            }}
+          >
+            {newOpen ? "Fermer" : "Nouveau texto"}
+          </button>
         </div>
       </header>
 
-      <section className="sms-shell">
-        <aside className="sms-thread-list" aria-label="Conversations SMS">
-          {items.length === 0 ? (
-            <div className="sms-empty">Aucun texto reçu pour l&apos;instant.</div>
-          ) : null}
-          {items.map((item) => {
-            const last = item.messages[item.messages.length - 1];
-            const title = item.contactName ?? item.dealTitle ?? item.number;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`sms-thread${selected?.id === item.id ? " sms-thread--active" : ""}`}
-                onClick={() => {
-                  setSelectedId(item.id);
-                  setStatus("idle");
-                  setError(null);
-                }}
-              >
-                <span className="sms-thread__top">
-                  <span className="sms-thread__name">{title}</span>
-                  <span className="sms-thread__time">{formatShortDate(last?.at)}</span>
-                </span>
-                <span className="sms-thread__number">{item.number}</span>
-                <span className="sms-thread__preview">{last?.body || "Conversation vide"}</span>
-              </button>
-            );
-          })}
+      <div className="tx-shell">
+        {/* ── List column ── */}
+        <aside className="tx-list" aria-label="Conversations SMS">
+          <div className="tx-list__top">
+            <div className="tx-search">
+              <SearchIcon />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Rechercher nom, deal, numéro…"
+                aria-label="Rechercher dans les conversations"
+              />
+            </div>
+            <div className="tx-filters" role="tablist">
+              {([
+                ["all", "Toutes", counts.all],
+                ["linked", "Liées", counts.linked],
+                ["unknown", "Inconnues", counts.unknown],
+              ] as const).map(([key, label, n]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`tx-filter${filter === key ? " tx-filter--active" : ""}`}
+                  onClick={() => setFilter(key)}
+                >
+                  {label}
+                  <span className="tx-filter__n">{n}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="tx-list__items">
+            {filteredItems.length === 0 ? (
+              <div className="tx-empty">
+                {items.length === 0
+                  ? "Aucun texto pour l'instant. Lance « Nouveau texto » pour commencer."
+                  : "Aucun résultat pour ce filtre."}
+              </div>
+            ) : null}
+            {filteredItems.map((item) => {
+              const last = item.messages[item.messages.length - 1];
+              const title = item.contactName ?? item.dealTitle ?? item.number;
+              const isUnknown = !item.contactId && !item.leadId && !item.dealId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`tx-thread${selected?.id === item.id ? " tx-thread--active" : ""}`}
+                  onClick={() => {
+                    setSelectedId(item.id);
+                    setNewOpen(false);
+                    setMobileView("thread");
+                    setStatus("idle");
+                    setError(null);
+                  }}
+                >
+                  <span className={`tx-thread__avatar${isUnknown ? " tx-thread__avatar--unknown" : ""}`}>
+                    {isUnknown ? "?" : initialsFor(title)}
+                  </span>
+                  <span className="tx-thread__main">
+                    <span className="tx-thread__top">
+                      <span className="tx-thread__name">{title}</span>
+                      <span className="tx-thread__time">{formatShortDate(last?.at)}</span>
+                    </span>
+                    <span className="tx-thread__number">{item.number}</span>
+                    <span className="tx-thread__preview">{last?.body || "Conversation vide"}</span>
+                  </span>
+                  {item.dealId && <span className="tx-thread__chip">deal</span>}
+                </button>
+              );
+            })}
+          </div>
         </aside>
 
-        <section className="sms-conversation">
+        {/* ── Conversation column ── */}
+        <section className="tx-conv">
           {newOpen ? (
-            <section className="sms-new-panel">
-              <header className="sms-new-panel__head">
-                <div>
-                  <h2>Commencer une conversation</h2>
-                  <p>Choisis quelqu&apos;un dans le CRM ou entre un numéro libre.</p>
-                </div>
-                <div className="sms-segmented">
-                  <button type="button" className={newMode === "known" ? "is-active" : ""} onClick={() => setNewMode("known")}>
-                    Contact CRM
-                  </button>
-                  <button type="button" className={newMode === "random" ? "is-active" : ""} onClick={() => setNewMode("random")}>
-                    Numéro libre
-                  </button>
-                </div>
-              </header>
+            <div className="tx-newpanel">
+              <div className="tx-newpanel__head">
+                <h2>Commencer une conversation</h2>
+                <p>Choisis quelqu&apos;un dans le CRM ou entre un numéro libre.</p>
+              </div>
+
+              <div className="tx-seg" role="tablist">
+                <button type="button" className={newMode === "known" ? "is-active" : ""} onClick={() => setNewMode("known")}>
+                  Contact CRM
+                </button>
+                <button type="button" className={newMode === "random" ? "is-active" : ""} onClick={() => setNewMode("random")}>
+                  Numéro libre
+                </button>
+              </div>
 
               {newMode === "known" ? (
-                <div className="sms-recipient-picker">
+                <div className="tx-recipient-picker">
                   <input
                     value={recipientQuery}
                     onChange={(event) => setRecipientQuery(event.target.value)}
                     placeholder="Chercher par nom, adresse, deal ou téléphone"
                   />
-                  <div className="sms-recipient-list">
+                  <div className="tx-recipient-list">
                     {recipientsLoading ? (
-                      <div className="sms-empty">Chargement des contacts...</div>
+                      <div className="tx-empty">Chargement des contacts…</div>
                     ) : recipientsError ? (
-                      <div className="sms-empty">{recipientsError}</div>
+                      <div className="tx-empty">{recipientsError}</div>
                     ) : recipients.length === 0 ? (
-                      <div className="sms-empty">Aucun contact avec numéro trouvé.</div>
+                      <div className="tx-empty">Aucun contact avec numéro trouvé.</div>
                     ) : null}
                     {recipients.map((recipient) => (
                       <button
                         key={recipient.id}
                         type="button"
-                        className={`sms-recipient${selectedRecipient?.id === recipient.id ? " sms-recipient--active" : ""}`}
+                        className={`tx-recipient${selectedRecipient?.id === recipient.id ? " tx-recipient--active" : ""}`}
                         onClick={() => setRecipientId(recipient.id)}
                       >
                         <span>
@@ -338,10 +420,10 @@ export default function TextosClient({
                   </div>
                 </div>
               ) : (
-                <div className="sms-random-number">
-                  <label htmlFor="sms-random-number">Numéro de téléphone</label>
+                <div className="tx-random-number">
+                  <label htmlFor="tx-random-number">Numéro de téléphone</label>
                   <input
-                    id="sms-random-number"
+                    id="tx-random-number"
                     value={randomNumber}
                     onChange={(event) => setRandomNumber(event.target.value)}
                     placeholder="+1 514 555 0000"
@@ -349,95 +431,222 @@ export default function TextosClient({
                 </div>
               )}
 
-              <footer className="sms-composer sms-composer--new">
-                <textarea
-                  value={newMessage}
-                  onChange={(event) => setNewMessage(event.target.value)}
-                  maxLength={1000}
-                  rows={4}
-                  placeholder="Écrire le premier texto..."
-                />
-                <button
-                  type="button"
-                  onClick={sendNewConversation}
-                  disabled={
-                    !newMessage.trim() ||
-                    newStatus === "sending" ||
-                    (newMode === "known" ? !selectedRecipient : !randomNumber.trim())
-                  }
-                >
-                  {newStatus === "sending" ? "Envoi..." : "Envoyer"}
-                </button>
-                <div className="sms-composer__hint">
+              <div className="tx-composer">
+                <div className="tx-composer__row">
+                  <textarea
+                    value={newMessage}
+                    onChange={(event) => setNewMessage(event.target.value)}
+                    maxLength={1000}
+                    rows={4}
+                    placeholder="Écrire le premier texto…"
+                  />
+                  <button
+                    type="button"
+                    className="tx-composer__send"
+                    onClick={sendNewConversation}
+                    disabled={
+                      !newMessage.trim() ||
+                      newStatus === "sending" ||
+                      (newMode === "known" ? !selectedRecipient : !randomNumber.trim())
+                    }
+                  >
+                    {newStatus === "sending" ? "Envoi…" : "Envoyer"}
+                  </button>
+                </div>
+                <div className={`tx-composer__hint${newStatus === "failed" ? " tx-composer__hint--error" : ""}`}>
                   {newStatus === "failed"
                     ? newError
-                    : "Le message part du numéro Twilio. Pour un numéro random, il restera non lié jusqu'a ce qu'on l'associe à un contact."}
+                    : "Le message part du numéro Twilio. Pour un numéro libre, il restera non lié jusqu'à ce qu'on l'associe à un contact."}
                 </div>
-              </footer>
-            </section>
+              </div>
+            </div>
           ) : !selected ? (
-            <div className="sms-empty sms-empty--panel">Sélectionne une conversation.</div>
+            <div className="tx-empty">Sélectionne une conversation.</div>
           ) : (
             <>
-              <header className="sms-conversation__head">
-                <div>
-                  <h2>{selected.contactName ?? selected.dealTitle ?? selected.number}</h2>
-                  <p>{selected.number}</p>
+              <header className="tx-conv__head">
+                <button
+                  type="button"
+                  className="tx-conv__back"
+                  onClick={() => setMobileView("list")}
+                  aria-label="Retour à la liste"
+                >
+                  <BackIcon />
+                </button>
+                <div className="tx-conv__id">
+                  <span className="tx-conv__name">{selected.contactName ?? selected.dealTitle ?? selected.number}</span>
+                  <span className="tx-conv__number">{selected.number}</span>
                 </div>
-                <div className="sms-links">
-                  {selected.dealId ? <Link href={`/pipeline/${selected.dealId}` as never}>Pipeline</Link> : null}
-                  {selected.leadId ? <Link href={`/leads/${selected.leadId}` as never}>Lead</Link> : null}
-                  {selected.contactId ? <Link href={`/contacts/${selected.contactId}` as never}>Contact</Link> : null}
-                  {!selected.dealId && !selected.leadId && !selected.contactId ? <span>Non reconnu</span> : null}
+                <div className="tx-conv__links">
+                  {selected.dealId
+                    ? <Link href={`/pipeline/${selected.dealId}` as never} className="tx-conv__link">Pipeline</Link>
+                    : null}
+                  {selected.leadId
+                    ? <Link href={`/leads/${selected.leadId}` as never} className="tx-conv__link">Lead</Link>
+                    : null}
+                  {selected.contactId
+                    ? <Link href={`/contacts/${selected.contactId}` as never} className="tx-conv__link">Contact</Link>
+                    : null}
+                  {!selected.dealId && !selected.leadId && !selected.contactId
+                    ? <span className="tx-conv__link tx-conv__link--unlinked">Non reconnu</span>
+                    : null}
                 </div>
               </header>
 
-              <div className="sms-messages">
-                {selected.messages.map((message) => (
-                  <div key={message.id} className={`sms-bubble sms-bubble--${message.direction}`}>
-                    <div className="sms-bubble__body">{message.body || "Message vide"}</div>
-                    <div className="sms-bubble__meta">
-                      {message.direction === "inbound" ? "Reçu" : "Envoyé"} · {formatFullDate(message.at)}
-                    </div>
-                  </div>
+              <div className="tx-messages">
+                {groupByDay(selected.messages).map((group) => (
+                  <DayGroup key={group.day} day={group.day} messages={group.messages} />
                 ))}
               </div>
 
-              <footer className="sms-composer">
-                <textarea
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  maxLength={1000}
-                  rows={3}
-                  placeholder={`Répondre à ${selected.contactName ?? selected.number}`}
-                />
-                <button type="button" onClick={sendReply} disabled={!draft.trim() || status === "sending"}>
-                  {status === "sending" ? "Envoi..." : "Envoyer"}
-                </button>
-                <div className="sms-composer__hint">
+              <div className="tx-composer">
+                <div className="tx-composer__row">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    maxLength={1000}
+                    rows={3}
+                    placeholder={`Répondre à ${selected.contactName ?? selected.number}`}
+                  />
+                  <button
+                    type="button"
+                    className="tx-composer__send"
+                    onClick={sendReply}
+                    disabled={!draft.trim() || status === "sending"}
+                  >
+                    {status === "sending" ? "Envoi…" : "Envoyer"}
+                  </button>
+                </div>
+                <div className={`tx-composer__hint${status === "failed" ? " tx-composer__hint--error" : ""}`}>
                   {status === "sent"
                     ? "Texto envoyé depuis le numéro Twilio."
                     : status === "failed"
                     ? error
                     : "Le client voit seulement le numéro Twilio, pas ton cell personnel."}
                 </div>
-              </footer>
+              </div>
             </>
           )}
         </section>
-      </section>
+
+        {/* ── Context rail ── */}
+        <aside className="tx-rail" aria-label="Contexte conversation">
+          {selected && selected.dealId ? (
+            <div className="tx-rail__card">
+              <div className="tx-rail__kicker">Deal lié</div>
+              <h3 className="tx-rail__title">{selected.dealTitle ?? selected.contactName ?? selected.number}</h3>
+              {selected.dealStage && <p className="tx-rail__sub">Stade · {selected.dealStage}</p>}
+              <div className="tx-rail__row">
+                <span>Numéro</span>
+                <span className="mono">{selected.number}</span>
+              </div>
+              {selected.leadLabel && (
+                <div className="tx-rail__row">
+                  <span>Adresse</span>
+                  <span>{selected.leadLabel}</span>
+                </div>
+              )}
+              <Link href={`/pipeline/${selected.dealId}` as never} className="tx-rail__link">
+                Ouvrir le deal →
+              </Link>
+            </div>
+          ) : selected && selected.leadId ? (
+            <div className="tx-rail__card">
+              <div className="tx-rail__kicker">Lead lié</div>
+              <h3 className="tx-rail__title">{selected.contactName ?? selected.leadLabel ?? selected.number}</h3>
+              {selected.leadLabel && <p className="tx-rail__sub">{selected.leadLabel}</p>}
+              <Link href={`/leads/${selected.leadId}` as never} className="tx-rail__link">
+                Ouvrir le lead →
+              </Link>
+            </div>
+          ) : selected && selected.contactId ? (
+            <div className="tx-rail__card">
+              <div className="tx-rail__kicker">Contact lié</div>
+              <h3 className="tx-rail__title">{selected.contactName ?? selected.number}</h3>
+              <Link href={`/contacts/${selected.contactId}` as never} className="tx-rail__link">
+                Ouvrir le contact →
+              </Link>
+            </div>
+          ) : selected ? (
+            <div className="tx-rail__card">
+              <div className="tx-rail__kicker">Conversation non liée</div>
+              <p className="tx-rail__sub">
+                Ce numéro n&apos;est pas encore associé à un contact, lead ou deal du CRM.
+              </p>
+              <div className="tx-rail__row">
+                <span>Numéro</span>
+                <span className="mono">{selected.number}</span>
+              </div>
+              {selected.socleNumber && (
+                <div className="tx-rail__row">
+                  <span>Vers Socle</span>
+                  <span className="mono">{selected.socleNumber}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="tx-rail__empty">Sélectionne une conversation pour voir le contexte.</div>
+          )}
+        </aside>
+      </div>
     </main>
   );
 }
 
-function Metric({ label, value, tone }: { label: string; value: number; tone?: "green" | "amber" }) {
+// ── Day grouping ─────────────────────────────────────────────────────────
+
+type DayBucket = { day: string; messages: TextoMessage[] };
+
+function groupByDay(messages: TextoMessage[]): DayBucket[] {
+  const fmt = new Intl.DateTimeFormat("fr-CA", { dateStyle: "full", timeZone: "America/Toronto" });
+  const out: DayBucket[] = [];
+  let current: DayBucket | null = null;
+  for (const m of messages) {
+    const day = m.at ? fmt.format(new Date(m.at)) : "—";
+    if (!current || current.day !== day) {
+      current = { day, messages: [] };
+      out.push(current);
+    }
+    current.messages.push(m);
+  }
+  return out;
+}
+
+function DayGroup({ day, messages }: { day: string; messages: TextoMessage[] }) {
   return (
-    <div className={`sms-metric${tone ? ` sms-metric--${tone}` : ""}`}>
-      <div className="sms-metric__label">{label}</div>
-      <div className="sms-metric__value">{value}</div>
-    </div>
+    <>
+      <div className="tx-day">{day}</div>
+      {messages.map((message) => (
+        <div key={message.id} className={`tx-bubble tx-bubble--${message.direction === "outbound" ? "out" : "in"}`}>
+          <div className="tx-bubble__body">{message.body || "Message vide"}</div>
+          <div className="tx-bubble__meta">
+            {message.direction === "inbound" ? "Reçu" : "Envoyé"} · {formatFullDate(message.at)}
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
+
+// ── Icons ────────────────────────────────────────────────────────────────
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" />
+    </svg>
+  );
+}
+function BackIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+// ── Date helpers (unchanged) ─────────────────────────────────────────────
 
 function formatShortDate(value?: string) {
   if (!value) return "";
