@@ -31,8 +31,11 @@ export type QueueLead = {
   last_contacted_at: string | null;
   next_action_at: string | null;
   priority: number | null;
-  // fit_score is on leads.* but not exposed by leads_view, so the queue
-  // doesn't fetch it. Optional so the cast in page.tsx still works.
+  // TODO(fit_score): expose fit_score through leads_view and use it as a
+  // tertiary sort key (after priority + next_action_at). Tracked because the
+  // queue currently treats two equal-priority leads as interchangeable, which
+  // hurts campaign ROI when one is a much better match. Kept optional so the
+  // page.tsx cast still works in the meantime.
   fit_score?: number | null;
 };
 

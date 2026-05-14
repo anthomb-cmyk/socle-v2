@@ -89,18 +89,30 @@ export default function QueueRow({ item, selected, onSelect, onOpen, t }: Props)
         {formattedPhone ?? t.queue.phoneBad}
       </div>
 
-      {/* Col 5: Outcome / status */}
+      {/* Col 5: Outcome / status. aria-label conveys the same meaning as the
+          colored dot for screen-reader / color-blind users. */}
       <div className="queue-row__outcome">
         {overdueLabel && (
-          <span className="queue-overdue-badge" title={overdueLabel}><Icon name="refresh" /></span>
+          <span className="queue-overdue-badge" title={overdueLabel} aria-label={overdueLabel}>
+            <Icon name="refresh" />
+          </span>
         )}
         {callCount === 0 ? (
-          <span className={`pill ${pillClass(lead.status, isHot)}`}>
-            <span className="pill__dot" />
+          <span
+            className={`pill ${pillClass(lead.status, isHot)}`}
+            aria-label={lead.status === "phone_verified" ? t.queue.phoneVerified : t.queue.phoneNew}
+          >
+            <span className="pill__dot" aria-hidden="true" />
             {lead.status === "phone_verified" ? t.queue.phoneVerified : t.queue.phoneNew}
           </span>
         ) : (
-          <span className={`pill ${pillClass(lead.status, isHot)}`} data-variant={variant}><span className="pill__dot" />{statusLabel}</span>
+          <span
+            className={`pill ${pillClass(lead.status, isHot)}`}
+            data-variant={variant}
+            aria-label={statusLabel}
+          >
+            <span className="pill__dot" aria-hidden="true" />{statusLabel}
+          </span>
         )}
       </div>
     </li>
