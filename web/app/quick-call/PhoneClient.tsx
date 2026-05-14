@@ -564,7 +564,7 @@ function RecentsPane({
           </button>
           {(call.leadId || call.contactId || call.investorId) && (
             <Link
-              href={detailHref(call)}
+              href={detailHref(call) as never}
               className="ph-recent__info"
               aria-label="Détails de l'appel"
             >
