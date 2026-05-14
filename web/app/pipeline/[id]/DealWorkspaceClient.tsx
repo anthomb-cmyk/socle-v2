@@ -86,7 +86,7 @@ export type DealDossier = {
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const STAGE_ORDER = ["prospection","analyse","offre","due_diligence","financement","cloture","abandonne"];
+const STAGE_ORDER = ["prospection", "analyse", "offre", "due_diligence", "financement", "cloture", "abandonne"];
 const STAGE_LABELS: Record<string, string> = {
   prospection:   "Prospection",
   analyse:       "Analyse",
@@ -96,19 +96,13 @@ const STAGE_LABELS: Record<string, string> = {
   cloture:       "Clôturé",
   abandonne:     "Abandonné",
 };
-const STAGE_COLORS: Record<string, string> = {
-  prospection:   "#6B7280",
-  analyse:       "#7C3AED",
-  offre:         "#2563EB",
-  due_diligence: "#D97706",
-  financement:   "#059669",
-  cloture:       "#10B981",
-  abandonne:     "#EF4444",
+const TEMP_CONFIG: Record<string, { label: string; pill: string }> = {
+  froid: { label: "Froid", pill: "pill--info" },
+  tiede: { label: "Tiède", pill: "pill--review" },
+  chaud: { label: "Chaud", pill: "pill--hot" },
 };
-const TEMP_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  froid: { label: "Froid",  bg: "#EFF6FF", text: "#1D4ED8" },
-  tiede: { label: "Tiède",  bg: "#FFFBEB", text: "#92400E" },
-  chaud: { label: "Chaud",  bg: "#FEF2F2", text: "#B91C1C" },
+const PRIORITY_LABELS: Record<string, string> = {
+  low: "Basse", medium: "Moyenne", high: "Haute",
 };
 
 function formatCAD(n: number | null): string {
@@ -137,53 +131,41 @@ function excerpt(text: string | null | undefined, max = 520) {
   if (!normalized) return "—";
   return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
 }
+function initialsFor(name: string | null) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
 
-// ── Stage Progress Bar ────────────────────────────────────────────────────────
-function StageProgressBar({ currentStage, onStageChange }: { currentStage: string; onStageChange: (s: string) => void }) {
-  const activeStages = STAGE_ORDER.filter(s => s !== "abandonne");
-  const currentIdx   = activeStages.indexOf(currentStage);
+// ── Stage Stepper ─────────────────────────────────────────────────────────────
+function StageStepper({ currentStage, onStageChange }: { currentStage: string; onStageChange: (s: string) => void }) {
+  const activeStages = STAGE_ORDER.filter((s) => s !== "abandonne");
+  const currentIdx = activeStages.indexOf(currentStage);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto", paddingBottom: 4 }}>
+    <div className="dw-stepper">
       {activeStages.map((stage, idx) => {
-        const isActive   = stage === currentStage;
-        const isDone     = idx < currentIdx;
-        const color      = STAGE_COLORS[stage];
+        const isActive = stage === currentStage;
+        const isDone = idx < currentIdx;
+        const cls = ["dw-step", isActive ? "dw-step--active" : "", isDone ? "dw-step--done" : ""]
+          .filter(Boolean).join(" ");
         return (
           <button
             key={stage}
+            type="button"
             onClick={() => onStageChange(stage)}
+            className={cls}
             title={`Passer à ${STAGE_LABELS[stage]}`}
-            style={{
-              flex: 1, minWidth: 80, padding: "7px 6px",
-              border: "none", cursor: "pointer", fontSize: 11, fontWeight: isActive ? 800 : 500,
-              background: isActive ? color : isDone ? color + "22" : "#F3F4F6",
-              color: isActive ? "#fff" : isDone ? color : "#9CA3AF",
-              borderRadius: idx === 0 ? "8px 0 0 8px" : idx === activeStages.length - 1 ? "0 8px 8px 0" : 0,
-              borderRight: idx < activeStages.length - 1 ? "1px solid rgba(255,255,255,0.3)" : "none",
-              transition: "all 0.15s ease",
-              textAlign: "center",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
           >
             {STAGE_LABELS[stage]}
           </button>
         );
       })}
-      {/* Abandonné button */}
       <button
+        type="button"
         onClick={() => onStageChange("abandonne")}
+        className={`dw-step dw-step--abandon${currentStage === "abandonne" ? " dw-step--active" : ""}`}
         title="Marquer comme abandonné"
-        style={{
-          marginLeft: 8, padding: "7px 12px",
-          border: "1px solid #FCA5A5", borderRadius: 8, cursor: "pointer",
-          fontSize: 11, fontWeight: currentStage === "abandonne" ? 800 : 500,
-          background: currentStage === "abandonne" ? "#EF4444" : "#FFF",
-          color: currentStage === "abandonne" ? "#fff" : "#EF4444",
-          flexShrink: 0,
-        }}
       >
         Abandonné
       </button>
@@ -200,70 +182,48 @@ function ChecklistPanel({ stage, checklists, onToggle }: {
   const items = checklists[stage] ?? [];
   if (items.length === 0) return null;
 
-  const done  = items.filter(i => i.done).length;
+  const done = items.filter((i) => i.done).length;
   const total = items.length;
-  const pct   = Math.round((done / total) * 100);
+  const pct = Math.round((done / total) * 100);
 
   return (
-    <div style={{ background: "var(--crm-bg-alt, #F9FAFB)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", color: "#6B7280" }}>
-          Checklist — {STAGE_LABELS[stage]}
-        </span>
-        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: pct === 100 ? "#059669" : "#6B7280" }}>
+    <div>
+      <div className="dw-checklist__head">
+        Checklist — {STAGE_LABELS[stage]}
+        <span className={`dw-checklist__count${pct === 100 ? " dw-checklist__count--done" : ""}`}>
           {done}/{total}
         </span>
       </div>
-
-      {/* Progress bar */}
-      <div style={{ height: 4, background: "#E5E7EB", borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
-        <div style={{
-          height: "100%", width: `${pct}%`,
-          background: pct === 100 ? "#059669" : "var(--crm-gold, #C9A84C)",
-          borderRadius: 2, transition: "width 0.3s ease",
-        }} />
+      <div className="dw-checklist__bar">
+        <div className={pct === 100 ? "is-done" : ""} style={{ width: `${pct}%` }} />
       </div>
-
-      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
-        {items.map(item => (
-          <li key={item.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <ul className="dw-checklist__list">
+        {items.map((item) => (
+          <li key={item.id} className="dw-checklist__item">
             <button
+              type="button"
               onClick={() => onToggle(stage, item.id, !item.done)}
-              style={{
-                width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                border: `2px solid ${item.done ? "#059669" : "#D1D5DB"}`,
-                background: item.done ? "#059669" : "transparent",
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
-              }}
+              className={`dw-checklist__cb${item.done ? " dw-checklist__cb--done" : ""}`}
               aria-label={item.done ? "Décocher" : "Cocher"}
             >
               {item.done && (
                 <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                  <path d="M1 4l2.5 2.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
             </button>
-            <span style={{
-              fontSize: 13, flex: 1,
-              color: item.done ? "#9CA3AF" : "#374151",
-              textDecoration: item.done ? "line-through" : "none",
-            }}>
+            <span className={`dw-checklist__label${item.done ? " dw-checklist__label--done" : ""}`}>
               {item.label}
             </span>
           </li>
         ))}
       </ul>
-
-      {pct === 100 && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "#059669", fontWeight: 700 }}>
-          Toutes les étapes complètes !
-        </div>
-      )}
+      {pct === 100 && <div className="dw-checklist__done-banner">Toutes les étapes complètes !</div>}
     </div>
   );
 }
 
-// ── Field editor ──────────────────────────────────────────────────────────────
+// ── Editable Field ────────────────────────────────────────────────────────────
 function EditableField({ label, value, type = "text", onSave }: {
   label: string;
   value: string | number | null;
@@ -271,84 +231,69 @@ function EditableField({ label, value, type = "text", onSave }: {
   onSave: (v: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft]     = useState(String(value ?? ""));
+  const [draft, setDraft] = useState(String(value ?? ""));
 
   function commit() {
     onSave(draft);
     setEditing(false);
   }
+  function cancel() {
+    setDraft(String(value ?? ""));
+    setEditing(false);
+  }
 
   if (editing) {
-    if (type === "textarea") return (
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
-        <textarea
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          rows={5}
-          style={{ width: "100%", padding: "8px 10px", border: "1px solid #C9A84C", borderRadius: 8, fontSize: 13, resize: "vertical", outline: "none", boxSizing: "border-box" }}
-          autoFocus
-        />
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          <button onClick={commit} style={{ fontSize: 12, padding: "4px 12px", background: "var(--crm-gold, #C9A84C)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>Sauvegarder</button>
-          <button onClick={() => { setDraft(String(value ?? "")); setEditing(false); }} style={{ fontSize: 12, padding: "4px 10px", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 6, cursor: "pointer" }}>Annuler</button>
-        </div>
-      </div>
-    );
-
-    if (type === "select-temp") return (
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
-        <select value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-          style={{ padding: "6px 10px", border: "1px solid #C9A84C", borderRadius: 8, fontSize: 13, outline: "none" }}>
-          <option value="froid">Froid</option>
-          <option value="tiede">Tiède</option>
-          <option value="chaud">Chaud</option>
-        </select>
-        <button onClick={commit} style={{ marginLeft: 8, fontSize: 12, padding: "6px 12px", background: "var(--crm-gold, #C9A84C)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>OK</button>
-        <button onClick={() => { setDraft(String(value ?? "")); setEditing(false); }} style={{ marginLeft: 6, fontSize: 12, padding: "6px 10px", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 6, cursor: "pointer" }}>✕</button>
-      </div>
-    );
-
-    if (type === "select-priority") return (
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
-        <select value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-          style={{ padding: "6px 10px", border: "1px solid #C9A84C", borderRadius: 8, fontSize: 13, outline: "none" }}>
-          <option value="low">Basse</option>
-          <option value="medium">Moyenne</option>
-          <option value="high">Haute</option>
-        </select>
-        <button onClick={commit} style={{ marginLeft: 8, fontSize: 12, padding: "6px 12px", background: "var(--crm-gold, #C9A84C)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>OK</button>
-        <button onClick={() => { setDraft(String(value ?? "")); setEditing(false); }} style={{ marginLeft: 6, fontSize: 12, padding: "6px 10px", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 6, cursor: "pointer" }}>✕</button>
-      </div>
-    );
-
     return (
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
-        <input
-          type={type}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(String(value ?? "")); setEditing(false); } }}
-          autoFocus
-          style={{ padding: "6px 10px", border: "1px solid #C9A84C", borderRadius: 8, fontSize: 13, outline: "none", minWidth: 160 }}
-        />
-        <button onClick={commit} style={{ marginLeft: 8, fontSize: 12, padding: "6px 12px", background: "var(--crm-gold, #C9A84C)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>OK</button>
-        <button onClick={() => { setDraft(String(value ?? "")); setEditing(false); }} style={{ marginLeft: 6, fontSize: 12, padding: "6px 10px", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 6, cursor: "pointer" }}>✕</button>
+      <div className="dw-field__edit">
+        <div className="dw-field__label">{label}</div>
+        {type === "textarea" ? (
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={5} autoFocus />
+        ) : type === "select-temp" ? (
+          <select value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus>
+            <option value="froid">Froid</option>
+            <option value="tiede">Tiède</option>
+            <option value="chaud">Chaud</option>
+          </select>
+        ) : type === "select-priority" ? (
+          <select value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus>
+            <option value="low">Basse</option>
+            <option value="medium">Moyenne</option>
+            <option value="high">Haute</option>
+          </select>
+        ) : (
+          <input
+            type={type}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") cancel();
+            }}
+            autoFocus
+          />
+        )}
+        <div className="dw-field__actions">
+          <button type="button" className="btn btn--gold btn--sm" onClick={commit}>Sauvegarder</button>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={cancel}>Annuler</button>
+        </div>
       </div>
     );
   }
 
+  const display = value === null || value === undefined || value === ""
+    ? null
+    : type === "select-temp" ? TEMP_CONFIG[String(value)]?.label ?? String(value)
+    : type === "select-priority" ? PRIORITY_LABELS[String(value)] ?? String(value)
+    : String(value);
+  const isNumeric = type === "number";
+
   return (
-    <div onClick={() => setEditing(true)} style={{ cursor: "pointer", padding: "6px 8px", borderRadius: 8, transition: "background 0.1s" }}
-      onMouseEnter={e => (e.currentTarget.style.background = "#F9FAFB")}
-      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 13, color: value ? "#111827" : "#D1D5DB" }}>
-        {value ? String(value) : "—  (cliquer pour modifier)"}
-        <span style={{ fontSize: 11, color: "#C9A84C", marginLeft: 6 }}></span>
+    <div className="dw-field" onClick={() => setEditing(true)} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setEditing(true); }}
+    >
+      <div className="dw-field__label">{label}</div>
+      <div className={`dw-field__value${display === null ? " dw-field__value--empty" : ""}${isNumeric ? " dw-field__value--num" : ""}`}>
+        {display ?? "— (cliquer pour modifier)"}
       </div>
     </div>
   );
@@ -357,7 +302,7 @@ function EditableField({ label, value, type = "text", onSave }: {
 // ── Activity Log ──────────────────────────────────────────────────────────────
 function ActivityLog({ activities, onAdd }: { activities: Activity[]; onAdd: (text: string) => void }) {
   const [newText, setNewText] = useState("");
-  const [adding, setAdding]   = useState(false);
+  const [adding, setAdding] = useState(false);
 
   async function submit() {
     const t = newText.trim();
@@ -369,50 +314,34 @@ function ActivityLog({ activities, onAdd }: { activities: Activity[]; onAdd: (te
   }
 
   return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 10 }}>
-        Journal d&apos;activité
-      </div>
-      {/* Add note */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+    <div className="dw-activity">
+      <div className="dw-activity__add">
         <input
           value={newText}
-          onChange={e => setNewText(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && submit()}
+          onChange={(e) => setNewText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder="Ajouter une note ou activité…"
-          style={{
-            flex: 1, padding: "8px 12px", border: "1px solid #E5E7EB",
-            borderRadius: 8, fontSize: 13, outline: "none",
-          }}
         />
         <button
+          type="button"
+          className="btn btn--gold"
           onClick={submit}
           disabled={adding || !newText.trim()}
-          style={{
-            padding: "8px 16px", border: "none", borderRadius: 8,
-            background: "var(--crm-gold, #C9A84C)", color: "#fff",
-            fontSize: 13, fontWeight: 700, cursor: "pointer",
-            opacity: adding || !newText.trim() ? 0.5 : 1,
-          }}
+          style={{ opacity: adding || !newText.trim() ? 0.5 : 1 }}
         >
-          +
+          Ajouter
         </button>
       </div>
-
-      {/* Activity list */}
-      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+      <ul className="dw-activity__list">
         {activities.length === 0 ? (
-          <li style={{ fontSize: 13, color: "#9CA3AF" }}>Aucune activité enregistrée.</li>
+          <li className="dw-activity__empty">Aucune activité enregistrée.</li>
         ) : (
-          activities.map(act => (
-            <li key={act.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <div style={{
-                width: 6, height: 6, borderRadius: "50%", background: "var(--crm-gold, #C9A84C)",
-                flexShrink: 0, marginTop: 5,
-              }} />
+          activities.map((act) => (
+            <li key={act.id} className="dw-activity__item">
+              <div className="dw-activity__dot" />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: "#374151" }}>{act.text}</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1 }}>{formatDate(act.time)}</div>
+                <div className="dw-activity__text">{act.text}</div>
+                <div className="dw-activity__time">{formatDate(act.time)}</div>
               </div>
             </li>
           ))
@@ -422,57 +351,28 @@ function ActivityLog({ activities, onAdd }: { activities: Activity[]; onAdd: (te
   );
 }
 
+// ── SMS conversation (inside tab) ─────────────────────────────────────────────
 function SmsConversationPanel({ deal, messages }: { deal: Deal; messages: DealSmsMessage[] }) {
   const sorted = [...messages].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+    <div className="dw-sms">
+      <div className="dw-sms__head">
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
-            Conversation SMS
-          </div>
-          <div style={{ fontSize: 13, color: "#374151" }}>
-            {deal.contact_name || "Vendeur"} · {deal.contact_phone || "numéro inconnu"}
+          <div className="dw-sms__title">Conversation SMS</div>
+          <div className="dw-sms__sub">
+            {deal.contact_name || "Vendeur"} · <span className="mono">{deal.contact_phone || "numéro inconnu"}</span>
           </div>
         </div>
-        <Link
-          href={"/textos" as never}
-          prefetch={false}
-          style={{
-            flexShrink: 0,
-            border: "1px solid #E6D7B5",
-            background: "#FFF7E6",
-            color: "#8A5A12",
-            borderRadius: 999,
-            padding: "6px 10px",
-            fontSize: 12,
-            fontWeight: 800,
-            textDecoration: "none",
-          }}
-        >
+        <Link href={"/textos" as never} prefetch={false} className="btn btn--sm">
           Ouvrir Textos
         </Link>
       </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {sorted.map((message) => (
-          <div
-            key={message.id}
-            style={{
-              alignSelf: message.direction === "outbound" ? "flex-end" : "flex-start",
-              maxWidth: "78%",
-              border: "1px solid #E5E7EB",
-              borderColor: message.direction === "outbound" ? "#E6D7B5" : "#E5E7EB",
-              background: message.direction === "outbound" ? "#FFF7E6" : "#F9FAFB",
-              borderRadius: 12,
-              padding: "10px 12px",
-            }}
-          >
-            <div style={{ fontSize: 14, color: "#111827", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
-              {message.body || "Message vide"}
-            </div>
-            <div style={{ marginTop: 6, fontSize: 11, color: "#9CA3AF" }}>
-              {message.direction === "outbound" ? "Envoyé" : "Reçu"} · {formatDate(message.at)}
+      <div className="dw-sms__list">
+        {sorted.map((m) => (
+          <div key={m.id} className={`dw-sms__bubble dw-sms__bubble--${m.direction === "outbound" ? "out" : "in"}`}>
+            <div style={{ whiteSpace: "pre-wrap" }}>{m.body || "Message vide"}</div>
+            <div className="dw-sms__bubble__meta">
+              {m.direction === "outbound" ? "Envoyé" : "Reçu"} · {formatDate(m.at)}
             </div>
           </div>
         ))}
@@ -481,11 +381,8 @@ function SmsConversationPanel({ deal, messages }: { deal: Deal; messages: DealSm
   );
 }
 
-function DossierBeforeCall({
-  deal,
-  documents,
-  dossier,
-}: {
+// ── Dossier ───────────────────────────────────────────────────────────────────
+function DossierBeforeCall({ deal, documents, dossier }: {
   deal: Deal;
   documents: DealDocument[];
   dossier: DealDossier;
@@ -498,20 +395,19 @@ function DossierBeforeCall({
   const address = (deal.address ?? leadAddress) || "—";
 
   return (
-    <section style={{ background: "#fff", border: "1px solid #D6B56D", borderRadius: 16, padding: "20px 22px", boxShadow: "0 14px 34px rgba(58, 45, 24, 0.06)" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
+    <section className="dw-dossier">
+      <div className="dw-dossier__head">
         <div>
-          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "1.8px", textTransform: "uppercase", color: "#9A6B13", marginBottom: 6 }}>
-            Dossier avant appel Anthony
-          </div>
-          <h2 style={{ margin: 0, fontSize: 24, lineHeight: 1.12, color: "#17130D" }}>{deal.title}</h2>
+          <div className="dw-dossier__kicker">Dossier avant appel</div>
+          <h2 className="dw-dossier__title">{deal.title}</h2>
         </div>
-        <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, color: "#5C4320", background: "#F7E9C6", border: "1px solid #E1C47A", borderRadius: 999, padding: "6px 10px" }}>
-          {dossier.callLogs.length} appel{dossier.callLogs.length > 1 ? "s" : ""} lié{dossier.callLogs.length > 1 ? "s" : ""}
+        <span className="dw-dossier__tag">
+          <span className="mono">{dossier.callLogs.length}</span>{" "}
+          appel{dossier.callLogs.length > 1 ? "s" : ""} lié{dossier.callLogs.length > 1 ? "s" : ""}
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+      <div className="dw-dossier__facts">
         <DossierFactCard
           title="Bâtiment"
           rows={[
@@ -541,7 +437,7 @@ function DossierBeforeCall({
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 12, marginTop: 12 }}>
+      <div className="dw-dossier__evidence">
         <EvidenceCard
           title="Notes du transcript et appels"
           body={excerpt(callLog?.summary ?? callLog?.notes ?? callLog?.transcript)}
@@ -559,15 +455,13 @@ function DossierBeforeCall({
 
 function DossierFactCard({ title, rows }: { title: string; rows: Array<[string, string]> }) {
   return (
-    <div style={{ background: "#FBFAF7", border: "1px solid #ECE3D4", borderRadius: 12, padding: "14px" }}>
-      <div style={{ fontSize: 11, fontWeight: 900, color: "#7B6B58", letterSpacing: "1.2px", textTransform: "uppercase", marginBottom: 10 }}>
-        {title}
-      </div>
-      <dl style={{ display: "grid", gap: 8, margin: 0 }}>
+    <div className="dw-fact">
+      <div className="dw-fact__title">{title}</div>
+      <dl>
         {rows.map(([label, value]) => (
-          <div key={label} style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 8 }}>
-            <dt style={{ fontSize: 11, color: "#8A8074", textTransform: "uppercase", letterSpacing: "0.7px" }}>{label}</dt>
-            <dd style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#24201A", overflowWrap: "anywhere" }}>{value}</dd>
+          <div key={label} className="dw-fact__row">
+            <dt>{label}</dt>
+            <dd>{value}</dd>
           </div>
         ))}
       </dl>
@@ -577,12 +471,47 @@ function DossierFactCard({ title, rows }: { title: string; rows: Array<[string, 
 
 function EvidenceCard({ title, body, footer }: { title: string; body: string; footer?: string }) {
   return (
-    <div style={{ background: "#FFFDF8", border: "1px solid #ECE3D4", borderRadius: 12, padding: "14px" }}>
-      <div style={{ fontSize: 11, fontWeight: 900, color: "#7B6B58", letterSpacing: "1.2px", textTransform: "uppercase", marginBottom: 8 }}>
-        {title}
-      </div>
-      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "#302A22" }}>{body}</p>
-      {footer && <div style={{ marginTop: 10, fontSize: 11, color: "#9A6B13", fontWeight: 800 }}>{footer}</div>}
+    <div className="dw-evidence">
+      <div className="dw-evidence__title">{title}</div>
+      <p className="dw-evidence__body">{body}</p>
+      {footer && <div className="dw-evidence__footer">{footer}</div>}
+    </div>
+  );
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+type DealTab = "notes" | "calls" | "sms" | "activity" | "checklist" | "docs";
+
+function TabsBar({
+  active, onChange, counts,
+}: {
+  active: DealTab;
+  onChange: (t: DealTab) => void;
+  counts: { calls: number; sms: number; activity: number; docs: number };
+}) {
+  const tabs: Array<[DealTab, string, number | null]> = [
+    ["notes", "Notes", null],
+    ["calls", "Appels", counts.calls],
+    ["sms", "Textos", counts.sms],
+    ["activity", "Activité", counts.activity],
+    ["checklist", "Checklist", null],
+    ["docs", "Documents", counts.docs],
+  ];
+  return (
+    <div className="dw-tabs__bar" role="tablist">
+      {tabs.map(([key, label, n]) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={active === key}
+          className={`dw-tab${active === key ? " dw-tab--active" : ""}`}
+          onClick={() => onChange(key)}
+        >
+          {label}
+          {n !== null && <span className="dw-tab__n">{n}</span>}
+        </button>
+      ))}
     </div>
   );
 }
@@ -601,15 +530,18 @@ export default function DealWorkspaceClient({
   dossier: DealDossier;
   smsMessages: DealSmsMessage[];
 }) {
-  const [deal, setDeal]     = useState<Deal>(initialDeal);
+  const [deal, setDeal] = useState<Deal>(initialDeal);
   const [saving, setSaving] = useState(false);
 
-  // ── Twilio call state (mirrors CallWorkspace.tsx pattern) ────────────────
-  const [callState, setCallState]   = useState<CallState>("idle");
-  const [callError, setCallError]   = useState<string | null>(null);
+  // Twilio call state (unchanged) ─────────────────────────────────────────────
+  const [callState, setCallState] = useState<CallState>("idle");
+  const [callError, setCallError] = useState<string | null>(null);
   const [durationSec, setDurationSec] = useState<number>(0);
-  const activeCallLogId             = useRef<string | null>(null);
-  const pollRef                     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeCallLogId = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Tab state (new) ───────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<DealTab>("notes");
 
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -663,7 +595,7 @@ export default function DealWorkspaceClient({
   }
 
   const patch = useCallback(async (fields: Record<string, unknown>, optimistic?: Partial<Deal>) => {
-    if (optimistic) setDeal(d => ({ ...d, ...optimistic }));
+    if (optimistic) setDeal((d) => ({ ...d, ...optimistic }));
     setSaving(true);
     try {
       const res = await fetch(`/api/deals/${deal.id}`, {
@@ -684,287 +616,254 @@ export default function DealWorkspaceClient({
   }, [deal.id, initialDeal]);
 
   const handleStageChange = useCallback((stage: string) => {
-    setDeal(d => ({ ...d, stage }));
+    setDeal((d) => ({ ...d, stage }));
     patch({ stage, addActivity: { text: `Stade changé → ${STAGE_LABELS[stage]}` } });
   }, [patch]);
 
   const handleChecklistToggle = useCallback((stage: string, itemId: string, done: boolean) => {
-    setDeal(d => {
+    setDeal((d) => {
       const updated = { ...d.checklists };
       if (updated[stage]) {
-        updated[stage] = updated[stage].map(item => item.id === itemId ? { ...item, done } : item);
+        updated[stage] = updated[stage].map((item) => item.id === itemId ? { ...item, done } : item);
       }
       return { ...d, checklists: updated };
     });
-    // Build updated checklists for the stage
-    const updatedItems = (deal.checklists[stage] ?? []).map(item =>
-      item.id === itemId ? { ...item, done } : item
+    const updatedItems = (deal.checklists[stage] ?? []).map((item) =>
+      item.id === itemId ? { ...item, done } : item,
     );
     patch({ checklists: { [stage]: updatedItems } });
   }, [deal.checklists, patch]);
 
   const handleActivityAdd = useCallback((text: string) => {
     const newEntry: Activity = { id: crypto.randomUUID(), text, time: new Date().toISOString() };
-    setDeal(d => ({ ...d, activities: [newEntry, ...d.activities] }));
+    setDeal((d) => ({ ...d, activities: [newEntry, ...d.activities] }));
     patch({ addActivity: { text } });
   }, [patch]);
 
-  const temp  = TEMP_CONFIG[deal.temperature] ?? TEMP_CONFIG.tiede;
+  const temp = TEMP_CONFIG[deal.temperature] ?? TEMP_CONFIG.tiede;
+  const askPrice = deal.asking_price;
+  const offerPrice = deal.offer_price;
+  const diff = askPrice && offerPrice ? askPrice - offerPrice : null;
+  const diffNeg = diff !== null && diff < 0;
 
   return (
-    <div style={{ padding: "0 0 60px" }}>
+    <div className="dw-page">
       {/* ── Top bar ── */}
-      <div style={{
-        borderBottom: "1px solid var(--crm-card-border, #E5E7EB)",
-        padding: "16px 24px",
-        background: "#fff",
-        position: "sticky", top: 0, zIndex: 10,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-          <Link href={"/pipeline" as never} style={{ fontSize: 12, color: "#9CA3AF", textDecoration: "none" }}>
-            ← Pipeline
-          </Link>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: "#111827", flex: 1 }}>
-            {deal.title}
-          </h1>
-          <span style={{
-            fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10,
-            background: temp.bg, color: temp.text,
-          }}>{temp.label}</span>
-          {saving && <span style={{ fontSize: 11, color: "#9CA3AF" }}>Sauvegarde…</span>}
+      <div className="dw-topbar">
+        <div className="dw-topbar__row">
+          <Link href={"/pipeline" as never} className="dw-topbar__crumb">← Pipeline</Link>
+          <h1 className="dw-topbar__title">{deal.title}</h1>
+          <span className={`pill ${temp.pill}`}>
+            <span className="pill__dot" />{temp.label}
+          </span>
+          {saving && <span className="dw-topbar__saving">Sauvegarde…</span>}
         </div>
-
-        {/* Stage progress bar */}
-        <StageProgressBar currentStage={deal.stage} onStageChange={handleStageChange} />
+        <StageStepper currentStage={deal.stage} onStageChange={handleStageChange} />
       </div>
 
       {/* ── Body ── */}
-      <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "1fr 360px", gap: 24, alignItems: "start" }}>
-
-        {/* ── LEFT COLUMN ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="dw-body">
+        {/* ── Main column ── */}
+        <div className="dw-main">
           <DossierBeforeCall deal={deal} documents={documents} dossier={dossier} />
 
-          {/* Notes deal */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Notes deal</div>
-            <EditableField
-              label="Notes générales"
-              value={deal.notes_deal}
-              type="textarea"
-              onSave={v => patch({ notes_deal: v }, { notes_deal: v })}
+          <div className="dw-tabs">
+            <TabsBar
+              active={activeTab}
+              onChange={setActiveTab}
+              counts={{
+                calls: callHistory.length,
+                sms: smsMessages.length,
+                activity: deal.activities?.length ?? 0,
+                docs: documents.length,
+              }}
             />
-          </div>
+            <div className="dw-tab__panel">
+              {activeTab === "notes" && (
+                <div className="dw-notes">
+                  <div className="dw-notes__section">
+                    <div className="dw-notes__title">Notes deal <small>générales</small></div>
+                    <EditableField
+                      label="Notes"
+                      value={deal.notes_deal}
+                      type="textarea"
+                      onSave={(v) => patch({ notes_deal: v }, { notes_deal: v })}
+                    />
+                  </div>
+                  <div className="dw-notes__section">
+                    <div className="dw-notes__title">Notes vendeur <small>motivation, délai, contexte</small></div>
+                    <EditableField
+                      label="Notes vendeur"
+                      value={deal.notes_vendeur}
+                      type="textarea"
+                      onSave={(v) => patch({ notes_vendeur: v }, { notes_vendeur: v })}
+                    />
+                  </div>
+                  <div className="dw-notes__ai">
+                    <div className="dw-notes__title">Analyse AI <small>risques &amp; opportunités</small></div>
+                    <EditableField
+                      label="Analyse"
+                      value={deal.ai_analysis}
+                      type="textarea"
+                      onSave={(v) => patch({ ai_analysis: v }, { ai_analysis: v })}
+                    />
+                  </div>
+                </div>
+              )}
 
-          {/* Notes vendeur */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Notes vendeur</div>
-            <EditableField
-              label="Motivation, délai, contexte"
-              value={deal.notes_vendeur}
-              type="textarea"
-              onSave={v => patch({ notes_vendeur: v }, { notes_vendeur: v })}
-            />
-          </div>
+              {activeTab === "calls" && (
+                callHistory.length > 0
+                  ? <CallHistoryPanel history={callHistory} />
+                  : <div className="dw-tab__panel--empty">Aucun appel enregistré pour ce deal.</div>
+              )}
 
-          {/* AI Analysis */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Analyse AI</div>
-            <EditableField
-              label="Analyse, risques, opportunités"
-              value={deal.ai_analysis}
-              type="textarea"
-              onSave={v => patch({ ai_analysis: v }, { ai_analysis: v })}
-            />
-          </div>
+              {activeTab === "sms" && (
+                smsMessages.length > 0
+                  ? <SmsConversationPanel deal={deal} messages={smsMessages} />
+                  : <div className="dw-tab__panel--empty">Aucun texto échangé pour ce deal.</div>
+              )}
 
-          {/* Checklist */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Checklist</div>
-            <ChecklistPanel
-              stage={deal.stage}
-              checklists={deal.checklists}
-              onToggle={handleChecklistToggle}
-            />
-            {!(deal.checklists[deal.stage]?.length) && (
-              <div style={{ fontSize: 13, color: "#9CA3AF" }}>Aucune checklist pour ce stade.</div>
-            )}
-          </div>
+              {activeTab === "activity" && (
+                <ActivityLog activities={deal.activities ?? []} onAdd={handleActivityAdd} />
+              )}
 
-          {/* Activity log */}
-          {smsMessages.length > 0 && (
-            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-              <SmsConversationPanel deal={deal} messages={smsMessages} />
+              {activeTab === "checklist" && (
+                deal.checklists[deal.stage]?.length
+                  ? <ChecklistPanel stage={deal.stage} checklists={deal.checklists} onToggle={handleChecklistToggle} />
+                  : <div className="dw-tab__panel--empty">Aucune checklist pour ce stade.</div>
+              )}
+
+              {activeTab === "docs" && (
+                documents.length === 0
+                  ? <div className="dw-tab__panel--empty">Aucun document attaché.</div>
+                  : (
+                    <ul className="dw-docs">
+                      {documents.map((doc) => (
+                        <li key={doc.id} className="dw-doc">
+                          <span>{doc.name}</span>
+                          {doc.size && <span className="dw-doc__size">{(doc.size / 1024).toFixed(0)} KB</span>}
+                          <span className="dw-doc__date">{formatDate(doc.created_at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+              )}
             </div>
-          )}
-
-          {/* Activity log */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <ActivityLog activities={deal.activities ?? []} onAdd={handleActivityAdd} />
-          </div>
-
-          {/* Historique d'appels */}
-          {callHistory.length > 0 && (
-            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>
-                Historique d&apos;appels
-              </div>
-              <CallHistoryPanel history={callHistory} />
-            </div>
-          )}
-
-          {/* Documents */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 12 }}>Documents ({documents.length})</div>
-            {documents.length === 0 ? (
-              <div style={{ fontSize: 13, color: "#9CA3AF" }}>Aucun document attaché.</div>
-            ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
-                {documents.map(doc => (
-                  <li key={doc.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#374151" }}>
-                    <span style={{ fontSize: 16 }}>·</span>
-                    <span style={{ flex: 1 }}>{doc.name}</span>
-                    {doc.size && <span style={{ fontSize: 11, color: "#9CA3AF" }}>{(doc.size / 1024).toFixed(0)} KB</span>}
-                    <span style={{ fontSize: 11, color: "#9CA3AF" }}>{formatDate(doc.created_at)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
         </div>
 
-        {/* ── RIGHT SIDEBAR ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* Deal info card */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 14 }}>Détails du deal</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <EditableField label="Titre" value={deal.title} onSave={v => patch({ title: v }, { title: v })} />
-              <EditableField label="Adresse" value={deal.address} onSave={v => patch({ address: v }, { address: v })} />
-              <EditableField label="Unités" value={deal.units} type="number" onSave={v => patch({ units: parseInt(v, 10) || null }, { units: parseInt(v, 10) || null })} />
-              <EditableField label="Prix demandé ($)" value={deal.asking_price} type="number" onSave={v => patch({ asking_price: parseInt(v, 10) || null }, { asking_price: parseInt(v, 10) || null })} />
-              <EditableField label="Prix offert ($)" value={deal.offer_price} type="number" onSave={v => patch({ offer_price: parseInt(v, 10) || null }, { offer_price: parseInt(v, 10) || null })} />
-              <EditableField label="Température" value={deal.temperature} type="select-temp" onSave={v => patch({ temperature: v }, { temperature: v })} />
-              <EditableField label="Priorité" value={deal.priority} type="select-priority" onSave={v => patch({ priority: v }, { priority: v })} />
-            </div>
-          </div>
-
-          {/* Prices summary */}
-          {(deal.asking_price || deal.offer_price) && (
-            <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 12, padding: "14px 16px" }}>
-              {deal.asking_price && (
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: "#6B7280" }}>Prix demandé</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{formatCAD(deal.asking_price)}</span>
-                </div>
-              )}
-              {deal.offer_price && (
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: "#6B7280" }}>Notre offre</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED" }}>{formatCAD(deal.offer_price)}</span>
-                </div>
-              )}
-              {deal.asking_price && deal.offer_price && (
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #86EFAC", paddingTop: 6, marginTop: 6 }}>
-                  <span style={{ fontSize: 12, color: "#6B7280" }}>Écart</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: deal.offer_price <= deal.asking_price ? "#059669" : "#EF4444" }}>
-                    {formatCAD(deal.asking_price - deal.offer_price)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
+        {/* ── Right rail ── */}
+        <aside className="dw-rail">
           {/* Contact card */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 14 }}>Contact vendeur</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <EditableField label="Nom" value={deal.contact_name} onSave={v => patch({ contact_name: v }, { contact_name: v })} />
-              <EditableField label="Téléphone" value={deal.contact_phone} onSave={v => patch({ contact_phone: v }, { contact_phone: v })} />
-              <EditableField label="Courriel" value={deal.contact_email} onSave={v => patch({ contact_email: v }, { contact_email: v })} />
+          <div className="dw-rail__card">
+            <div className="dw-rail__title">Contact vendeur</div>
+            <div className="dw-contact__head">
+              <div className="dw-contact__avatar">{initialsFor(deal.contact_name)}</div>
+              <div className="dw-contact__id">
+                <strong>{deal.contact_name ?? "Vendeur"}</strong>
+                <small>{deal.contact_email ?? "—"}</small>
+              </div>
             </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <EditableField label="Nom" value={deal.contact_name} onSave={(v) => patch({ contact_name: v }, { contact_name: v })} />
+              <EditableField label="Téléphone" value={deal.contact_phone} onSave={(v) => patch({ contact_phone: v }, { contact_phone: v })} />
+              <EditableField label="Courriel" value={deal.contact_email} onSave={(v) => patch({ contact_email: v }, { contact_email: v })} />
+            </div>
+
             {deal.contact_phone && (
-              <div style={{ marginTop: 12 }}>
-                {/* Primary Twilio CTA — same bridge flow as /calls/[leadId] */}
+              <div>
                 {callState === "idle" || callState === "failed" || callState === "completed" ? (
-                  <button
-                    type="button"
-                    onClick={startDealCall}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      width: "100%", padding: "9px",
-                      background: "var(--crm-gold, #C9A84C)",
-                      color: "#fff", borderRadius: 10, fontSize: 13, fontWeight: 700,
-                      border: "none", cursor: "pointer",
-                    }}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <button type="button" onClick={startDealCall} className="dw-callbtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
                         stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
                     </svg>
                     Appeler
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    disabled
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      width: "100%", padding: "9px",
-                      background: "#F3F4F6", color: "#6B7280",
-                      borderRadius: 10, fontSize: 13, fontWeight: 700,
-                      border: "none", cursor: "not-allowed",
-                    }}
-                  >
+                  <button type="button" disabled className="dw-callbtn dw-callbtn--busy">
                     {callState === "initiating" ? "Connexion…"
-                     : callState === "ringing"   ? "Sonnerie…"
-                     : callState === "answered"  ? "En cours…"
+                     : callState === "ringing" ? "Sonnerie…"
+                     : callState === "answered" ? "En cours…"
                      : "Appel…"}
                   </button>
                 )}
 
-                {/* Fallback tel: link so Anthony can still tap-to-call from mobile */}
-                <a
-                  href={`tel:${deal.contact_phone}`}
-                  style={{
-                    display: "block", marginTop: 6, textAlign: "center",
-                    padding: "6px", fontSize: 12, color: "#6B7280", textDecoration: "none",
-                  }}
-                >
+                <a href={`tel:${deal.contact_phone}`} className="dw-callfallback">
                   Composer manuellement
                 </a>
 
-                {/* Live call status strip */}
                 {(callState === "initiating" || callState === "ringing" || callState === "answered" || callState === "completed") && (
                   <div style={{ marginTop: 10 }}>
                     <TwilioCallStatePanel callState={callState} durationSec={durationSec} />
                   </div>
                 )}
 
-                {callError && (
-                  <div style={{ marginTop: 6, fontSize: 12, color: "#EF4444" }}>{callError}</div>
-                )}
+                {callError && <div className="dw-callerror">{callError}</div>}
               </div>
             )}
           </div>
 
+          {/* Offre card (dark) */}
+          {(askPrice || offerPrice) && (
+            <div className="dw-offre">
+              <div className="dw-offre__kicker">Offre {deal.address ? `· ${deal.address}` : ""}</div>
+              {askPrice ? (
+                <div className="dw-offre__row">
+                  <span>Prix demandé</span>
+                  <span>{formatCAD(askPrice)}</span>
+                </div>
+              ) : null}
+              {offerPrice ? (
+                <div className="dw-offre__row">
+                  <span>Notre offre</span>
+                  <span>{formatCAD(offerPrice)}</span>
+                </div>
+              ) : null}
+              {diff !== null && (
+                <div className={`dw-offre__row ${diffNeg ? "dw-offre__row--diff-neg" : "dw-offre__row--diff"}`}>
+                  <span>Écart</span>
+                  <span>{formatCAD(diff)}</span>
+                </div>
+              )}
+              <div className="dw-offre__pills">
+                <span className="dw-offre__pill">T° · {temp.label}</span>
+                <span className="dw-offre__pill">Priorité · {PRIORITY_LABELS[deal.priority] ?? deal.priority}</span>
+                {deal.units != null && <span className="dw-offre__pill"><span className="mono">{deal.units}</span> unités</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Deal details */}
+          <div className="dw-rail__card">
+            <div className="dw-rail__title">Détails du deal</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <EditableField label="Titre" value={deal.title} onSave={(v) => patch({ title: v }, { title: v })} />
+              <EditableField label="Adresse" value={deal.address} onSave={(v) => patch({ address: v }, { address: v })} />
+              <EditableField label="Unités" value={deal.units} type="number" onSave={(v) => patch({ units: parseInt(v, 10) || null }, { units: parseInt(v, 10) || null })} />
+              <EditableField label="Prix demandé ($)" value={deal.asking_price} type="number" onSave={(v) => patch({ asking_price: parseInt(v, 10) || null }, { asking_price: parseInt(v, 10) || null })} />
+              <EditableField label="Prix offert ($)" value={deal.offer_price} type="number" onSave={(v) => patch({ offer_price: parseInt(v, 10) || null }, { offer_price: parseInt(v, 10) || null })} />
+              <EditableField label="Température" value={deal.temperature} type="select-temp" onSave={(v) => patch({ temperature: v }, { temperature: v })} />
+              <EditableField label="Priorité" value={deal.priority} type="select-priority" onSave={(v) => patch({ priority: v }, { priority: v })} />
+            </div>
+          </div>
+
           {/* Next action */}
-          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 10 }}>Prochaine action</div>
+          <div className="dw-rail__card">
+            <div className="dw-rail__title">Prochaine action</div>
             <EditableField
               label="Action à faire"
               value={deal.next_action}
-              onSave={v => patch({ next_action: v }, { next_action: v })}
+              onSave={(v) => patch({ next_action: v }, { next_action: v })}
             />
           </div>
 
           {/* Meta */}
-          <div style={{ fontSize: 11, color: "#9CA3AF", padding: "4px 8px" }}>
-            <div>Créé: {formatDate(deal.created_at)}</div>
-            <div>Modifié: {formatDate(deal.updated_at)}</div>
+          <div className="dw-meta">
+            <div>Créé · {formatDate(deal.created_at)}</div>
+            <div>Modifié · {formatDate(deal.updated_at)}</div>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );
