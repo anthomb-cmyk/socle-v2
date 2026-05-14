@@ -469,14 +469,66 @@ async function searchCrm(ctx: CopilotToolContext, input: z.infer<typeof SearchAr
     ? ((deals.data ?? []) as Array<{ contact_phone?: string | null }>).filter((deal) => normalizePhone(deal.contact_phone ?? "") === phone)
     : [];
 
+  // Fuzzy fallback per entity when exact token search produced nothing.
+  // The user types fast, makes typos — we'd rather return close matches with
+  // a similarity score than empty arrays.
+  const dealsExact = (deals.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const leadsExact = (leads.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const investorsExact = (investors.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const contactsExact = (contacts.data ?? []) as unknown as Array<Record<string, unknown>>;
+
+  let dealsFuzzy: typeof dealsExact = [];
+  let leadsFuzzy: typeof leadsExact = [];
+  let investorsFuzzy: typeof investorsExact = [];
+  let contactsFuzzy: typeof contactsExact = [];
+
+  const trimmedQuery = input.query.trim();
+  if (trimmedQuery.length >= 3) {
+    const fuzzyPromises: Promise<void>[] = [];
+    if (dealsExact.length === 0) {
+      fuzzyPromises.push((async () => {
+        const { data } = await ctx.sb.from("deals").select("id,title,stage,address,contact_name,contact_phone,updated_at").not("stage", "in", '("cloture","abandonne")').order("updated_at", { ascending: false }).limit(400);
+        dealsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["title", "address", "contact_name"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    if (leadsExact.length === 0) {
+      fuzzyPromises.push((async () => {
+        const baseQ = ctx.sb.from("leads_view").select("lead_id,full_name,company_name,address,city,best_phone,status,updated_at").order("updated_at", { ascending: false }).limit(400);
+        const { data } = await (ctx.role === "admin" ? baseQ : baseQ.eq("assigned_to", ctx.user.id));
+        leadsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["full_name", "company_name", "address", "city"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    if (investorsExact.length === 0 && ctx.role === "admin") {
+      fuzzyPromises.push((async () => {
+        const { data } = await ctx.sb.from("investors").select("id,full_name,firm_name,city,status,preferred_geography,updated_at").order("updated_at", { ascending: false }).limit(400);
+        investorsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["full_name", "firm_name", "preferred_geography"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    if (contactsExact.length === 0) {
+      fuzzyPromises.push((async () => {
+        const { data } = await ctx.sb.from("contacts").select("id,full_name,company_name,kind,updated_at").order("updated_at", { ascending: false }).limit(400);
+        contactsFuzzy = fuzzyRankRows((data ?? []) as unknown as Array<Record<string, unknown>>, trimmedQuery, ["full_name", "company_name"]).slice(0, limit).map((f) => ({ ...f.row, _fuzzy: Number(f.score.toFixed(3)) }));
+      })());
+    }
+    await Promise.all(fuzzyPromises);
+  }
+
+  const dealsCombined = compactRows([...phoneMatchedDeals, ...dealsExact, ...dealsFuzzy], limit);
+  const usedFuzzy: string[] = [];
+  if (dealsFuzzy.length > 0) usedFuzzy.push("deals");
+  if (leadsFuzzy.length > 0) usedFuzzy.push("leads");
+  if (investorsFuzzy.length > 0) usedFuzzy.push("investors");
+  if (contactsFuzzy.length > 0) usedFuzzy.push("contacts");
+
   return {
     ok: true,
     query: input.query,
+    fuzzyFallback: usedFuzzy.length > 0 ? usedFuzzy : undefined,
     results: {
-      deals: compactRows([...phoneMatchedDeals, ...((deals.data ?? []) as unknown[])], limit),
-      leads: leads.data ?? [],
-      investors: investors.data ?? [],
-      contacts: contacts.data ?? [],
+      deals: dealsCombined,
+      leads: leadsExact.length > 0 ? leadsExact : leadsFuzzy,
+      investors: investorsExact.length > 0 ? investorsExact : investorsFuzzy,
+      contacts: contactsExact.length > 0 ? contactsExact : contactsFuzzy,
       calls: ((calls.data ?? []) as Array<{ transcript?: string | null; notes?: string | null; summary?: string | null }>)
         .map((call) => ({
           ...call,
@@ -1115,26 +1167,53 @@ async function resolveDealReference(
     .sort((a, b) => b.score - a.score);
 
   const top = scored[0];
-  if (!top || top.score < 8) {
-    return { ok: false, error: `No active deal matched "${reference}". Try an address, seller name, phone, or open the deal page first.` };
+  if (top && top.score >= 8) {
+    const second = scored[1];
+    if (second && second.score >= top.score - 4 && !isWeakDealReference(ref)) {
+      return {
+        ok: false,
+        error: `Multiple deals matched "${reference}".`,
+        candidates: scored.slice(0, 5).map((row) => ({
+          id: row.deal.id,
+          title: row.deal.title,
+          address: row.deal.address,
+          contact_name: row.deal.contact_name,
+          score: row.score,
+        })),
+      };
+    }
+    return { ok: true, deal: top.deal };
   }
 
-  const second = scored[1];
-  if (second && second.score >= top.score - 4 && !isWeakDealReference(ref)) {
+  // Fuzzy fallback: load a wider slice and trigram-rank for typo tolerance
+  // ("Lavriere" -> "Laverriere", "Gouain" -> "Gouin", "Saint Hyasinte" -> "Saint-Hyacinthe").
+  const { data: wide } = await ctx.sb
+    .from("deals")
+    .select(selectCols)
+    .not("stage", "in", '("cloture","abandonne")')
+    .order("updated_at", { ascending: false })
+    .limit(400);
+  const wideRows = (wide ?? []) as unknown as Array<Record<string, unknown>>;
+  const fuzzy = fuzzyRankRows(wideRows, ref, ["title", "address", "contact_name"]).slice(0, 5);
+  if (fuzzy.length === 0) {
+    return { ok: false, error: `No active deal matched "${reference}". Try an address, seller name, phone, or open the deal page first.` };
+  }
+  const fz = fuzzy[0];
+  if (fuzzy[1] && fuzzy[1].score >= fz.score - 0.05) {
     return {
       ok: false,
-      error: `Multiple deals matched "${reference}".`,
-      candidates: scored.slice(0, 5).map((row) => ({
-        id: row.deal.id,
-        title: row.deal.title,
-        address: row.deal.address,
-        contact_name: row.deal.contact_name,
-        score: row.score,
+      error: `No exact deal match for "${reference}". Closest fuzzy candidates:`,
+      candidates: fuzzy.map((f) => ({
+        id: f.row.id,
+        title: f.row.title,
+        address: f.row.address,
+        contact_name: f.row.contact_name,
+        similarity: Number(f.score.toFixed(3)),
+        matchedField: String(f.matchedField),
       })),
     };
   }
-
-  return { ok: true, deal: top.deal };
+  return { ok: true, deal: fz.row, matchedBy: "fuzzy", similarity: Number(fz.score.toFixed(3)) };
 }
 
 async function resolveLeadReference(

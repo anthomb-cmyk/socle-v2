@@ -26,7 +26,7 @@ export function fuzzyRankRows<T extends Record<string, unknown>>(
   rows: T[],
   query: string,
   fields: (keyof T)[],
-  threshold = 0.25,
+  threshold = 0.18,
 ): Array<{ row: T; score: number; matchedField: keyof T }> {
   const results: Array<{ row: T; score: number; matchedField: keyof T }> = [];
   for (const row of rows) {
