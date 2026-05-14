@@ -4206,6 +4206,10 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Pull the eyebrow inward so it lines up with the card body text rather
+     than the card's outer edge. Cards have 16px inner padding + a 3px
+     colored left rail = ~19px; we use 18px to match the optical center. */
+  padding-left: 18px;
 }
 .fu-bucket__title {
   font-size: 10px;
