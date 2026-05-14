@@ -11078,16 +11078,19 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 }
 
 .ph-head {
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface);
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px 4px;
+  background: var(--bg);
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
 }
 .ph-head__title {
-  font-size: 22px; font-weight: 700; letter-spacing: -0.02em;
+  font-size: 28px; font-weight: 700; letter-spacing: -0.03em;
   margin: 0; color: var(--ink);
 }
+.ph-head__sub {
+  font-size: 12px; color: var(--ink-3); letter-spacing: 0.01em;
+}
 
+/* Legacy segmented control kept for any consumers — no longer used by PhoneClient. */
 .ph-seg {
   display: inline-flex;
   background: var(--surface-sunken);
@@ -11107,31 +11110,40 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   box-shadow: var(--sh-1);
 }
 
+/* ── View toggle (Récents / Clavier) — under the header ─── */
+.ph-vt {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 12px 18px 4px;
+  background: var(--surface-sunken);
+  border-radius: 12px;
+  padding: 3px;
+}
+.ph-vt__btn {
+  padding: 9px 14px;
+  border: 0; border-radius: 10px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+  color: var(--ink-3);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ph-vt__btn svg { opacity: 0.6; }
+.ph-vt__btn--active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-1);
+}
+.ph-vt__btn--active svg { opacity: 1; color: var(--gold-deep); }
+
 .ph-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-}
-
-/* ── Tab bar (Apple Phone bottom) ─────────────────────────── */
-.ph-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-top: 1px solid var(--border-soft);
-  background: var(--surface);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-.ph-tab {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px;
-  padding: 8px 0 10px;
-  background: transparent; border: 0;
-  cursor: pointer; font-family: inherit;
-  color: var(--ink-3);
-  font-size: 11px; font-weight: 600;
-}
-.ph-tab--active { color: var(--gold-deep); }
-.ph-tab--active svg { color: var(--gold); }
 
 /* ── Keypad pane ───────────────────────────────────────────── */
 .ph-keypad {
@@ -11312,73 +11324,152 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 .ph-convert__field select:focus,
 .ph-convert__field textarea:focus { border-color: var(--gold); }
 
-/* ── Recents pane ─────────────────────────────────────────── */
-.ph-recents {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* ── Recents pane: filter chips ──────────────────────────── */
+.ph-filters {
+  display: flex; gap: 6px;
+  padding: 14px 18px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.ph-recent {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface);
-}
-.ph-recent__main {
-  display: grid;
-  grid-template-columns: 28px 1fr auto;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border: 0; background: transparent;
-  cursor: pointer; font-family: inherit;
-  text-align: left;
-  color: var(--ink);
+.ph-filters::-webkit-scrollbar { display: none; }
+.ph-fchip {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12.5px; font-weight: 600;
+  background: var(--surface); border: 1px solid var(--border-soft);
+  color: var(--ink-2);
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.ph-recent__main:active { background: var(--bg-alt); }
-.ph-recent__main--missed .ph-recent__dir,
-.ph-recent__main--missed .ph-recent__name { color: var(--red); }
-
-.ph-recent__dir {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 999px;
-  background: var(--bg-alt);
-  color: var(--ink-2);
+.ph-fchip__c {
+  font-family: var(--mono); font-size: 10.5px;
+  background: var(--bg-alt); color: var(--ink-3);
+  padding: 1px 6px; border-radius: 999px; font-weight: 700;
 }
-.ph-recent__main--missed .ph-recent__dir {
-  background: var(--red-soft); color: var(--red);
-}
+.ph-fchip--active { background: var(--ink); color: var(--ink-inv); border-color: var(--ink); }
+.ph-fchip--active .ph-fchip__c { background: oklch(0.30 0.012 75); color: var(--gold); }
+.ph-fchip--red .ph-fchip__c { background: var(--red-soft); color: var(--red); }
 
-.ph-recent__body {
-  display: flex; flex-direction: column; gap: 1px;
+/* ── Day group label ─────────────────────────────────────── */
+.ph-day {
+  display: flex; align-items: center; gap: 8px;
+  padding: 18px 22px 6px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.ph-day::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+/* ── Call row ────────────────────────────────────────────── */
+.ph-calls { padding: 0 14px; display: flex; flex-direction: column; gap: 4px; }
+.ph-call {
+  display: grid; grid-template-columns: 1fr 38px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.ph-call--missed { border-color: oklch(0.85 0.08 25); background: oklch(0.99 0.02 25); }
+.ph-call__main {
+  display: grid; grid-template-columns: 44px 1fr;
+  gap: 12px;
+  padding: 12px 6px 12px 14px;
+  border: 0; background: transparent;
+  text-align: left;
+  align-items: center;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
   min-width: 0;
 }
-.ph-recent__name {
-  font-size: 15px; font-weight: 500; color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ph-recent__sub {
-  font-size: 12px; color: var(--ink-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.ph-call__main:active { background: var(--surface-alt); }
 
-.ph-recent__time {
-  font-size: 12px; color: var(--ink-3);
-  white-space: nowrap;
-  align-self: center;
-  margin-right: 6px;
-}
-
-.ph-recent__info {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px;
+.ph-call-av {
+  position: relative;
+  width: 44px; height: 44px; border-radius: 14px;
+  background: var(--gold-soft); border: 1px solid var(--gold-border);
   color: var(--gold-deep);
-  border-left: 1px solid var(--border-soft);
-  text-decoration: none;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13.5px;
+  letter-spacing: 0.04em;
 }
-.ph-recent__info:active { background: var(--bg-alt); }
+.ph-call-av--u {
+  background: var(--surface-alt);
+  border-color: var(--border-soft);
+  color: var(--ink-3);
+}
+.ph-call-av__dir {
+  position: absolute; bottom: -3px; right: -3px;
+  width: 18px; height: 18px; border-radius: 6px;
+  background: var(--surface); border: 1.5px solid var(--bg);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3);
+}
+.ph-call-av__dir--in  { color: oklch(0.40 0.10 150); }
+.ph-call-av__dir--out { color: var(--gold-deep); }
+.ph-call-av__dir--miss { color: var(--red); background: var(--red-soft); }
+.ph-call--missed .ph-call-av__dir--miss { border-color: oklch(0.99 0.02 25); }
+
+.ph-call-body { min-width: 0; }
+.ph-call-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.ph-call-n {
+  font-size: 15px; font-weight: 700; color: var(--ink);
+  letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ph-call--missed .ph-call-n { color: var(--red); }
+.ph-call-time {
+  font-size: 11.5px; color: var(--ink-3);
+  flex-shrink: 0;
+  font-family: var(--mono);
+}
+.ph-call-meta {
+  font-size: 12px; color: var(--ink-3);
+  margin-top: 2px;
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.ph-call-meta__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-4); }
+.ph-call-meta__dur { font-family: var(--mono); }
+
+.ph-call-deal {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  color: var(--gold-deep);
+  background: var(--gold-tint);
+  border: 1px solid var(--gold-border);
+  padding: 2px 8px; border-radius: 999px;
+  margin-top: 6px;
+  max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ph-call-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  color: oklch(0.42 0.13 70);
+  background: var(--amber-soft);
+  border: 1px solid oklch(0.85 0.07 75);
+  padding: 2px 8px 2px 6px; border-radius: 999px;
+  margin-top: 6px;
+}
+
+.ph-call-action {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: transparent; border: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--gold-deep);
+  cursor: pointer;
+  margin-right: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
+.ph-call-action:active { background: var(--gold-soft); }
 
 .ph-empty {
   text-align: center;
@@ -11386,6 +11477,157 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
   color: var(--ink-3);
   font-size: 14px;
 }
+
+/* ── Dialer ──────────────────────────────────────────────── */
+.ph-dialer {
+  display: flex; flex-direction: column;
+  padding: 16px 18px 24px;
+  gap: 0;
+}
+
+.ph-dial-search {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.ph-dial-search:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent); }
+.ph-dial-search svg { color: var(--ink-3); flex-shrink: 0; }
+.ph-dial-search input {
+  flex: 1; border: 0; outline: 0; background: transparent;
+  font-family: inherit; font-size: 14px; color: var(--ink);
+  min-width: 0;
+}
+.ph-dial-search input::placeholder { color: var(--ink-4); }
+
+.ph-dial-results {
+  list-style: none; margin: 0 0 12px; padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ph-dial-result {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent; border: 0;
+  border-top: 1px solid var(--border-soft);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ph-dial-results li:first-child .ph-dial-result { border-top: 0; }
+.ph-dial-result:active { background: var(--bg-alt); }
+.ph-dial-result__l {
+  grid-column: 1; font-size: 13.5px; font-weight: 700; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ph-dial-result__s {
+  grid-column: 1; font-size: 11.5px; color: var(--ink-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ph-dial-result__n {
+  grid-column: 2; grid-row: 1 / span 2;
+  font-size: 12.5px; color: var(--ink-2); align-self: center;
+}
+
+.ph-dial-display {
+  text-align: center;
+  padding: 4px 0 14px;
+  min-height: 92px;
+}
+.ph-dial-num {
+  font-size: 36px; font-weight: 500;
+  color: var(--ink); letter-spacing: -0.01em;
+  line-height: 1.1;
+  min-height: 44px;
+}
+.ph-dial-num--empty {
+  color: var(--ink-4); font-size: 16px; font-weight: 500; letter-spacing: 0;
+  padding-top: 14px;
+}
+.ph-dial-hint {
+  font-size: 12px; color: var(--ink-3); margin-top: 6px;
+  display: inline-flex; align-items: center; gap: 6px;
+  flex-wrap: wrap; justify-content: center;
+}
+.ph-dial-hint .mono { color: var(--ink-2); font-weight: 600; }
+.ph-dial-hint a { color: var(--gold-deep); font-weight: 600; text-decoration: none; }
+.ph-dial-hint__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-4); }
+.ph-dial-err {
+  margin-top: 6px; font-size: 12px; color: var(--red); font-weight: 600;
+}
+
+.ph-keypad-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0 4px;
+}
+.ph-keypad-grid .ph-key {
+  width: auto; height: auto;
+  aspect-ratio: 1.4 / 1;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px;
+}
+.ph-keypad-grid .ph-key:active { background: var(--gold-tint); border-color: var(--gold-border); }
+.ph-keypad-grid .ph-key__d {
+  font-size: 28px; font-weight: 500; color: var(--ink);
+  letter-spacing: -0.02em; line-height: 1;
+}
+.ph-keypad-grid .ph-key__l {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.16em;
+  color: var(--ink-3);
+  line-height: 1; margin-top: 2px;
+  min-height: 9px;
+}
+
+.ph-dial-actions {
+  display: grid; grid-template-columns: 44px 1fr 44px;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 4px 8px;
+}
+.ph-dial-iconbtn {
+  width: 44px; height: 44px; border-radius: 14px;
+  background: transparent; border: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ph-dial-iconbtn:active { background: var(--bg-alt); }
+.ph-dial-iconbtn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.ph-dial-call {
+  height: 56px; border-radius: 18px;
+  background: var(--gold); color: #fff;
+  border: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: inherit;
+  font-size: 15px; font-weight: 700;
+  box-shadow: var(--sh-gold);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0 16px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ph-dial-call:active { background: var(--gold-deep); }
+.ph-dial-call:disabled {
+  background: var(--surface-sunken); color: var(--ink-4);
+  box-shadow: none; cursor: not-allowed;
+}
+.ph-dial-call--busy { background: var(--gold-deep); color: #fff; }
+
+.ph-dial-callstate { margin-top: 10px; }
 
 /* Wider screens: roomier keypad. Clamps cap at desktop sizes. */
 @media (min-width: 900px) {
