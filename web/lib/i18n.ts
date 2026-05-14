@@ -475,7 +475,7 @@ const dict = {
     mobileNav: {
       calls:    "Appels",
       followUps:"Suivis",
-      leads:    "Leads",
+      texts:    "Textos",
       more:     "Plus",
       moreAria: "Ouvrir le menu",
     },
@@ -945,7 +945,7 @@ const dict = {
     mobileNav: {
       calls:    "Calls",
       followUps:"Follow-ups",
-      leads:    "Leads",
+      texts:    "Texts",
       more:     "More",
       moreAria: "Open menu",
     },
