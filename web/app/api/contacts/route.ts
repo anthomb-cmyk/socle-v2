@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
   const sb = createSupabaseAdminClient();
   let query = sb.from("contacts")
-    .select("id, kind, full_name, company_name, primary_email, primary_phone, mailing_city, created_at", { count: "exact" })
+    .select("id, kind, full_name, company_name, primary_email, mailing_city, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (kind) query = query.eq("kind", kind);

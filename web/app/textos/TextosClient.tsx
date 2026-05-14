@@ -101,6 +101,8 @@ export default function TextosClient({
   const [newMessage, setNewMessage] = useState("");
   const [newStatus, setNewStatus] = useState<"idle" | "sending" | "sent" | "failed">("idle");
   const [newError, setNewError] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState<"reply" | "new" | null>(null);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
 
   // ── Redesign-only state ──────────────────────────────────────────────────
   const [filter, setFilter] = useState<Filter>("all");
@@ -353,6 +355,41 @@ export default function TextosClient({
     }
   }
 
+  async function correctTexto(target: "reply" | "new") {
+    const current = target === "reply" ? draft : newMessage;
+    const message = current.trim();
+    if (!message || correcting) return;
+
+    setCorrecting(target);
+    setCorrectionError(null);
+    try {
+      const res = await fetch("/api/textos/correct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          recipientName: target === "reply"
+            ? selected?.contactName ?? selected?.dealTitle ?? null
+            : selectedRecipient?.label ?? null,
+          context: target === "reply"
+            ? selected?.dealTitle ?? selected?.leadLabel ?? null
+            : selectedRecipient?.dealTitle ?? selectedRecipient?.sublabel ?? null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok || typeof json.corrected !== "string") {
+        setCorrectionError(json.error ?? "Impossible de corriger le texto.");
+        return;
+      }
+      if (target === "reply") setDraft(json.corrected);
+      else setNewMessage(json.corrected);
+    } catch {
+      setCorrectionError("Erreur réseau pendant la correction.");
+    } finally {
+      setCorrecting(null);
+    }
+  }
+
   function initialsFor(name: string) {
     const parts = name.trim().split(/\s+/).slice(0, 2);
     return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
@@ -527,11 +564,24 @@ export default function TextosClient({
                 <div className="tx-composer__row">
                   <textarea
                     value={newMessage}
-                    onChange={(event) => setNewMessage(event.target.value)}
+                    onChange={(event) => {
+                      setNewMessage(event.target.value);
+                      setCorrectionError(null);
+                    }}
                     maxLength={1000}
                     rows={4}
                     placeholder="Écrire le premier texto…"
                   />
+                  <button
+                    type="button"
+                    className="tx-composer__ai"
+                    onClick={() => correctTexto("new")}
+                    disabled={!newMessage.trim() || correcting !== null}
+                    title="Corriger les fautes sans réécrire le texto"
+                  >
+                    <SparkIcon />
+                    {correcting === "new" ? "Correction…" : "Correcteur AI"}
+                  </button>
                   <button
                     type="button"
                     className="tx-composer__send"
@@ -545,8 +595,10 @@ export default function TextosClient({
                     {newStatus === "sending" ? "Envoi…" : "Envoyer"}
                   </button>
                 </div>
-                <div className={`tx-composer__hint${newStatus === "failed" ? " tx-composer__hint--error" : ""}`}>
-                  {newStatus === "failed"
+                <div className={`tx-composer__hint${correctionError || newStatus === "failed" ? " tx-composer__hint--error" : ""}`}>
+                  {correctionError
+                    ? correctionError
+                    : newStatus === "failed"
                     ? newError
                     : "Le message part du numéro Twilio. Pour un numéro libre, il restera non lié jusqu'à ce qu'on l'associe à un contact."}
                 </div>
@@ -630,12 +682,25 @@ export default function TextosClient({
                 <div className="tx-composer__row">
                   <textarea
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                      setCorrectionError(null);
+                    }}
                     onInput={autoResize}
                     maxLength={1000}
                     rows={1}
                     placeholder={`Répondre à ${selected.contactName ?? selected.number}`}
                   />
+                  <button
+                    type="button"
+                    className="tx-composer__ai"
+                    onClick={() => correctTexto("reply")}
+                    disabled={!draft.trim() || correcting !== null}
+                    title="Corriger les fautes sans réécrire le texto"
+                  >
+                    <SparkIcon />
+                    {correcting === "reply" ? "Correction…" : "Correcteur AI"}
+                  </button>
                   <button
                     type="button"
                     className="tx-composer__send"
@@ -645,9 +710,9 @@ export default function TextosClient({
                     {status === "sending" ? "Envoi…" : "Envoyer"}
                   </button>
                 </div>
-                {(status === "sent" || status === "failed") && (
-                  <div className={`tx-composer__hint${status === "failed" ? " tx-composer__hint--error" : ""}`}>
-                    {status === "sent" ? "Texto envoyé depuis le numéro Twilio." : error}
+                {(correctionError || status === "sent" || status === "failed") && (
+                  <div className={`tx-composer__hint${correctionError || status === "failed" ? " tx-composer__hint--error" : ""}`}>
+                    {correctionError ?? (status === "sent" ? "Texto envoyé depuis le numéro Twilio." : error)}
                   </div>
                 )}
               </div>
@@ -842,6 +907,14 @@ function PhoneIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" />
+    </svg>
+  );
+}
+function SparkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9L12 3z" />
+      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
     </svg>
   );
 }
