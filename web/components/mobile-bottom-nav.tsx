@@ -56,7 +56,9 @@ function MenuIcon() {
 }
 
 const TABS: Tab[] = [
-  { href: "/calls/queue",  labelFr: "Appels",   labelEn: "Calls",    icon: <PhoneIcon /> },
+  // Appels → the iOS-style Téléphone page (keypad + récents).
+  // The call queue is still reachable via Menu → File d'appels.
+  { href: "/quick-call",   labelFr: "Appels",   labelEn: "Calls",    icon: <PhoneIcon /> },
   { href: "/follow-ups",   labelFr: "Suivis",   labelEn: "Follow-up",icon: <CalendarIcon /> },
   { href: "/leads",        labelFr: "Leads",    labelEn: "Leads",    icon: <LeadsIcon /> },
   { href: "/",             labelFr: "Menu",     labelEn: "Menu",     icon: <MenuIcon /> },
