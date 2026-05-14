@@ -1112,6 +1112,12 @@ html, body {
     padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
+  /* When viewing a textos thread on mobile, hide the bottom tab bar so the
+     composer sits flush with the keyboard (iMessage-style). The thread's own
+     back arrow returns to the list — no nav needed. */
+  body:has(.tx-page[data-view="thread"]) .crm-mobile-bottom-nav { display: none; }
+  body:has(.tx-page[data-view="thread"]) .crm-main-content { padding-bottom: 0; }
+
   /* Safe area for top bar (notch/dynamic island) */
   .crm-mobile-bar {
     padding-top: env(safe-area-inset-top, 0px);
