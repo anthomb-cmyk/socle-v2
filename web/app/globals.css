@@ -9943,11 +9943,17 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 .tx-page {
   display: grid;
   grid-template-rows: auto 1fr;
-  height: 100dvh;
+  /* Fill the parent (.crm-main-content) exactly. Using 100dvh here
+     overshoots inside the mobile shell (top bar + bottom nav are
+     padding on the parent), which made the WHOLE page scroll
+     instead of only .tx-messages. */
+  height: 100%;
+  min-height: 0;
   background: var(--bg);
   font-family: var(--font);
   color: var(--ink);
   min-width: 0;
+  overflow: hidden;
 }
 
 .tx-head {
