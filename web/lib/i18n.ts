@@ -440,6 +440,53 @@ const dict = {
     common: {
       skeleton:    "Chargement…",
       errorRetry:  "Réessayer",
+      close:       "Fermer",
+      cancel:      "Annuler",
+      back:        "Retour",
+      save:        "Enregistrer",
+      saving:      "Enregistrement…",
+      saved:       "Enregistré",
+      deleted:     "Supprimé",
+      networkErr:  "Erreur réseau. Réessaie.",
+      requiredField: "Ce champ est requis.",
+      phoneFormatHint: "Format : (514) 555-1234",
+      emptyTitle:  "Rien à afficher",
+    },
+
+    // ── Toast messages (action feedback) ──────────────────────────────────────
+    toasts: {
+      leadSaved:        "Lead enregistré.",
+      followUpDone:     "Suivi marqué comme complété.",
+      followUpCancelled:"Suivi annulé.",
+      bulkCompleted:    (n: number) => `${n} suivi${n !== 1 ? "s" : ""} complété${n !== 1 ? "s" : ""}.`,
+      undo:             "Annuler",
+      error:            "Une erreur est survenue.",
+    },
+
+    // ── Validation / form errors ──────────────────────────────────────────────
+    validation: {
+      firstNameRequired: "Le prénom est requis.",
+      lastNameRequired:  "Le nom est requis.",
+      invalidPhone:      "Numéro invalide.",
+      invalidPostal:     "Code postal invalide (ex. H1A 1A1).",
+    },
+
+    // ── Mobile bottom nav ─────────────────────────────────────────────────────
+    mobileNav: {
+      calls:    "Appels",
+      followUps:"Suivis",
+      leads:    "Leads",
+      more:     "Plus",
+      moreAria: "Ouvrir le menu",
+    },
+
+    // ── Queue empty diagnostics actions ───────────────────────────────────────
+    queueEmptyActions: {
+      browseUnassigned: "Voir les leads non assignés",
+      browseFuture:     "Voir les rappels planifiés",
+      fixPhones:        "Réviser les numéros manquants",
+      browseAll:        "Voir tous les leads",
+      retryLoad:        "Recharger",
     },
   },
 
@@ -863,6 +910,53 @@ const dict = {
     common: {
       skeleton:    "Loading…",
       errorRetry:  "Retry",
+      close:       "Close",
+      cancel:      "Cancel",
+      back:        "Back",
+      save:        "Save",
+      saving:      "Saving…",
+      saved:       "Saved",
+      deleted:     "Deleted",
+      networkErr:  "Network error. Please retry.",
+      requiredField: "This field is required.",
+      phoneFormatHint: "Format: (514) 555-1234",
+      emptyTitle:  "Nothing to show",
+    },
+
+    // ── Toast messages ────────────────────────────────────────────────────────
+    toasts: {
+      leadSaved:        "Lead saved.",
+      followUpDone:     "Follow-up marked complete.",
+      followUpCancelled:"Follow-up cancelled.",
+      bulkCompleted:    (n: number) => `${n} follow-up${n !== 1 ? "s" : ""} completed.`,
+      undo:             "Undo",
+      error:            "Something went wrong.",
+    },
+
+    // ── Validation / form errors ──────────────────────────────────────────────
+    validation: {
+      firstNameRequired: "First name is required.",
+      lastNameRequired:  "Last name is required.",
+      invalidPhone:      "Invalid phone number.",
+      invalidPostal:     "Invalid postal code (e.g. H1A 1A1).",
+    },
+
+    // ── Mobile bottom nav ─────────────────────────────────────────────────────
+    mobileNav: {
+      calls:    "Calls",
+      followUps:"Follow-ups",
+      leads:    "Leads",
+      more:     "More",
+      moreAria: "Open menu",
+    },
+
+    // ── Queue empty diagnostics actions ───────────────────────────────────────
+    queueEmptyActions: {
+      browseUnassigned: "View unassigned leads",
+      browseFuture:     "View scheduled callbacks",
+      fixPhones:        "Review missing phone numbers",
+      browseAll:        "View all leads",
+      retryLoad:        "Reload",
     },
   },
 } as const;

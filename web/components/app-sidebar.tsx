@@ -5,10 +5,19 @@ import { usePathname } from "next/navigation";
 import { Fragment, useState, useEffect } from "react";
 import SignOutButton from "./sign-out-button";
 import { LocaleToggle, useLocale } from "./locale-provider";
+import { useEscape } from "./toast-provider";
+
+// Mobile bottom nav dispatches this to open the sidebar overlay so users
+// don't have to tap the top-left hamburger with their thumb. Sidebar
+// listens for it. Keep the event name in sync if you rename.
+export const MOBILE_MENU_TOGGLE_EVENT = "socle:toggle-mobile-menu";
 
 type NavItem = {
   href: string;
-  label: string;
+  /** Optional fallback when no i18n key resolves (admin-only one-offs). */
+  label?: string;
+  /** Dot-path into the locale dict, e.g. "nav.queue". */
+  labelKey?: string;
   icon: string;
   adminOnly?: boolean;
   callerOnly?: boolean;
@@ -16,32 +25,49 @@ type NavItem = {
 
 // Primary nav — workflow order: dashboard → pipeline → leads → calls → phone-review → review → ops
 const PRIMARY_NAV: NavItem[] = [
-  { href: "/",                  label: "Tableau de bord",      icon: "dashboard",   adminOnly: true  },
-  { href: "/pipeline",          label: "Pipeline deals",       icon: "pipeline",    adminOnly: true  },
-  { href: "/leads",             label: "Leads",                icon: "leads"                         },
-  { href: "/calls/queue",       label: "File d'appels",        icon: "calls"                         },
-  { href: "/quick-call",        label: "Téléphone",            icon: "quickcall"                     },
-  { href: "/textos",            label: "Textos",               icon: "messages",    adminOnly: true  },
-  { href: "/phone-review",      label: "Téléphones à réviser", icon: "phone",       adminOnly: true  },
-  { href: "/review",            label: "Revue",                icon: "review",      adminOnly: true  },
-  { href: "/import",            label: "Import rôle",          icon: "import",      adminOnly: true  },
-  { href: "/admin/enrichment",  label: "Enrichissement",       icon: "enrichment",  adminOnly: true  },
-  { href: "/follow-ups",        label: "Suivis",               icon: "followups"                     },
-  { href: "/calendar",          label: "Calendrier",           icon: "calendar"                      },
-  { href: "/investisseurs",     label: "Investisseurs",        icon: "investors",   adminOnly: true  },
-  { href: "/map",               label: "Carte",                icon: "map"                           },
+  { href: "/",                  labelKey: "nav.dashboard",  icon: "dashboard",   adminOnly: true  },
+  { href: "/pipeline",          labelKey: "nav.pipeline",   icon: "pipeline",    adminOnly: true  },
+  { href: "/leads",             labelKey: "nav.leads",      icon: "leads"                         },
+  { href: "/calls/queue",       labelKey: "nav.queue",      icon: "calls"                         },
+  { href: "/quick-call",        label:    "Téléphone",      icon: "quickcall"                     },
+  { href: "/textos",            label:    "Textos",         icon: "messages",    adminOnly: true  },
+  { href: "/phone-review",      labelKey: "nav.phoneReview",icon: "phone",       adminOnly: true  },
+  { href: "/review",            labelKey: "nav.review",     icon: "review",      adminOnly: true  },
+  { href: "/import",            labelKey: "nav.import",     icon: "import",      adminOnly: true  },
+  { href: "/admin/enrichment",  labelKey: "nav.enrichment", icon: "enrichment",  adminOnly: true  },
+  { href: "/follow-ups",        labelKey: "nav.followUps",  icon: "followups"                     },
+  { href: "/calendar",          labelKey: "nav.calendar",   icon: "calendar"                      },
+  { href: "/investisseurs",     label:    "Investisseurs",  icon: "investors",   adminOnly: true  },
+  { href: "/map",               labelKey: "nav.map",        icon: "map"                           },
 ];
 
 // Admin-only secondary tools
 const ADMIN_NAV: NavItem[] = [
-  { href: "/admin/users",   label: "Utilisateurs",       icon: "users"      },
-  { href: "/admin/events",  label: "Journal événements", icon: "events"     },
-  { href: "/admin/costs",   label: "Coûts API",          icon: "costs"      },
-  { href: "/admin/imports", label: "Imports",            icon: "import"     },
-  { href: "/data-health",   label: "Santé données",      icon: "health"     },
-  { href: "/properties",    label: "Propriétés",         icon: "properties" },
-  { href: "/contacts",      label: "Contacts",           icon: "contacts"   },
+  { href: "/admin/users",   labelKey: "nav.users",      icon: "users"      },
+  { href: "/admin/events",  labelKey: "nav.events",     icon: "events"     },
+  { href: "/admin/costs",   label:    "Coûts API",      icon: "costs"      },
+  { href: "/admin/imports", labelKey: "nav.import",     icon: "import"     },
+  { href: "/data-health",   labelKey: "nav.dataHealth", icon: "health"     },
+  { href: "/properties",    labelKey: "nav.properties", icon: "properties" },
+  { href: "/contacts",      labelKey: "nav.contacts",   icon: "contacts"   },
 ];
+
+function resolveLabel(item: NavItem, t: ReturnType<typeof useLocale>["t"]): string {
+  if (item.labelKey) {
+    const parts = item.labelKey.split(".");
+    let cur: unknown = t;
+    for (const p of parts) {
+      if (cur && typeof cur === "object" && p in (cur as Record<string, unknown>)) {
+        cur = (cur as Record<string, unknown>)[p];
+      } else {
+        cur = null;
+        break;
+      }
+    }
+    if (typeof cur === "string") return cur;
+  }
+  return item.label ?? item.href;
+}
 
 type RecentLead = {
   lead_id: string;
@@ -118,9 +144,11 @@ function useSidebarCounts(enabled: boolean): SidebarCounts | null {
 function Badge({
   count,
   highlight,
+  ariaLabel,
 }: {
   count: number;
   highlight?: "green" | "amber" | "red";
+  ariaLabel?: string;
 }) {
   if (count === 0) return null;
   const variant =
@@ -131,7 +159,15 @@ function Badge({
       : highlight === "red"
       ? " sb__badge--alert"
       : "";
-  return <span className={`sb__badge mono${variant}`}>{count}</span>;
+  return (
+    <span
+      className={`sb__badge mono${variant}`}
+      aria-label={ariaLabel}
+      role={ariaLabel ? "status" : undefined}
+    >
+      {count}
+    </span>
+  );
 }
 
 export default function AppSidebar({
@@ -151,6 +187,22 @@ export default function AppSidebar({
   const isDesktop = useIsDesktop();
   const counts = useSidebarCounts(isDesktop || mobileOpen);
   const { t } = useLocale();
+
+  // Close mobile drawer with Esc — pairs with the new visible X button.
+  useEscape(mobileOpen, () => setMobileOpen(false));
+
+  // Mobile bottom nav "Plus" tab dispatches this event to toggle the drawer.
+  useEffect(() => {
+    function onToggle() { setMobileOpen((o) => !o); }
+    window.addEventListener(MOBILE_MENU_TOGGLE_EVENT, onToggle);
+    return () => window.removeEventListener(MOBILE_MENU_TOGGLE_EVENT, onToggle);
+  }, []);
+
+  // Close mobile drawer on route change so links don't leave the overlay
+  // visible after navigating.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   // Build initials from "firstname.lastname@..." pattern
   const handle = email.split("@")[0];
@@ -182,13 +234,19 @@ export default function AppSidebar({
   function getBadgeForItem(item: NavItem) {
     if (!counts) return null;
     if (item.href === "/leads") {
-      return <Badge count={counts.leads_total} />;
+      return (
+        <Badge
+          count={counts.leads_total}
+          ariaLabel={`${counts.leads_total} ${t.nav.leads.toLowerCase()}`}
+        />
+      );
     }
     if (item.href === "/calls/queue") {
       return (
         <Badge
           count={counts.leads_ready_to_call}
           highlight={counts.leads_ready_to_call > 0 ? "green" : undefined}
+          ariaLabel={`${counts.leads_ready_to_call} ${t.nav.queue.toLowerCase()}`}
         />
       );
     }
@@ -197,6 +255,7 @@ export default function AppSidebar({
         <Badge
           count={counts.phone_candidates_needs_review}
           highlight={counts.phone_candidates_needs_review > 0 ? "amber" : undefined}
+          ariaLabel={`${counts.phone_candidates_needs_review} ${t.nav.phoneReview.toLowerCase()}`}
         />
       );
     }
@@ -205,6 +264,7 @@ export default function AppSidebar({
         <Badge
           count={counts.sms_threads_total}
           highlight={counts.sms_threads_total > 0 ? "amber" : undefined}
+          ariaLabel={`${counts.sms_threads_total} SMS`}
         />
       );
     }
@@ -214,6 +274,7 @@ export default function AppSidebar({
         <Badge
           count={total}
           highlight={total > 0 ? "red" : undefined}
+          ariaLabel={`${total} ${t.nav.review.toLowerCase()}`}
         />
       );
     }
@@ -249,13 +310,7 @@ export default function AppSidebar({
                 onClick={() => setMobileOpen(false)}
               >
                 <NavIcon name={item.icon} />
-                <span className="sb__link__label">
-                  {item.href === "/calls/queue"
-                    ? t.nav.queue
-                    : item.href === "/phone-review"
-                    ? t.nav.phoneReview
-                    : item.label}
-                </span>
+                <span className="sb__link__label">{resolveLabel(item, t)}</span>
                 {getBadgeForItem(item)}
               </Link>
             </Fragment>
@@ -275,7 +330,7 @@ export default function AppSidebar({
                 onClick={() => setMobileOpen(false)}
               >
                 <NavIcon name={item.icon} small />
-                <span className="sb__link__label">{item.label}</span>
+                <span className="sb__link__label">{resolveLabel(item, t)}</span>
               </Link>
             ))}
           </>
@@ -396,7 +451,21 @@ export default function AppSidebar({
             className="crm-mobile-overlay"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="sb sb--mobile">
+          <aside
+            className="sb sb--mobile"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.mobileNav.moreAria}
+          >
+            <button
+              type="button"
+              className="sb__mobile-close"
+              onClick={() => setMobileOpen(false)}
+              aria-label={t.common.close}
+              title={t.common.close}
+            >
+              ×
+            </button>
             {sidebar}
           </aside>
         </>
