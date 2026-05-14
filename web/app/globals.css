@@ -11594,15 +11594,15 @@ textarea.invd-field { line-height: 1.5; resize: vertical; }
 }
 .ph-keypad-grid .ph-key:active { background: var(--gold-tint); border-color: var(--gold-border); }
 .ph-keypad-grid .ph-key__d {
-  font-size: clamp(20px, 6.4vw, 26px);
+  font-size: clamp(26px, 8vw, 32px);
   font-weight: 500; color: var(--ink);
   letter-spacing: -0.02em; line-height: 1;
 }
 .ph-keypad-grid .ph-key__l {
-  font-size: 9px; font-weight: 700; letter-spacing: 0.16em;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.16em;
   color: var(--ink-3);
-  line-height: 1; margin-top: 2px;
-  min-height: 9px;
+  line-height: 1; margin-top: 3px;
+  min-height: 10px;
 }
 
 .ph-dial-actions {
