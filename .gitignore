@@ -59,3 +59,4 @@ supabase/.tmp_migrations/
 # Claude Code sandboxed worktrees — never commit
 .claude/worktrees/
 .mcp.json
+design_handoff_socle_redesign/
