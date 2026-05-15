@@ -9,6 +9,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase-server';
+import {
+  buildEmailQueries,
+  contextAroundEmail,
+  extractEmailsFromText,
+  scoreEmailCandidate,
+  type EmailCandidate,
+} from '@/lib/enrichment/email-search';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -30,11 +37,16 @@ const LeadContext = z.object({
 });
 type LeadContext = z.infer<typeof LeadContext>;
 
+const JOB_TYPES = ['find_phone', 'verify_phone', 'find_email', 'find_website', 'owner_identity', 'property_context', 'general_research'] as const;
+type JobType = typeof JOB_TYPES[number];
+
 const Body = z.object({
   enrichment_job_id: z.string().uuid().optional(),
   lead_id: z.string().uuid(),
+  job_type: z.enum(JOB_TYPES).optional(),
   lead_context: LeadContext.optional(),
 });
+type RunnerBody = z.infer<typeof Body>;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -501,6 +513,459 @@ function isAutoAttachable(c: Candidate): boolean {
       && countStrongEvidence(c.matched_on) >= 3;
 }
 
+type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
+
+async function resolveJobType(sb: AdminClient, body: RunnerBody): Promise<JobType> {
+  if (body.job_type) return body.job_type;
+  if (!body.enrichment_job_id) return 'find_phone';
+
+  const { data } = await sb
+    .from('enrichment_jobs')
+    .select('job_type')
+    .eq('id', body.enrichment_job_id)
+    .maybeSingle();
+
+  const jobType = (data as { job_type: string } | null)?.job_type;
+  return JOB_TYPES.includes(jobType as JobType) ? (jobType as JobType) : 'find_phone';
+}
+
+function shouldFetchForEmail(url: string, domain: string): boolean {
+  if (/\.(pdf|docx?|xlsx?|pptx?|zip|rar)(?:$|[?#])/i.test(url)) return false;
+  const blockedDomains = [
+    'facebook.com',
+    'instagram.com',
+    'linkedin.com',
+    'twitter.com',
+    'x.com',
+    'youtube.com',
+  ];
+  return !blockedDomains.some((blocked) => domain === blocked || domain.endsWith(`.${blocked}`));
+}
+
+async function runEmailSearch(
+  sb: AdminClient,
+  body: RunnerBody,
+  startedAt: number,
+): Promise<NextResponse> {
+  type LeadRow = {
+    id: string;
+    contact_id: string | null;
+    status: string;
+    properties: { address: string; city: string | null; matricule: string | null; num_units: number | null } | null;
+    contacts: {
+      full_name: string | null;
+      company_name: string | null;
+      primary_email: string | null;
+      mailing_address: string | null;
+      mailing_city: string | null;
+      mailing_postal: string | null;
+    } | null;
+  };
+
+  const { data: leadRaw, error: leadErr } = await sb
+    .from('leads')
+    .select(`
+      id,
+      contact_id,
+      status,
+      properties ( address, city, matricule, num_units ),
+      contacts ( full_name, company_name, primary_email, mailing_address, mailing_city, mailing_postal )
+    `)
+    .eq('id', body.lead_id)
+    .single();
+
+  if (leadErr || !leadRaw) {
+    return NextResponse.json({ ok: false, error: 'Lead not found' }, { status: 404 });
+  }
+
+  const lead = leadRaw as unknown as LeadRow;
+  const lc: LeadContext = body.lead_context ?? {
+    full_name:        lead.contacts?.full_name ?? null,
+    company_name:     lead.contacts?.company_name ?? null,
+    mailing_address:  lead.contacts?.mailing_address ?? null,
+    mailing_city:     lead.contacts?.mailing_city ?? null,
+    mailing_postal:   lead.contacts?.mailing_postal ?? null,
+    property_address: lead.properties?.address ?? null,
+    property_city:    lead.properties?.city ?? null,
+    matricule:        lead.properties?.matricule ?? null,
+    num_units:        lead.properties?.num_units ?? null,
+  };
+
+  if (lead.contacts?.primary_email) {
+    const reasoning_summary = `Contact already has primary_email (${lead.contacts.primary_email}); skipped email search.`;
+    if (body.enrichment_job_id) {
+      await sb.from('enrichment_jobs').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        raw_output: {
+          outcome: 'already_has_email',
+          result_type: 'email',
+          results_count: 0,
+          result_ids: [],
+          reasoning_summary,
+          runner: 'inline_email',
+          elapsed_ms: Date.now() - startedAt,
+        },
+      }).eq('id', body.enrichment_job_id);
+    }
+    await sb.from('automation_events').insert({
+      source:          'web_app',
+      event_type:      'email_enrichment_search_complete',
+      status:          'success',
+      related_lead_id: body.lead_id,
+      related_contact_id: lead.contact_id,
+      payload: {
+        outcome: 'already_has_email',
+        job_id: body.enrichment_job_id ?? null,
+        reasoning_summary,
+        runner: 'inline_email',
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      outcome: 'already_has_email',
+      result_type: 'email',
+      reasoning_summary,
+      results: [],
+      result_ids: [],
+      elapsed_ms: Date.now() - startedAt,
+    });
+  }
+
+  const queries = buildEmailQueries(lc);
+  const braveApiKey = process.env.BRAVE_API_KEY;
+
+  if (!braveApiKey) {
+    const reasoning_summary =
+      'BRAVE_API_KEY not configured. Email search could not run.';
+
+    if (body.enrichment_job_id) {
+      await sb.from('enrichment_jobs').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        raw_output: {
+          outcome: 'search_unavailable',
+          result_type: 'email',
+          results_count: 0,
+          result_ids: [],
+          reasoning_summary,
+          meta: { brave_credential_set: false },
+          runner: 'inline_email',
+          elapsed_ms: Date.now() - startedAt,
+        },
+      }).eq('id', body.enrichment_job_id);
+    }
+
+    await sb.from('automation_events').insert({
+      source:          'web_app',
+      event_type:      'email_enrichment_search_complete',
+      status:          'success',
+      related_lead_id: body.lead_id,
+      related_contact_id: lead.contact_id,
+      payload: {
+        outcome: 'search_unavailable',
+        job_id: body.enrichment_job_id ?? null,
+        reasoning_summary,
+        runner: 'inline_email',
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      outcome: 'search_unavailable',
+      result_type: 'email',
+      reasoning_summary,
+      results: [],
+      result_ids: [],
+      elapsed_ms: Date.now() - startedAt,
+    });
+  }
+
+  const emailMap = new Map<string, EmailCandidate>();
+  const queriesRun: string[] = [];
+  const domainsChecked = new Set<string>();
+  const braveErrors: Array<{ query: string; error: string }> = [];
+  const urlsToFetch: Array<{ url: string; domain: string; query: string; title: string; description: string }> = [];
+  const seenUrls = new Set<string>();
+
+  const braveCtrl = new AbortController();
+  const braveTimer = setTimeout(() => braveCtrl.abort(), BRAVE_TIMEOUT_MS);
+
+  let searchResults: Awaited<ReturnType<typeof braveSearch>>[];
+  try {
+    searchResults = await Promise.all(
+      queries.map((q) => braveSearch(q, braveApiKey, braveCtrl.signal)),
+    );
+  } finally {
+    clearTimeout(braveTimer);
+  }
+
+  for (const sr of searchResults) {
+    if (!sr.ok || !sr.results) {
+      if (sr.error) braveErrors.push({ query: sr.query, error: sr.error });
+      continue;
+    }
+    queriesRun.push(sr.query);
+
+    for (const result of sr.results) {
+      const domain = extractDomain(result.url);
+      domainsChecked.add(domain);
+
+      const haystack = `${result.title} ${result.description}`;
+      for (const email of extractEmailsFromText(haystack)) {
+        const { score, reasons } = scoreEmailCandidate({
+          haystack,
+          domain,
+          email,
+          context: lc,
+          source: 'snippet',
+        });
+        const existing = emailMap.get(email);
+        if (!existing || score > existing.confidence) {
+          emailMap.set(email, {
+            email,
+            source_url: result.url,
+            source_label: domain,
+            snippet: result.description.slice(0, 300),
+            confidence: score,
+            matched_on: reasons.join('; '),
+            search_query: sr.query,
+            source: 'snippet',
+          });
+        }
+      }
+
+      if (
+        urlsToFetch.length < MAX_PAGE_FETCHES &&
+        !seenUrls.has(result.url) &&
+        shouldFetchForEmail(result.url, domain)
+      ) {
+        seenUrls.add(result.url);
+        urlsToFetch.push({
+          url: result.url,
+          domain,
+          query: sr.query,
+          title: result.title,
+          description: result.description,
+        });
+      }
+    }
+  }
+
+  const snippetCount = emailMap.size;
+
+  const pagesFetched: PageFetchResult[] = await Promise.all(
+    urlsToFetch.map(async ({ url, domain }) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), PAGE_FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetchPage(url, ctrl.signal);
+        return { ...res, domain };
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+
+  for (let i = 0; i < pagesFetched.length; i++) {
+    const page = pagesFetched[i];
+    if (!page.ok || !page.body) continue;
+
+    const urlInfo = urlsToFetch[i];
+    const pageText = htmlToText(page.body);
+    const searchable = `${page.body} ${pageText}`;
+
+    for (const email of extractEmailsFromText(searchable)) {
+      const context = contextAroundEmail(searchable, email);
+      const haystack = `${urlInfo?.title ?? ''} ${urlInfo?.description ?? ''} ${context}`;
+      const { score, reasons } = scoreEmailCandidate({
+        haystack,
+        domain: page.domain,
+        email,
+        context: lc,
+        source: 'page',
+      });
+      const existing = emailMap.get(email);
+      if (!existing || score > existing.confidence) {
+        emailMap.set(email, {
+          email,
+          source_url: page.url,
+          source_label: page.domain,
+          snippet: context.slice(0, 300),
+          confidence: score,
+          matched_on: reasons.join('; '),
+          search_query: urlInfo?.query ?? '',
+          source: 'page',
+        });
+      }
+    }
+  }
+
+  const allCandidates = Array.from(emailMap.values())
+    .sort((a, b) => b.confidence - a.confidence);
+
+  const finalCandidates = allCandidates
+    .filter((candidate) => candidate.confidence >= 50)
+    .slice(0, TOP_CANDIDATES);
+
+  const resultIds: string[] = [];
+  let dedupUpdates = 0;
+
+  const existingMap = new Map<string, { id: string; confidence: number; status: string }>();
+  if (lead.contact_id) {
+    const { data: existingRows } = await sb
+      .from('enrichment_results')
+      .select('id, value, confidence, status')
+      .eq('contact_id', lead.contact_id)
+      .eq('kind', 'email');
+
+    for (const row of (existingRows ?? [])) {
+      const r = row as { id: string; value: string; confidence: number | null; status: string };
+      existingMap.set(r.value.toLowerCase(), {
+        id: r.id,
+        confidence: r.confidence ?? 0,
+        status: r.status,
+      });
+    }
+  }
+
+  for (const candidate of finalCandidates) {
+    const evidence =
+      `conf ${candidate.confidence}; matched_on=${candidate.matched_on || 'none'}; ` +
+      `query="${candidate.search_query}"; snippet="${candidate.snippet.slice(0, 140)}"`;
+    const rawPayload = {
+      source_label: candidate.source_label,
+      search_query: candidate.search_query,
+      matched_on: candidate.matched_on,
+      snippet: candidate.snippet,
+      runner: 'inline_email',
+    };
+
+    const existing = existingMap.get(candidate.email);
+    if (existing) {
+      if (existing.status === 'unverified') {
+        await sb.from('enrichment_results').update({
+          lead_id: body.lead_id,
+          source: candidate.source === 'page' ? 'brave_email_page' : 'brave_email_snippet',
+          source_url: candidate.source_url,
+          confidence: Math.max(existing.confidence, candidate.confidence),
+          evidence,
+          raw_payload: rawPayload,
+          found_in_job_id: body.enrichment_job_id ?? null,
+        }).eq('id', existing.id);
+        dedupUpdates++;
+      }
+      resultIds.push(existing.id);
+      continue;
+    }
+
+    const { data: row, error } = await sb.from('enrichment_results').insert({
+      contact_id: lead.contact_id,
+      lead_id: body.lead_id,
+      kind: 'email',
+      value: candidate.email,
+      source: candidate.source === 'page' ? 'brave_email_page' : 'brave_email_snippet',
+      source_url: candidate.source_url,
+      confidence: candidate.confidence,
+      evidence,
+      status: 'unverified',
+      raw_payload: rawPayload,
+      found_in_job_id: body.enrichment_job_id ?? null,
+    }).select('id').single();
+
+    if (error) {
+      console.error('[enrichment-run] email result insert failed:', error);
+      continue;
+    }
+    if (row) resultIds.push((row as { id: string }).id);
+  }
+
+  const meta = {
+    queries_run: queriesRun.length,
+    queries_list: queriesRun,
+    brave_errors: braveErrors,
+    snippet_domains_checked: Array.from(domainsChecked),
+    pages_fetched: pagesFetched.map((p) => ({
+      url: p.url,
+      domain: p.domain,
+      status: p.ok ? 'ok' : 'error',
+      byteLength: p.bodyLength,
+      error: p.error,
+    })),
+    pages_fetched_count: pagesFetched.length,
+    page_errors: pagesFetched.filter((p) => !p.ok).length,
+    snippet_candidates_count: snippetCount,
+    page_candidates_count: emailMap.size - snippetCount,
+    rejected_count: emailMap.size - finalCandidates.length,
+    candidates_above_threshold: finalCandidates.length,
+    dedup_updates: dedupUpdates,
+    brave_credential_set: true,
+  };
+
+  const top = finalCandidates[0];
+  const reasoning_summary = resultIds.length > 0 && top
+    ? `Found ${resultIds.length} reviewable email result(s). Top: ${top.email} conf ${top.confidence} (${top.matched_on || 'limited match'}; source=${top.source_label}).`
+    : `No email results accepted. Queries: ${queriesRun.length}. Domains checked: ${Array.from(domainsChecked).slice(0, 6).join(', ')}.`;
+
+  if (body.enrichment_job_id) {
+    await sb.from('enrichment_jobs').update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      raw_output: {
+        outcome: resultIds.length > 0 ? 'email_results_found' : 'no_result',
+        result_type: 'email',
+        results_count: resultIds.length,
+        result_ids: resultIds,
+        reasoning_summary,
+        meta,
+        runner: 'inline_email',
+        elapsed_ms: Date.now() - startedAt,
+      },
+    }).eq('id', body.enrichment_job_id);
+  }
+
+  await sb.from('enrichment_events').insert({
+    lead_id: body.lead_id,
+    event_type: 'brave_search_complete',
+    stage: 'brave',
+    payload: {
+      source: 'email_enrichment_runner',
+      outcome: resultIds.length > 0 ? 'email_results_found' : 'no_result',
+      result_ids: resultIds,
+      reasoning_summary,
+      meta,
+    },
+  });
+
+  await sb.from('automation_events').insert({
+    source: 'web_app',
+    event_type: 'email_enrichment_search_complete',
+    status: 'success',
+    related_lead_id: body.lead_id,
+    related_contact_id: lead.contact_id,
+    payload: {
+      outcome: resultIds.length > 0 ? 'email_results_found' : 'no_result',
+      results: resultIds.length,
+      result_ids: resultIds,
+      job_id: body.enrichment_job_id ?? null,
+      reasoning_summary,
+      runner: 'inline_email',
+    },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    outcome: resultIds.length > 0 ? 'email_results_found' : 'no_result',
+    result_type: 'email',
+    lead_status: lead.status,
+    reasoning_summary,
+    results: finalCandidates,
+    result_ids: resultIds,
+    meta,
+    elapsed_ms: Date.now() - startedAt,
+  });
+}
+
 // ── POST handler ───────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -531,6 +996,44 @@ export async function POST(request: Request) {
   }
 
   const sb = createSupabaseAdminClient();
+  const jobType = await resolveJobType(sb, body);
+  if (jobType === 'find_email') {
+    try {
+      return await runEmailSearch(sb, body, startedAt);
+    } catch (err) {
+      const errorMsg = (err as Error).message ?? 'Unknown error in email enrichment runner';
+      if (body.enrichment_job_id) {
+        await sb.from('enrichment_jobs').update({
+          status:        'failed',
+          completed_at:  new Date().toISOString(),
+          error_message: errorMsg,
+          raw_output: {
+            outcome: 'runner_error',
+            result_type: 'email',
+            error: errorMsg,
+            runner: 'inline_email',
+          },
+        }).eq('id', body.enrichment_job_id);
+      }
+      await sb.from('automation_events').insert({
+        source:          'web_app',
+        event_type:      'email_enrichment_search_complete',
+        status:          'failed',
+        related_lead_id: body.lead_id,
+        payload: {
+          outcome: 'runner_error',
+          error: errorMsg,
+          job_id: body.enrichment_job_id ?? null,
+          runner: 'inline_email',
+        },
+        error_message: errorMsg,
+      });
+      return NextResponse.json(
+        { ok: false, error: errorMsg, outcome: 'runner_error', result_type: 'email' },
+        { status: 500 },
+      );
+    }
+  }
 
   // ── Main pipeline (wrapped for error handling) ─────────────────────────────
   try {

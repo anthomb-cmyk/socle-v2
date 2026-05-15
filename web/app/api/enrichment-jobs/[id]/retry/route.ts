@@ -3,6 +3,7 @@
 // the correct n8n webhook for the job's original workflow:
 //   - workflow_id contains "openclaw" → POST to OPENCLAW_WEBHOOK_URL with the
 //     same deep_search payload force-openclaw uses (LeadContext + callback URL)
+//   - job_type === find_email          → POST to the inline email runner
 //   - otherwise                       → POST to N8N_ENRICHMENT_WEBHOOK_URL with
 //     the legacy retry payload
 // Bumps attempts.
@@ -60,7 +61,7 @@ function buildLeadContext(lead: LeadJoined, enrichmentJobId: string): LeadContex
   };
 }
 
-export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
   const { user } = auth;
@@ -87,9 +88,12 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
 
   let webhookCalled = false;
   let webhookError: string | null = null;
-  const route: "openclaw" | "n8n_default" | "none" = isOpenclawWorkflow(job.workflow_id)
-    ? "openclaw"
-    : (process.env.N8N_ENRICHMENT_WEBHOOK_URL ? "n8n_default" : "none");
+  const route: "openclaw" | "inline_email" | "n8n_default" | "none" =
+    job.job_type === "find_email"
+      ? "inline_email"
+      : isOpenclawWorkflow(job.workflow_id)
+        ? "openclaw"
+        : (process.env.N8N_ENRICHMENT_WEBHOOK_URL ? "n8n_default" : "none");
 
   if (route === "openclaw") {
     // OpenClaw retry path — re-fire the deep_search webhook (W8) with full lead context.
@@ -142,6 +146,41 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     }
     if (!webhookCalled) {
       // Mark the job failed so it doesn't sit pending forever
+      await sb.from("enrichment_jobs").update({
+        status:        "failed",
+        completed_at:  new Date().toISOString(),
+        error_message: webhookError,
+      }).eq("id", id);
+    }
+  } else if (route === "inline_email") {
+    if (!process.env.N8N_SHARED_KEY) {
+      webhookError = "N8N_SHARED_KEY not configured — inline email runner cannot authenticate";
+    } else if (!job.lead_id) {
+      webhookError = "Job has no lead_id — cannot run email search";
+    } else {
+      try {
+        const r = await fetch(new URL("/api/enrichment/run", request.url), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.N8N_SHARED_KEY}`,
+          },
+          body: JSON.stringify({
+            enrichment_job_id: id,
+            lead_id: job.lead_id,
+            job_type: job.job_type,
+          }),
+        });
+        if (r.ok) {
+          webhookCalled = true;
+        } else {
+          webhookError = `Inline runner returned ${r.status}`;
+        }
+      } catch (err) {
+        webhookError = (err as Error).message;
+      }
+    }
+    if (!webhookCalled) {
       await sb.from("enrichment_jobs").update({
         status:        "failed",
         completed_at:  new Date().toISOString(),
