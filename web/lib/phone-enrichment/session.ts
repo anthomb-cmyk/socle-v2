@@ -8,6 +8,7 @@ export const DEFAULT_AI_SECOND_PASS_ESTIMATED_COST_PER_LEAD_USD = 0.02;
 
 const VALID_PHONE_STATUSES = ["unverified", "valid", "verified"] as const;
 const LEAD_ID_CHUNK_SIZE = 100;
+const LEAD_ID_PAGE_SIZE = 1000;
 
 export type RecoverabilityReason =
   | "bad_query"
@@ -95,14 +96,20 @@ export function getOperatorEnabled(): boolean {
 }
 
 export async function getImportLeadIds(sb: AnyClient, importJobId: string): Promise<string[]> {
-  const { data, error } = await sb
-    .from("leads")
-    .select("id")
-    .eq("source_import_job_id", importJobId)
-    .limit(5000);
+  const ids: string[] = [];
+  for (let from = 0; ; from += LEAD_ID_PAGE_SIZE) {
+    const { data, error } = await sb
+      .from("leads")
+      .select("id")
+      .eq("source_import_job_id", importJobId)
+      .order("created_at", { ascending: true })
+      .range(from, from + LEAD_ID_PAGE_SIZE - 1);
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row: { id: string }) => row.id);
+    if (error) throw new Error(error.message);
+    ids.push(...(data ?? []).map((row: { id: string }) => row.id));
+    if (!data || data.length < LEAD_ID_PAGE_SIZE) break;
+  }
+  return ids;
 }
 
 export async function getEligibleStartLeadIds(sb: AnyClient, importJobId: string): Promise<string[]> {
