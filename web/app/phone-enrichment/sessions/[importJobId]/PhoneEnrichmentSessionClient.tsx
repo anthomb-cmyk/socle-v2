@@ -362,7 +362,7 @@ export default function PhoneEnrichmentSessionClient({ importJobId }: { importJo
         <Panel title="Candidats">
           <Breakdown rows={data.counts.candidatesByStatus} />
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link href={"/phone-review" as never} className="crm-btn" style={{ fontSize: 12 }}>
+            <Link href={`/phone-review?import_job_id=${importJobId}` as never} className="crm-btn" style={{ fontSize: 12 }}>
               Ouvrir phone-review
             </Link>
             <Link href={`/leads?import_job_id=${importJobId}` as never} className="crm-btn" style={{ fontSize: 12 }}>

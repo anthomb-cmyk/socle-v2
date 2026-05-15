@@ -10,6 +10,17 @@ import { enqueue } from "./queue/enqueue";
 
 // Flush incremental counters to import_jobs every N rows so the client can poll progress.
 const INCREMENTAL_FLUSH_EVERY = 5;
+const CALLABLE_PHONE_STATUSES = ["unverified", "valid", "verified"] as const;
+const REACTIVATABLE_ROLE_PHONE_STATUSES = ["unverified", "valid", "verified", "invalid"] as const;
+const PRESERVE_EXISTING_LEAD_STATUSES = [
+  "phone_verified",
+  "in_outreach",
+  "no_answer",
+  "meeting_set",
+  "qualified",
+  "rejected",
+  "do_not_contact",
+] as const;
 
 // Normalise a contact name for dedup matching.
 // Rôle exports are ALL-CAPS; other sources may be title-cased.
@@ -21,6 +32,10 @@ function normaliseName(s: string): string {
     .trim()
     .toLowerCase()
     .replace(/(^|\s|-|')(\p{L})/gu, (_, sep: string, c: string) => sep + c.toUpperCase());
+}
+
+function shouldPreserveLeadStatus(status: string | null | undefined): boolean {
+  return Boolean(status && PRESERVE_EXISTING_LEAD_STATUSES.includes(status as typeof PRESERVE_EXISTING_LEAD_STATUSES[number]));
 }
 
 export interface CommitCounts {
@@ -212,25 +227,24 @@ async function commitRow(
       source_import_job_id: opts.importJobId,
     }, { onConflict: "property_id,contact_id,relationship", ignoreDuplicates: true });
 
-    // 4. Phones — one row per E.164 per contact (skipped for blocked owners who have none)
+    // 4. Phones — one row per E.164 per contact. Re-imports must reactivate
+    // role-file phones that were previously archived as invalid, while keeping
+    // caller-confirmed bad/wrong/do-not-contact outcomes untouched.
     for (const e164 of owner.phones) {
-      const { error } = await supabase.from("phones").upsert({
-        contact_id: contactId,
+      const changed = await upsertRolePhone(supabase, {
+        contactId,
         e164,
-        display: formatDisplay(e164),
-        status: "unverified",
-        source: "role",
-        confidence: 80,
-        evidence: `from rôle import — ${owner.source_columns.phone || "phone column"}`,
-        source_column: owner.source_columns.phone,
-        source_import_job_id: opts.importJobId,
-      }, { onConflict: "contact_id,e164", ignoreDuplicates: true });
-      if (!error) counts.phones_created++;
+        importJobId: opts.importJobId,
+        sourceColumn: owner.source_columns.phone,
+      });
+      if (changed) counts.phones_created++;
     }
     const contactHasPhone = await hasPhoneForContact(supabase, contactId);
 
     // 5. Lead per (campaign, property, contact)
-    const leadStatus: string = isOwnerAddressBlocked
+    const leadStatus: string = contactHasPhone
+      ? "ready_to_call"
+      : isOwnerAddressBlocked
       ? "unsuitable_for_phone_enrichment"
       : "new";
 
@@ -253,7 +267,10 @@ async function commitRow(
     let leadId: string | null = null;
 
     if (existingLead) {
-      await supabase.from("leads").update({ source_import_job_id: opts.importJobId }).eq("id", existingLead.id);
+      const updatePayload = shouldPreserveLeadStatus(existingLead.status)
+        ? { source_import_job_id: opts.importJobId }
+        : { source_import_job_id: opts.importJobId, status: leadStatus };
+      await supabase.from("leads").update(updatePayload).eq("id", existingLead.id);
       counts.leads_updated++;
       leadId = existingLead.id;
     } else {
@@ -305,7 +322,8 @@ async function hasPhoneForContact(
   const { count, error } = await supabase
     .from("phones")
     .select("id", { count: "exact", head: true })
-    .eq("contact_id", contactId);
+    .eq("contact_id", contactId)
+    .in("status", CALLABLE_PHONE_STATUSES as unknown as string[]);
 
   if (error) {
     console.error("[import-commit] phone lookup failed:", { contactId, error: error.message });
@@ -313,6 +331,56 @@ async function hasPhoneForContact(
   }
 
   return (count ?? 0) > 0;
+}
+
+async function upsertRolePhone(
+  supabase: SupabaseClient,
+  input: { contactId: string; e164: string; importJobId: string; sourceColumn?: string | null },
+): Promise<boolean> {
+  const { data: existing, error: existingErr } = await supabase
+    .from("phones")
+    .select("id,status")
+    .eq("contact_id", input.contactId)
+    .eq("e164", input.e164)
+    .maybeSingle();
+
+  if (existingErr) {
+    console.error("[import-commit] phone lookup failed:", {
+      contactId: input.contactId,
+      e164: input.e164,
+      error: existingErr.message,
+    });
+    return false;
+  }
+
+  const existingStatus = (existing as { status?: string | null } | null)?.status ?? null;
+  if (existingStatus && !REACTIVATABLE_ROLE_PHONE_STATUSES.includes(existingStatus as typeof REACTIVATABLE_ROLE_PHONE_STATUSES[number])) {
+    return false;
+  }
+
+  const { error } = await supabase.from("phones").upsert({
+    contact_id: input.contactId,
+    e164: input.e164,
+    display: formatDisplay(input.e164),
+    status: "unverified",
+    source: "role",
+    confidence: 80,
+    evidence: `from rôle import — ${input.sourceColumn || "phone column"}`,
+    source_column: input.sourceColumn,
+    source_import_job_id: input.importJobId,
+    notes: null,
+  }, { onConflict: "contact_id,e164", ignoreDuplicates: false });
+
+  if (error) {
+    console.error("[import-commit] phone upsert failed:", {
+      contactId: input.contactId,
+      e164: input.e164,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return true;
 }
 
 async function upsertContact(

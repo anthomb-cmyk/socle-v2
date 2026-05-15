@@ -29,6 +29,7 @@ type Contact = {
 type Lead = {
   id: string;
   status: string;
+  source_import_job_id?: string | null;
   campaign_id: string | null;
   campaigns: Campaign;
   properties: Property;
@@ -91,11 +92,16 @@ const BULK_CONCURRENCY = 10;
 
 export default function PhoneReviewClient({
   initialCandidates,
+  importJobId,
 }: {
   initialCandidates: PhoneCandidate[];
+  importJobId?: string | null;
 }) {
   const { t } = useLocale();
   const router = useRouter();
+  const reviewPath = importJobId
+    ? `/phone-review?import_job_id=${encodeURIComponent(importJobId)}`
+    : "/phone-review";
   const [candidates, setCandidates] = useState(initialCandidates);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -425,7 +431,7 @@ export default function PhoneReviewClient({
     }
     setBulkProgress(null);
     if (action === "approve") {
-      router.push("/phone-review?_just_approved=1");
+      router.push(`${reviewPath}${reviewPath.includes("?") ? "&" : "?"}_just_approved=1` as never);
       router.refresh();
     }
   }
