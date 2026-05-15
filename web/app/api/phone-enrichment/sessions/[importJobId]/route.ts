@@ -10,6 +10,7 @@ import {
   getEligibleStartLeadIds,
   getImportLeadIds,
   getOperatorEnabled,
+  queryLeadIdChunks,
 } from "@/lib/phone-enrichment/session";
 
 export const runtime = "nodejs";
@@ -58,38 +59,79 @@ export async function GET(request: Request, ctx: RouteCtx) {
 
   const [
     summaryRes,
-    queueRes,
-    jobsRes,
-    candidatesRes,
+    queueRows,
+    jobs,
+    candidates,
     actionsRes,
     budget,
     recoverability,
   ] = await Promise.all([
     sb.from("phone_enrichment_import_summary").select("*").eq("import_job_id", importJobId).maybeSingle(),
     leadIds.length > 0
-      ? sb
+      ? queryLeadIdChunks<{
+          id: string;
+          lead_id: string;
+          task_type: string;
+          priority: number | null;
+          status: string;
+          attempts: number;
+          last_error: string | null;
+          scheduled_for: string;
+          started_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+        }>(leadIds, (chunk) =>
+          sb
           .from("lead_post_processing_queue")
           .select("id,lead_id,task_type,priority,status,attempts,last_error,scheduled_for,started_at,completed_at,created_at")
-          .in("lead_id", leadIds)
-          .eq("task_type", "enrichment")
-      : Promise.resolve({ data: [], error: null }),
+          .in("lead_id", chunk)
+          .eq("task_type", "enrichment"),
+        )
+      : Promise.resolve([]),
     leadIds.length > 0
-      ? sb
+      ? queryLeadIdChunks<{
+          id: string;
+          lead_id: string | null;
+          contact_id: string | null;
+          job_type: string;
+          workflow_id: string | null;
+          status: string;
+          attempts: number;
+          max_attempts: number;
+          started_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+          error_message: string | null;
+          raw_output: unknown;
+        }>(leadIds, (chunk) =>
+          sb
           .from("enrichment_jobs")
           .select("id,lead_id,contact_id,job_type,workflow_id,status,attempts,max_attempts,started_at,completed_at,created_at,error_message,raw_output")
-          .in("lead_id", leadIds)
+          .in("lead_id", chunk)
           .eq("job_type", "find_phone")
-          .order("created_at", { ascending: false })
-          .limit(500)
-      : Promise.resolve({ data: [], error: null }),
+          .order("created_at", { ascending: false }),
+        )
+      : Promise.resolve([]),
     leadIds.length > 0
-      ? sb
+      ? queryLeadIdChunks<{
+          id: string;
+          lead_id: string;
+          candidate_status: string;
+          openclaw_verdict: string | null;
+          initial_confidence: number | null;
+          source_label: string | null;
+          source_url: string | null;
+          review_reason: string | null;
+          created_at: string;
+        }>(leadIds, (chunk) =>
+          sb
           .from("phone_candidates")
           .select("id,lead_id,candidate_status,openclaw_verdict,initial_confidence,source_label,source_url,review_reason,created_at")
-          .in("lead_id", leadIds)
+          .in("lead_id", chunk)
           .order("created_at", { ascending: false })
-          .limit(500)
-      : Promise.resolve({ data: [], error: null }),
+          .limit(500),
+        )
+      : Promise.resolve([]),
     sb
       .from("automation_events")
       .select("id,event_type,status,payload,result,error_message,occurred_at")
@@ -102,26 +144,10 @@ export async function GET(request: Request, ctx: RouteCtx) {
   ]);
 
   if (summaryRes.error) return NextResponse.json({ ok: false, error: summaryRes.error.message }, { status: 500 });
-  if (queueRes.error) return NextResponse.json({ ok: false, error: queueRes.error.message }, { status: 500 });
-  if (jobsRes.error) return NextResponse.json({ ok: false, error: jobsRes.error.message }, { status: 500 });
-  if (candidatesRes.error) return NextResponse.json({ ok: false, error: candidatesRes.error.message }, { status: 500 });
   if (actionsRes.error) return NextResponse.json({ ok: false, error: actionsRes.error.message }, { status: 500 });
 
-  const jobs = (jobsRes.data ?? []) as Array<{
-    id: string;
-    lead_id: string | null;
-    workflow_id: string | null;
-    status: string;
-    attempts: number;
-    max_attempts: number;
-    started_at: string | null;
-    completed_at: string | null;
-    created_at: string;
-    error_message: string | null;
-    raw_output: unknown;
-  }>;
-  const queueRows = (queueRes.data ?? []) as Array<{ status: string }>;
-  const candidates = (candidatesRes.data ?? []) as Array<{ candidate_status: string }>;
+  jobs.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const staleJobs = jobs.filter(isStaleJob).slice(0, 25);
 
   return NextResponse.json({

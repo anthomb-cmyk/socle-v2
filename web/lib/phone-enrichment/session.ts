@@ -7,6 +7,7 @@ export const DEFAULT_PHONE_ENRICHMENT_ESTIMATED_COST_PER_LEAD_USD = 0.005;
 export const DEFAULT_AI_SECOND_PASS_ESTIMATED_COST_PER_LEAD_USD = 0.02;
 
 const VALID_PHONE_STATUSES = ["unverified", "valid", "verified"] as const;
+const LEAD_ID_CHUNK_SIZE = 100;
 
 export type RecoverabilityReason =
   | "bad_query"
@@ -44,6 +45,20 @@ export type RecoverabilitySummary = {
 };
 
 type AnyClient = SupabaseClient<Database>;
+
+export async function queryLeadIdChunks<T>(
+  leadIds: string[],
+  run: (chunk: string[]) => unknown,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let i = 0; i < leadIds.length; i += LEAD_ID_CHUNK_SIZE) {
+    const chunk = leadIds.slice(i, i + LEAD_ID_CHUNK_SIZE);
+    const { data, error } = await run(chunk) as { data: T[] | null; error: { message: string } | null };
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+  }
+  return rows;
+}
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -94,16 +109,16 @@ export async function getEligibleStartLeadIds(sb: AnyClient, importJobId: string
   const leadIds = await getImportLeadIds(sb, importJobId);
   if (leadIds.length === 0) return [];
 
-  const { data, error } = await sb
-    .from("leads_view")
-    .select("lead_id,status,best_phone")
-    .in("lead_id", leadIds)
-    .in("status", ["new", "needs_enrichment"])
-    .is("best_phone", null)
-    .limit(500);
+  const rows = await queryLeadIdChunks<{ lead_id: string }>(leadIds, (chunk) =>
+    sb
+      .from("leads_view")
+      .select("lead_id,status,best_phone")
+      .in("lead_id", chunk)
+      .in("status", ["new", "needs_enrichment"])
+      .is("best_phone", null),
+  );
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row: { lead_id: string }) => row.lead_id);
+  return rows.slice(0, 500).map((row) => row.lead_id);
 }
 
 export async function leadBelongsToImport(
@@ -134,27 +149,28 @@ export async function getBudgetStatus(
 
   const leadIds = await getImportLeadIds(sb, importJobId);
 
-  const [dailyRes, sessionRes] = await Promise.all([
+  const [dailyRes, sessionRows] = await Promise.all([
     sb
       .from("llm_usage_log")
       .select("cost_usd")
       .gte("created_at", since.toISOString()),
     leadIds.length > 0
-      ? sb
-          .from("llm_usage_log")
-          .select("cost_usd")
-          .in("lead_id", leadIds)
-      : Promise.resolve({ data: [], error: null }),
+      ? queryLeadIdChunks<{ cost_usd: unknown }>(leadIds, (chunk) =>
+          sb
+            .from("llm_usage_log")
+            .select("cost_usd")
+            .in("lead_id", chunk),
+        )
+      : Promise.resolve([]),
   ]);
 
   if (dailyRes.error) throw new Error(dailyRes.error.message);
-  if (sessionRes.error) throw new Error(sessionRes.error.message);
 
   const dailySpentUsd = (dailyRes.data ?? []).reduce(
     (sum: number, row: { cost_usd: unknown }) => sum + toNumber(row.cost_usd),
     0,
   );
-  const sessionSpentUsd = (sessionRes.data ?? []).reduce(
+  const sessionSpentUsd = sessionRows.reduce(
     (sum: number, row: { cost_usd: unknown }) => sum + toNumber(row.cost_usd),
     0,
   );
@@ -231,46 +247,54 @@ export async function buildRecoverabilitySummary(
   const examples: RecoverabilitySummary["examples"] = [];
   if (leadIds.length === 0) return { counts, examples };
 
-  const [leadsRes, jobsRes, candidatesRes, eventsRes] = await Promise.all([
-    sb
-      .from("leads")
-      .select("id,status")
-      .in("id", leadIds)
-      .in("status", ["unresolved_after_all_sources", "unresolved_after_openclaw", "needs_phone_review"]),
-    sb
-      .from("enrichment_jobs")
-      .select("id,lead_id,status,error_message,raw_output,created_at,completed_at")
-      .in("lead_id", leadIds)
-      .eq("job_type", "find_phone")
-      .order("created_at", { ascending: false })
-      .limit(2000),
-    sb
-      .from("phone_candidates")
-      .select("lead_id,candidate_status")
-      .in("lead_id", leadIds),
-    sb
-      .from("enrichment_events")
-      .select("lead_id,event_type")
-      .in("lead_id", leadIds)
-      .eq("event_type", "query_built")
-      .limit(5000),
+  const [leadsRows, jobRows, candidateRows, eventRows] = await Promise.all([
+    queryLeadIdChunks<{ id: string; status: string }>(leadIds, (chunk) =>
+      sb
+        .from("leads")
+        .select("id,status")
+        .in("id", chunk)
+        .in("status", ["unresolved_after_all_sources", "unresolved_after_openclaw", "needs_phone_review"]),
+    ),
+    queryLeadIdChunks<{
+      id: string;
+      lead_id: string | null;
+      status?: string | null;
+      error_message?: string | null;
+      raw_output?: unknown;
+      created_at: string;
+      completed_at: string | null;
+    }>(leadIds, (chunk) =>
+      sb
+        .from("enrichment_jobs")
+        .select("id,lead_id,status,error_message,raw_output,created_at,completed_at")
+        .in("lead_id", chunk)
+        .eq("job_type", "find_phone")
+        .order("created_at", { ascending: false }),
+    ),
+    queryLeadIdChunks<{ lead_id: string; candidate_status: string }>(leadIds, (chunk) =>
+      sb
+        .from("phone_candidates")
+        .select("lead_id,candidate_status")
+        .in("lead_id", chunk),
+    ),
+    queryLeadIdChunks<{ lead_id: string; event_type: string }>(leadIds, (chunk) =>
+      sb
+        .from("enrichment_events")
+        .select("lead_id,event_type")
+        .in("lead_id", chunk)
+        .eq("event_type", "query_built"),
+    ),
   ]);
 
-  if (leadsRes.error) throw new Error(leadsRes.error.message);
-  if (jobsRes.error) throw new Error(jobsRes.error.message);
-  if (candidatesRes.error) throw new Error(candidatesRes.error.message);
-  if (eventsRes.error) throw new Error(eventsRes.error.message);
-
   const latestJobByLead = new Map<string, { status?: string | null; error_message?: string | null; raw_output?: unknown }>();
-  for (const job of jobsRes.data ?? []) {
-    const row = job as { lead_id: string | null; status?: string | null; error_message?: string | null; raw_output?: unknown };
+  jobRows.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  for (const row of jobRows) {
     if (row.lead_id && !latestJobByLead.has(row.lead_id)) latestJobByLead.set(row.lead_id, row);
   }
 
   const weakByLead = new Map<string, number>();
   const quarantinedByLead = new Map<string, number>();
-  for (const candidate of candidatesRes.data ?? []) {
-    const row = candidate as { lead_id: string; candidate_status: string };
+  for (const row of candidateRows) {
     if (row.candidate_status === "weak_review") {
       weakByLead.set(row.lead_id, (weakByLead.get(row.lead_id) ?? 0) + 1);
     }
@@ -280,13 +304,12 @@ export async function buildRecoverabilitySummary(
   }
 
   const queryBuiltByLead = new Map<string, number>();
-  for (const event of eventsRes.data ?? []) {
-    const row = event as { lead_id: string };
+  for (const row of eventRows) {
     queryBuiltByLead.set(row.lead_id, (queryBuiltByLead.get(row.lead_id) ?? 0) + 1);
   }
 
-  for (const lead of leadsRes.data ?? []) {
-    const leadId = (lead as { id: string }).id;
+  for (const lead of leadsRows) {
+    const leadId = lead.id;
     const item = classifyRecoverability({
       latestJob: latestJobByLead.get(leadId) ?? null,
       weakCandidateCount: weakByLead.get(leadId) ?? 0,
