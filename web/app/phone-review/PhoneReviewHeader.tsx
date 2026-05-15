@@ -2,7 +2,13 @@
 import Link from "next/link";
 import { useLocale } from "@/components/locale-provider";
 
-export default function PhoneReviewHeader({ candidateCount }: { candidateCount: number }) {
+export default function PhoneReviewHeader({
+  candidateCount,
+  importLabel,
+}: {
+  candidateCount: number;
+  importLabel?: string | null;
+}) {
   const { t } = useLocale();
 
   return (
@@ -13,6 +19,7 @@ export default function PhoneReviewHeader({ candidateCount }: { candidateCount: 
           {candidateCount === 0
             ? t.review.empty
             : t.review.candidateCount(candidateCount)}
+          {importLabel ? ` · ${importLabel}` : ""}
         </p>
       </div>
       <nav style={{ display: "flex", gap: 8 }}>

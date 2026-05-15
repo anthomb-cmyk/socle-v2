@@ -2,7 +2,8 @@
 //
 // Returns phone candidates that need Anthony's review.
 // Joins through to the lead, property, and contact for full context.
-// Query params: ?status=needs_anthony_review (default) | all | &leadId=uuid
+// Query params: ?status=reviewable (default) | needs_anthony_review | weak_review | all
+// Optional: &leadId=uuid &import_job_id=uuid
 
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
@@ -13,8 +14,9 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   const url = new URL(request.url);
-  const statusFilter = url.searchParams.get("status") ?? "needs_anthony_review";
+  const statusFilter = url.searchParams.get("status") ?? "reviewable";
   const leadId = url.searchParams.get("leadId");
+  const importJobId = url.searchParams.get("import_job_id");
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 500);
 
   const sb = createSupabaseAdminClient();
@@ -39,9 +41,10 @@ export async function GET(request: Request) {
       candidate_status,
       review_reason,
       created_at,
-      leads (
+      leads!inner (
         id,
         status,
+        source_import_job_id,
         campaign_id,
         campaigns ( name ),
         properties ( id, address, city, num_units ),
@@ -58,8 +61,13 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  if (statusFilter !== "all") q = q.eq("candidate_status", statusFilter);
+  if (statusFilter === "reviewable") {
+    q = q.in("candidate_status", ["needs_anthony_review", "weak_review"]);
+  } else if (statusFilter !== "all") {
+    q = q.eq("candidate_status", statusFilter);
+  }
   if (leadId) q = q.eq("lead_id", leadId);
+  if (importJobId) q = q.eq("leads.source_import_job_id", importJobId);
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

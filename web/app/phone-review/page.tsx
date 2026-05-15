@@ -24,11 +24,11 @@ export default async function PhoneReviewPage({
 
   const params = await searchParams;
   const justApproved = params["_just_approved"] === "1";
+  const importJobId = typeof params.import_job_id === "string" ? params.import_job_id.trim() : "";
 
-  const [candidatesRes, readyRes] = await Promise.all([
-    sb
-      .from("phone_candidates")
-      .select(`
+  let candidatesQuery = sb
+    .from("phone_candidates")
+    .select(`
         id,
         lead_id,
         phone_raw,
@@ -51,12 +51,13 @@ export default async function PhoneReviewPage({
         gate_results,
         source_class,
         created_at,
-        leads (
+        leads!inner (
           id,
           status,
+          source_import_job_id,
           campaign_id,
           campaigns ( name ),
-        properties ( id, address, city, num_units ),
+          properties ( id, address, city, num_units ),
           contacts (
             id,
             full_name,
@@ -67,10 +68,20 @@ export default async function PhoneReviewPage({
           )
         )
       `)
-      .eq("candidate_status", "needs_anthony_review")
-      .order("created_at", { ascending: false })
-      .limit(200),
+    .in("candidate_status", ["needs_anthony_review", "weak_review"])
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (importJobId) {
+    candidatesQuery = candidatesQuery.eq("leads.source_import_job_id", importJobId);
+  }
+
+  const [candidatesRes, readyRes, importRes] = await Promise.all([
+    candidatesQuery,
     sb.from("leads").select("id", { count: "exact", head: true }).eq("status", "ready_to_call"),
+    importJobId
+      ? sb.from("import_jobs").select("id,file_name").eq("id", importJobId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (candidatesRes.error) {
@@ -84,6 +95,9 @@ export default async function PhoneReviewPage({
   }
 
   const rawCandidates = (candidatesRes.data ?? []) as unknown as PhoneCandidate[];
+  const importLabel = importJobId
+    ? (importRes.data as { file_name?: string | null } | null)?.file_name ?? `Import ${importJobId.slice(0, 8)}`
+    : null;
   const propertyIds = [
     ...new Set(
       rawCandidates
@@ -160,11 +174,11 @@ export default async function PhoneReviewPage({
         />
       )}
 
-      <PhoneReviewHeader candidateCount={candidates.length} />
+      <PhoneReviewHeader candidateCount={candidates.length} importLabel={importLabel} />
 
       {candidates.length > 0 && <PhoneReviewRules />}
 
-      <PhoneReviewClient initialCandidates={candidates} />
+      <PhoneReviewClient initialCandidates={candidates} importJobId={importJobId || null} />
     </CallerAppShell>
   );
 }
