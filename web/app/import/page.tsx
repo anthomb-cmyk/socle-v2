@@ -98,9 +98,6 @@ export default function ImportPage() {
   // Auto-enrich checkbox (Improvement 7)
   const [autoEnrich, setAutoEnrich] = useState(false);
 
-  // Post-import enrichment via banner
-  const [enrichBusy, setEnrichBusy] = useState(false);
-
   // Banner data when import is done
   const [importDoneCounts, setImportDoneCounts] = useState<ImportDoneCounts | null>(null);
 
@@ -251,6 +248,7 @@ export default function ImportPage() {
 
             // Build banner counts
             setImportDoneCounts({
+              jobId,
               leadsCreated: finalJob.leads_created ?? 0,
               propertiesCreated: finalJob.properties_created ?? 0,
               propertiesUpdated: finalJob.properties_updated ?? 0,
@@ -375,24 +373,6 @@ export default function ImportPage() {
       // running server-side. Don't tear down — let the polling loop confirm
       // completion (or fail it via the polling-side failure counter).
     });
-  }
-
-  async function quickEnrich() {
-    if (newLeadIds.length === 0 || !importDoneCounts) return;
-    setEnrichBusy(true);
-    try {
-      await fetch("/api/enrichment-jobs/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadIds: newLeadIds, jobType: "find_phone", force: false }),
-      });
-      const dest = campaignIdForResult
-        ? `/leads?campaign_id=${campaignIdForResult}&_just_enriched=1`
-        : "/leads?_just_enriched=1";
-      router.push(dest as never);
-    } catch {
-      setEnrichBusy(false);
-    }
   }
 
   async function quickAssign() {
@@ -756,8 +736,6 @@ export default function ImportPage() {
         <NextStepBanner
           kind="import_done"
           importDone={importDoneCounts}
-          onEnrichImport={quickEnrich}
-          enrichImportBusy={enrichBusy}
         />
       )}
 

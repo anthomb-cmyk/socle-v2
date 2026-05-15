@@ -34,7 +34,7 @@ export async function POST(
 
   const { data: candRaw } = await sb
     .from("phone_candidates")
-    .select("id, lead_id, contact_id, phone_raw, phone_e164, stage, source_label, source_url, initial_confidence, candidate_status")
+    .select("id, lead_id, contact_id, phone_raw, phone_e164, stage, source_label, source_url, initial_confidence, candidate_status, matched_on, source_class")
     .eq("id", id)
     .single();
 
@@ -49,6 +49,8 @@ export async function POST(
     source_url: string | null;
     initial_confidence: number;
     candidate_status: string;
+    matched_on: string | null;
+    source_class: string | null;
   };
   const cand = candRaw as CandRow | null;
   if (!cand) return NextResponse.json({ ok: false, error: "Candidate not found" }, { status: 404 });
@@ -90,6 +92,13 @@ export async function POST(
       return NextResponse.json({ ok: false, error: `phones upsert: ${phoneErr.message}` }, { status: 500 });
     }
 
+    const { data: phoneRow } = await sb
+      .from("phones")
+      .select("id")
+      .eq("contact_id", cand.contact_id)
+      .eq("e164", e164)
+      .maybeSingle();
+
     // Update candidate
     await sb.from("phone_candidates").update({
       candidate_status: "approved_by_anthony",
@@ -118,6 +127,22 @@ export async function POST(
       },
     ]);
 
+    await sb.from("source_trust_observations").insert({
+      lead_id: cand.lead_id,
+      phone_id: (phoneRow as { id?: string } | null)?.id ?? null,
+      phone_candidate_id: cand.id,
+      source_label: cand.source_label,
+      source_class: cand.source_class,
+      matched_on: cand.matched_on,
+      observation: "manual_approved",
+      confidence: Number(((cand.initial_confidence ?? 0) / 100).toFixed(4)),
+      observed_by: user.id,
+      payload: {
+        action: "approve",
+        note: body.note ?? null,
+      },
+    });
+
     return NextResponse.json({ ok: true, action: "approved", phoneE164: e164 });
   }
 
@@ -136,6 +161,21 @@ export async function POST(
       stage: cand.stage as never,
       candidate_id: id,
       payload: { reviewed_by: user.id, note: body.note ?? null },
+    });
+
+    await sb.from("source_trust_observations").insert({
+      lead_id: cand.lead_id,
+      phone_candidate_id: cand.id,
+      source_label: cand.source_label,
+      source_class: cand.source_class,
+      matched_on: cand.matched_on,
+      observation: "manual_rejected",
+      confidence: Number(((cand.initial_confidence ?? 0) / 100).toFixed(4)),
+      observed_by: user.id,
+      payload: {
+        action: "reject",
+        note: body.note ?? null,
+      },
     });
 
     // Check if any remaining reviewable candidates exist for this lead
@@ -176,6 +216,21 @@ export async function POST(
       event_type: "unresolved_after_openclaw",
       stage: null,
       payload: { reason: "kept unresolved by anthony", note: body.note ?? null },
+    });
+
+    await sb.from("source_trust_observations").insert({
+      lead_id: cand.lead_id,
+      phone_candidate_id: cand.id,
+      source_label: cand.source_label,
+      source_class: cand.source_class,
+      matched_on: cand.matched_on,
+      observation: "manual_rejected",
+      confidence: Number(((cand.initial_confidence ?? 0) / 100).toFixed(4)),
+      observed_by: user.id,
+      payload: {
+        action: "keep_unresolved",
+        note: body.note ?? null,
+      },
     });
 
     return NextResponse.json({ ok: true, action: "kept_unresolved" });

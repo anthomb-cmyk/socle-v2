@@ -129,11 +129,42 @@ export async function POST(request: Request) {
 
   // ── 3. Phone status propagation ─────────────────────────────────────────
   if (body.phoneId) {
+    const { data: phoneBefore } = await sb
+      .from("phones")
+      .select("id,source,confidence,evidence,notes")
+      .eq("id", body.phoneId)
+      .maybeSingle();
+    const phoneTrust = phoneBefore as {
+      id: string;
+      source: string | null;
+      confidence: number | null;
+      evidence: string | null;
+      notes: string | null;
+    } | null;
+
     if (body.outcome === "bad_number") {
       await sb.from("phones").update({ status: "bad_number" }).eq("id", body.phoneId);
+      await sb.from("source_trust_observations").insert({
+        lead_id: body.leadId,
+        phone_id: body.phoneId,
+        source_label: phoneTrust?.source ?? null,
+        observation: "bad_number",
+        confidence: Number(((phoneTrust?.confidence ?? 0) / 100).toFixed(4)),
+        observed_by: user.id,
+        payload: { callLogId: log!.id, evidence: phoneTrust?.evidence ?? null, notes: body.notes ?? null },
+      });
 
     } else if (body.outcome === "wrong_number") {
       await sb.from("phones").update({ status: "wrong_person" }).eq("id", body.phoneId);
+      await sb.from("source_trust_observations").insert({
+        lead_id: body.leadId,
+        phone_id: body.phoneId,
+        source_label: phoneTrust?.source ?? null,
+        observation: "wrong_number",
+        confidence: Number(((phoneTrust?.confidence ?? 0) / 100).toFixed(4)),
+        observed_by: user.id,
+        payload: { callLogId: log!.id, evidence: phoneTrust?.evidence ?? null, notes: body.notes ?? null },
+      });
 
       // If no other usable phones exist for this contact, flag the lead for review
       const { data: otherPhones } = await sb
@@ -152,6 +183,22 @@ export async function POST(request: Request) {
 
     } else if (body.outcome === "do_not_contact") {
       await sb.from("phones").update({ status: "do_not_contact" }).eq("id", body.phoneId);
+    } else if ([
+      "wants_more_info",
+      "open_to_selling",
+      "wants_offer",
+      "hot_seller",
+      "follow_up_booked",
+    ].includes(body.outcome)) {
+      await sb.from("source_trust_observations").insert({
+        lead_id: body.leadId,
+        phone_id: body.phoneId,
+        source_label: phoneTrust?.source ?? null,
+        observation: "connected",
+        confidence: Number(((phoneTrust?.confidence ?? 0) / 100).toFixed(4)),
+        observed_by: user.id,
+        payload: { callLogId: log!.id, outcome: body.outcome },
+      });
     }
   }
 

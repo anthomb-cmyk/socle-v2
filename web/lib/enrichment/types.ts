@@ -68,7 +68,9 @@ export type CandidateStatus =
   | "quarantined"             // v3: failed at least one gate; not shown by default
   | "pipeline_rejected"       // v3: hard reject (NEQ, fax, invalid format) — audit only
   | "approved_by_anthony"
-  | "rejected_by_anthony";
+  | "rejected_by_anthony"
+  | "approved_by_codex"
+  | "rejected_by_codex";
 
 export type OpenclawVerdict = "likely_match" | "unlikely_match" | "uncertain";
 
@@ -92,6 +94,8 @@ export type EnrichmentEventType =
   | "phone_candidate_needs_review"
   | "phone_approved_by_anthony"
   | "phone_rejected_by_anthony"
+  | "phone_approved_by_codex"
+  | "phone_rejected_by_codex"
   | "unresolved_after_openclaw"
   | "lead_status_updated"
   // ── v3 gate-engine events ──────────────────────────────────────────────
