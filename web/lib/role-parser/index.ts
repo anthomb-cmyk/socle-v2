@@ -21,6 +21,8 @@ export interface ParseRoleFileOptions {
   /** When true, hard-block rows with unparseable mailing addresses
    *  (the v3 default — they don't import). */
   hardBlockUnparseableMailing?: boolean;
+  /** When false, skip LLM parsing fallbacks during import-time validation. */
+  llmFallback?: boolean;
 }
 
 function parseSheet(
@@ -137,7 +139,10 @@ export async function parseRoleFile(buffer: ArrayBuffer | Uint8Array | Buffer, o
   // v3: run the import-time validator to populate structured mailing fields,
   // detect inverted prénom/nom, and produce per-row audit reports.
   const hardBlock = options.hardBlockUnparseableMailing ?? true;
-  const { audits } = await validateAllRows(allRows, { hardBlockUnparseableMailing: hardBlock });
+  const { audits } = await validateAllRows(allRows, {
+    hardBlockUnparseableMailing: hardBlock,
+    llmFallback: options.llmFallback,
+  });
 
   // Roll up audit warnings/blockings into the parser-level errors stream so
   // the preview UI shows them alongside other errors.

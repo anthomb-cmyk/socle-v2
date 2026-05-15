@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     if (prior) return NextResponse.json({ ok: true, data: { duplicate: true, priorLaunch: prior } });
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parse = await parseRoleFile(buffer, { formatOverride });
+    const parse = await parseRoleFile(buffer, { formatOverride, llmFallback: false });
     if (parse.format === "unknown" && !formatOverride) {
       return jsonError("Could not auto-detect the role format. Retry with formatOverride.", 400, "format_unknown");
     }
