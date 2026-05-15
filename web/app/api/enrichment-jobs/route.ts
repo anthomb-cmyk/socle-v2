@@ -1,4 +1,4 @@
-// POST /api/enrichment-jobs — create + (optionally) fire n8n webhook.
+// POST /api/enrichment-jobs — create + (optionally) fire n8n webhook / inline runner.
 // GET  /api/enrichment-jobs — list (admin only).
 //
 // POST body: { leadId, jobType?, contactId? }
@@ -47,14 +47,60 @@ export async function POST(request: Request) {
   if (jobErr) return NextResponse.json({ ok: false, error: jobErr.message }, { status: 500 });
   const jobId = (jobRow as { id: string }).id;
 
-  // Fire webhook if configured
+  // Fire webhook if configured. Email search is implemented inline so it works
+  // even when there is no separate n8n email workflow.
   const webhookUrl = process.env.N8N_ENRICHMENT_WEBHOOK_URL;
+  const sharedKey = process.env.N8N_SHARED_KEY;
   let webhookCalled = false;
+  let inlineRunnerCalled = false;
   let webhookError: string | null = null;
-  if (webhookUrl) {
+
+  if (jobType === "find_email") {
+    if (!sharedKey) {
+      webhookError = "N8N_SHARED_KEY not configured — inline email runner cannot authenticate";
+      await sb.from("enrichment_jobs").update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: webhookError,
+      }).eq("id", jobId);
+    } else {
+      try {
+        await sb.from("enrichment_jobs").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", jobId);
+        const r = await fetch(new URL("/api/enrichment/run", request.url), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${sharedKey}`,
+          },
+          body: JSON.stringify({
+            enrichment_job_id: jobId,
+            lead_id: body.leadId,
+            job_type: jobType,
+          }),
+        });
+        if (!r.ok) {
+          webhookError = `Inline runner returned ${r.status}`;
+          await sb.from("enrichment_jobs").update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: webhookError,
+          }).eq("id", jobId);
+        } else {
+          inlineRunnerCalled = true;
+        }
+      } catch (err) {
+        webhookError = (err as Error).message;
+        await sb.from("enrichment_jobs").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          error_message: webhookError,
+        }).eq("id", jobId);
+      }
+    }
+  } else if (webhookUrl) {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (process.env.N8N_SHARED_KEY) headers["Authorization"] = `Bearer ${process.env.N8N_SHARED_KEY}`;
+      if (sharedKey) headers["Authorization"] = `Bearer ${sharedKey}`;
       const r = await fetch(webhookUrl, {
         method: "POST",
         headers,
@@ -78,7 +124,7 @@ export async function POST(request: Request) {
     related_lead_id: body.leadId,
     related_contact_id: contactId,
     triggered_by: user.id,
-    payload: { jobId, jobType, webhookCalled, webhookConfigured: !!webhookUrl },
+    payload: { jobId, jobType, webhookCalled, inlineRunnerCalled, webhookConfigured: !!webhookUrl },
     error_message: webhookError,
   });
 
@@ -88,8 +134,13 @@ export async function POST(request: Request) {
       jobId,
       jobType,
       webhookCalled,
+      inlineRunnerCalled,
       webhookError,
-      message: webhookCalled
+      message: webhookError
+        ? "Job created but dispatch returned an error — see webhookError."
+        : inlineRunnerCalled
+        ? "Job created and inline email search completed."
+        : webhookCalled
         ? "Job created and webhook fired."
         : webhookUrl
           ? "Job created but webhook returned an error — see webhookError."

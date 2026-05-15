@@ -136,6 +136,7 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           enrichment_job_id: jobId,
           lead_id: leadId,
+          job_type: body.jobType,
         }),
       });
       // runner handles its own DB writes (job status, candidates, phone attach)

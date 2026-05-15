@@ -22,6 +22,14 @@ function summarizeRawOutput(raw: unknown): string {
       ? `0 candidates — ${reason || "no phones found"}`
       : `${n} candidate${n === 1 ? "" : "s"}${reason ? ` — ${reason}` : ""}`;
   }
+  if (typeof r.results_count === "number") {
+    const n = r.results_count;
+    const kind = typeof r.result_type === "string" ? r.result_type : "result";
+    const reason = typeof r.reasoning_summary === "string" ? r.reasoning_summary : "";
+    return n === 0
+      ? `0 ${kind} results${reason ? ` — ${reason}` : ""}`
+      : `${n} ${kind} result${n === 1 ? "" : "s"}${reason ? ` — ${reason}` : ""}`;
+  }
   // /api/n8n/lead-status shape: { outcome, lead_status, summary }
   if (typeof r.summary === "string") {
     const tag = typeof r.outcome === "string" ? `[${r.outcome}] ` : "";
