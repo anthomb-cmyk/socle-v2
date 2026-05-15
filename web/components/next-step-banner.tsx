@@ -6,6 +6,7 @@ import Link from "next/link";
 export type NextStepBannerKind = "enrich_done" | "review_done" | "queue_empty" | "import_done" | null;
 
 export type ImportDoneCounts = {
+  jobId: string;
   leadsCreated: number;
   leadsUpdated?: number;
   propertiesCreated: number;
@@ -26,11 +27,9 @@ type Props = {
     hotSellers: number;
   };
   importDone?: ImportDoneCounts;
-  onEnrichImport?: () => void;
-  enrichImportBusy?: boolean;
 };
 
-export default function NextStepBanner({ kind, counts, importDone, onEnrichImport, enrichImportBusy }: Props) {
+export default function NextStepBanner({ kind, counts, importDone }: Props) {
   const [dismissed, setDismissed] = useState(false);
 
   if (!kind || dismissed) return null;
@@ -147,20 +146,17 @@ export default function NextStepBanner({ kind, counts, importDone, onEnrichImpor
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {importDone.leadsCreated > 0 && (
-                <button
-                  onClick={onEnrichImport}
-                  disabled={enrichImportBusy}
+                <Link
+                  href={`/phone-enrichment/sessions/${importDone.jobId}` as never}
                   style={{
                     fontSize: 13, fontWeight: 600, color: "#fff",
-                    background: enrichImportBusy ? "#9ca3af" : "#059669",
+                    background: "#059669",
                     border: "1px solid #059669",
-                    borderRadius: 8, padding: "5px 14px", cursor: enrichImportBusy ? "not-allowed" : "pointer",
+                    borderRadius: 8, padding: "5px 14px", textDecoration: "none",
                   }}
                 >
-                  {enrichImportBusy
-                    ? "Lancement…"
-                    : `Enrichir les ${importDone.leadsCreated} leads →`}
-                </button>
+                  Ouvrir la session Codex →
+                </Link>
               )}
               <Link
                 href={

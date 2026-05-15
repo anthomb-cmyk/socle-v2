@@ -468,3 +468,167 @@ export async function runEnrichmentPipelineLegacy(
     openclawDispatched: true,
   };
 }
+
+function normalizeQueryToken(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function filterAiSecondPassQueries(
+  ctx: LeadContext,
+  parsed: ParsedAddress,
+  suggestedQueries: BuiltQuery[],
+  priorQueries: string[],
+): BuiltQuery[] {
+  const prior = new Set(priorQueries.map(q => normalizeQueryToken(q)).filter(Boolean));
+  const propertyCity = normalizeQueryToken(ctx.propertyCity);
+  const verifiedCity = normalizeQueryToken(parsed.city ?? ctx.mailingCity);
+  const ownerTokens = [
+    normalizeQueryToken(ctx.companyName),
+    normalizeQueryToken(ctx.fullName),
+    normalizeQueryToken(ctx.secondaryName),
+  ].filter(token => token.length >= 4);
+  const civicStreet = normalizeQueryToken(
+    parsed.civicNumber && parsed.streetName ? `${parsed.civicNumber} ${parsed.streetName}` : null,
+  );
+  const postal = normalizeQueryToken(parsed.postal);
+
+  const out: BuiltQuery[] = [];
+  const seen = new Set<string>();
+  for (const query of suggestedQueries) {
+    const normalized = normalizeQueryToken(query.query);
+    if (!normalized || seen.has(normalized) || prior.has(normalized)) continue;
+    if (propertyCity && propertyCity !== verifiedCity && normalized.includes(propertyCity)) continue;
+
+    const hasVerifiedAnchor =
+      (civicStreet && normalized.includes(civicStreet)) ||
+      (postal && normalized.includes(postal)) ||
+      ownerTokens.some(token => normalized.includes(token));
+    if (!hasVerifiedAnchor) continue;
+
+    seen.add(normalized);
+    out.push({
+      ...query,
+      inputs: {
+        ...query.inputs,
+        ai_second_pass: "true",
+        property_city_filtered: propertyCity && propertyCity !== verifiedCity ? "true" : "false",
+      },
+    });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+export async function runAiSecondPassLegacy(
+  sb: SupabaseClient,
+  ctx: LeadContext,
+  priorQueries: string[],
+): Promise<{
+  outcome: "solved" | "review" | "unresolved" | "unsuitable";
+  candidateIds: string[];
+  queriesSuggested: number;
+  queriesIssued: number;
+  totalResults: number;
+}> {
+  const preflight = runPreflight(ctx);
+  if (!preflight.ok || !preflight.parsed) {
+    await logEvent(sb, ctx.leadId, "preflight_failed", null, {
+      source: "ai_second_pass",
+      failures: preflight.failures,
+      parsed: preflight.parsed,
+    });
+    await setLeadStatus(sb, ctx.leadId, "unsuitable_for_phone_enrichment");
+    return { outcome: "unsuitable", candidateIds: [], queriesSuggested: 0, queriesIssued: 0, totalResults: 0 };
+  }
+
+  const parsed = preflight.parsed;
+  await setLeadStatus(sb, ctx.leadId, "enrichment_running");
+  await logEvent(sb, ctx.leadId, "address_search_started", "address_search", {
+    stage_label: "ai_second_pass",
+    parsed_address: parsed,
+    prior_query_count: priorQueries.length,
+  });
+
+  const suggested = await suggestAlternateQueries(ctx, parsed, priorQueries).catch(err => {
+    console.error("[pipeline] ai second pass query planner error:", err);
+    return [] as BuiltQuery[];
+  });
+  const filtered = filterAiSecondPassQueries(ctx, parsed, suggested, priorQueries);
+
+  await logEvent(sb, ctx.leadId, "query_built", "address_search", {
+    stage_label: "ai_second_pass",
+    suggested_count: suggested.length,
+    accepted_count: filtered.length,
+    rejected_count: Math.max(0, suggested.length - filtered.length),
+    queries: filtered.map(q => ({ variant: q.variant, query: q.query, inputs: q.inputs })),
+  });
+
+  if (filtered.length === 0) {
+    await setLeadStatus(sb, ctx.leadId, "unresolved_after_all_sources");
+    return { outcome: "unresolved", candidateIds: [], queriesSuggested: suggested.length, queriesIssued: 0, totalResults: 0 };
+  }
+
+  const result = await runQueries(ctx, parsed, filtered, "address_search", { useHaiku: true }).catch(err => {
+    console.error("[pipeline] ai second pass brave search error:", err);
+    return null;
+  });
+
+  if (!result) {
+    await setLeadStatus(sb, ctx.leadId, "unresolved_after_all_sources");
+    return { outcome: "unresolved", candidateIds: [], queriesSuggested: suggested.length, queriesIssued: 0, totalResults: 0 };
+  }
+
+  for (const q of result.queries) {
+    await logEvent(sb, ctx.leadId, "query_built", "address_search", {
+      variant: q.variant,
+      query: q.query,
+      inputs: q.inputs,
+      stage_label: "ai_second_pass",
+    });
+  }
+  for (const cls of result.classifications) {
+    await logEvent(sb, ctx.leadId, "source_classified", "address_search", {
+      host: cls.host,
+      source_class: cls.sourceClass,
+      reason: cls.reason,
+      confidence: cls.confidence,
+      stage_label: "ai_second_pass",
+    });
+  }
+  await logEvent(sb, ctx.leadId, "address_search_complete", "address_search", {
+    stage_label: "ai_second_pass",
+    total_results: result.totalResults,
+    candidates: result.candidates.length,
+    auto: result.candidates.filter(c => c.report.disposition === "auto_attached").length,
+    review: result.candidates.filter(c => c.report.disposition === "needs_anthony_review").length,
+    weak: result.candidates.filter(c => c.report.disposition === "weak_review").length,
+    quarantined: result.candidates.filter(c => c.report.disposition === "quarantined").length,
+    pipeline_rejected: result.candidates.filter(c => c.report.disposition === "pipeline_rejected").length,
+  });
+
+  const routed = await routeStageResult(sb, ctx, result);
+  if (routed.outcome === "solved" || routed.outcome === "review") {
+    return {
+      outcome: routed.outcome,
+      candidateIds: routed.candidateIds,
+      queriesSuggested: suggested.length,
+      queriesIssued: result.queries.length,
+      totalResults: result.totalResults,
+    };
+  }
+
+  await setLeadStatus(sb, ctx.leadId, "unresolved_after_all_sources");
+  return {
+    outcome: "unresolved",
+    candidateIds: routed.candidateIds,
+    queriesSuggested: suggested.length,
+    queriesIssued: result.queries.length,
+    totalResults: result.totalResults,
+  };
+}

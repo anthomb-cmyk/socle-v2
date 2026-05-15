@@ -1,7 +1,7 @@
 // POST /api/enrichment/watchdog?minutes=10
 //
-// Admin-only timeout watchdog. Scans enrichment_jobs for OpenClaw jobs
-// (workflow_id ILIKE '%openclaw%') that have been status='processing' for
+// Admin-only timeout watchdog. Scans enrichment_jobs for OpenClaw / AI second-pass jobs
+// (workflow_id ILIKE '%openclaw%' OR '%ai_second_pass%') that have been status='processing' for
 // longer than `minutes` (default 10, max 720). For each:
 //   - sets job.status = 'failed', completed_at = now,
 //     error_message = 'no_callback_timeout: ...',
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     .from("enrichment_jobs")
     .select("id, lead_id, workflow_id, started_at, created_at")
     .eq("status", "processing")
-    .ilike("workflow_id", "%openclaw%")
+    .or("workflow_id.ilike.%openclaw%,workflow_id.ilike.%ai_second_pass%")
     .lt("started_at", cutoff);
 
   if (stuckErr) {
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
 
   for (const j of jobs) {
-    const errMsg = `no_callback_timeout: OpenClaw did not call back within ${cutoffMin} min`;
+    const errMsg = `no_callback_timeout: enrichment workflow did not complete within ${cutoffMin} min`;
     await sb.from("enrichment_jobs").update({
       status:        "failed",
       completed_at:  now,
