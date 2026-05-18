@@ -76,6 +76,7 @@ export type PhoneCandidate = {
 
 // ── Confidence bucket helper ──────────────────────────────────────────────
 type ConfidenceBucket = Bucket;
+type FocusFilter = "all" | "high_signal" | "needs_review" | "weak" | "req" | "directory" | "address" | "company";
 
 function matchBucket(conf: number, b: ConfidenceBucket): boolean {
   if (b === "all") return true;
@@ -88,7 +89,64 @@ function matchBucket(conf: number, b: ConfidenceBucket): boolean {
 }
 
 const BUCKETS: ConfidenceBucket[] = ["all", "ge80", "70-79", "60-69", "50-59", "lt50"];
+const FOCUS_FILTERS: FocusFilter[] = ["all", "high_signal", "needs_review", "weak", "req", "directory", "address", "company"];
 const BULK_CONCURRENCY = 10;
+
+const STRONG_SOURCE_LABELS = new Set([
+  "req_phone",
+  "req_address_lookup",
+  "name_postal_directory",
+  "company_website",
+  "pages_jaunes_business",
+]);
+const STRONG_SOURCE_CLASSES = new Set(["directory_authoritative", "company_website"]);
+
+function isHighSignalCandidate(c: PhoneCandidate): boolean {
+  return (
+    c.initial_confidence >= 70 ||
+    c.openclaw_verdict === "likely_match" ||
+    STRONG_SOURCE_LABELS.has(c.source_label ?? "") ||
+    STRONG_SOURCE_CLASSES.has(c.source_class ?? "")
+  );
+}
+
+function matchFocus(c: PhoneCandidate, focus: FocusFilter): boolean {
+  if (focus === "all") return true;
+  if (focus === "high_signal") return isHighSignalCandidate(c);
+  if (focus === "needs_review") return c.candidate_status === "needs_anthony_review";
+  if (focus === "weak") return c.candidate_status === "weak_review";
+  if (focus === "req") return (c.source_label ?? "").startsWith("req_") || c.matched_on === "director_name";
+  if (focus === "directory") return c.source_label === "name_postal_directory" || c.source_class === "directory_authoritative";
+  if (focus === "address") return c.source_label === "reverse_address_lookup" || c.source_label === "reverse_address" || c.matched_on === "property_address" || c.matched_on === "mailing_address";
+  if (focus === "company") return c.source_label === "company_website" || c.source_label === "pages_jaunes_business" || c.matched_on === "company_name";
+  return true;
+}
+
+function focusLabel(focus: FocusFilter, count: number): string {
+  const labels: Record<FocusFilter, string> = {
+    all: "Tous",
+    high_signal: "Signal fort",
+    needs_review: "A juger",
+    weak: "Weak",
+    req: "REQ",
+    directory: "Annuaire",
+    address: "Adresse",
+    company: "Entreprise",
+  };
+  return `${labels[focus]} (${count})`;
+}
+
+function candidatePriority(c: PhoneCandidate): number {
+  let score = c.initial_confidence;
+  if (c.candidate_status === "needs_anthony_review") score += 300;
+  if (c.candidate_status === "weak_review") score += 120;
+  if (isHighSignalCandidate(c)) score += 80;
+  if ((c.source_label ?? "").startsWith("req_")) score += 60;
+  if (c.source_label === "name_postal_directory" || c.source_class === "directory_authoritative") score += 35;
+  if (c.openclaw_verdict === "likely_match") score += 25;
+  if (c.openclaw_verdict === "unlikely_match") score -= 40;
+  return score;
+}
 
 export default function PhoneReviewClient({
   initialCandidates,
@@ -106,6 +164,7 @@ export default function PhoneReviewClient({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeBucket, setActiveBucket] = useState<ConfidenceBucket>("all");
+  const [activeFocus, setActiveFocus] = useState<FocusFilter>("all");
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -343,8 +402,11 @@ export default function PhoneReviewClient({
   }, []);
 
   const filtered = useMemo(
-    () => candidates.filter((c) => matchBucket(c.initial_confidence, activeBucket)),
-    [candidates, activeBucket],
+    () => candidates
+      .filter((c) => matchBucket(c.initial_confidence, activeBucket) && matchFocus(c, activeFocus))
+      .slice()
+      .sort((a, b) => candidatePriority(b) - candidatePriority(a)),
+    [candidates, activeBucket, activeFocus],
   );
 
   const bucketCounts = useMemo<Record<ConfidenceBucket, number>>(() => {
@@ -358,6 +420,31 @@ export default function PhoneReviewClient({
     }
     return counts;
   }, [candidates]);
+
+  const focusCounts = useMemo<Record<FocusFilter, number>>(() => {
+    const counts: Record<FocusFilter, number> = {
+      all: candidates.length,
+      high_signal: 0,
+      needs_review: 0,
+      weak: 0,
+      req: 0,
+      directory: 0,
+      address: 0,
+      company: 0,
+    };
+    for (const c of candidates) {
+      for (const focus of FOCUS_FILTERS) {
+        if (focus !== "all" && matchFocus(c, focus)) counts[focus]++;
+      }
+    }
+    return counts;
+  }, [candidates]);
+
+  useEffect(() => {
+    if (selectedId && !filtered.some((c) => c.id === selectedId)) {
+      setSelectedId(filtered[0]?.id ?? null);
+    }
+  }, [filtered, selectedId]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
 
@@ -540,6 +627,22 @@ export default function PhoneReviewClient({
           active={activeBucket}
           onSelect={setActiveBucket}
         />
+        <div className="pr-bucket-bar" aria-label="Filtres de focus">
+          {FOCUS_FILTERS.map((focus) => (
+            <button
+              key={focus}
+              type="button"
+              onClick={() => setActiveFocus(focus)}
+              className={`crm-bucket-pill ${activeFocus === focus ? "crm-bucket-pill--active" : ""}`}
+            >
+              {focusLabel(focus, focusCounts[focus])}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--so-text-muted)", padding: "0 2px" }}>
+          <span>{filtered.length} candidat(s) affiches sur {candidates.length}</span>
+          <span>Tri automatique: a juger, signal fort, confiance</span>
+        </div>
 
         <PhoneReviewCandidateList
           candidates={filtered}

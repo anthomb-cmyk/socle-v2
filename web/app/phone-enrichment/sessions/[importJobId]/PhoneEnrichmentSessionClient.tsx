@@ -61,6 +61,27 @@ type SessionData = {
     counts: Record<"bad_query" | "no_public_data" | "weak_evidence" | "pipeline_error", number>;
     examples: Array<{ leadId: string; reason: string; detail: string }>;
   };
+  quality: {
+    reviewable: number;
+    highSignalReviewable: number;
+    weakHighSignal: number;
+    needsReviewHighSignal: number;
+    sourceStats: Array<{
+      key: string;
+      label: string;
+      sourceLabel: string | null;
+      sourceClass: string | null;
+      matchedOn: string | null;
+      total: number;
+      needsReview: number;
+      weak: number;
+      reviewable: number;
+      highSignal: number;
+      approved: number;
+      rejected: number;
+      avgConfidence: number | null;
+    }>;
+  };
 };
 
 function money(n: number): string {
@@ -80,6 +101,13 @@ function labelForRecoverability(key: string): string {
   };
   return map[key] ?? key;
 }
+
+type NextAction = {
+  tone: "green" | "amber" | "red" | "neutral";
+  title: string;
+  detail: string;
+  href?: string;
+};
 
 export default function PhoneEnrichmentSessionClient({ importJobId }: { importJobId: string }) {
   const [data, setData] = useState<SessionData | null>(null);
@@ -216,12 +244,63 @@ export default function PhoneEnrichmentSessionClient({ importJobId }: { importJo
     }
   }
 
-  const summary = data?.summary ?? {};
+  const summary = useMemo(() => data?.summary ?? {}, [data?.summary]);
   const reviewCount = n(summary.review_candidates) + n(summary.weak_candidates);
   const unresolvedCount = n(summary.unresolved_after_all_sources) + n(summary.unresolved_after_openclaw);
   const actionCount = data?.actions.length ?? 0;
 
   const lastAction = useMemo(() => data?.actions[0] ?? null, [data]);
+  const nextActions = useMemo<NextAction[]>(() => {
+    if (!data) return [];
+    const items: NextAction[] = [];
+    const ready = n(summary.ready_to_call);
+    const pipelineRemaining = n(summary.queue_pending) + n(summary.queue_running) + n(summary.jobs_pending) + n(summary.jobs_processing);
+    const recoverable = n(data.recoverability.counts.weak_evidence) + n(data.recoverability.counts.bad_query);
+
+    if (data.staleJobs.length > 0) {
+      items.push({
+        tone: "red",
+        title: "Nettoyer les jobs bloques",
+        detail: `${data.staleJobs.length} job(s) semblent stale avant de relancer quoi que ce soit.`,
+      });
+    }
+    if (pipelineRemaining > 0) {
+      items.push({
+        tone: "amber",
+        title: "Laisser finir le pipeline",
+        detail: `${pipelineRemaining} item(s) sont encore pending/processing.`,
+      });
+    }
+    if (data.quality.reviewable > 0) {
+      items.push({
+        tone: data.quality.highSignalReviewable > 0 ? "green" : "amber",
+        title: "Reviser les meilleurs candidats",
+        detail: `${data.quality.highSignalReviewable} signal(s) fort(s) sur ${data.quality.reviewable} candidat(s) a juger.`,
+        href: `/phone-review?import_job_id=${importJobId}`,
+      });
+    }
+    if (ready > 0) {
+      items.push({
+        tone: "green",
+        title: "Preparer les appels",
+        detail: `${ready} lead(s) sont deja prets a appeler.`,
+        href: `/leads?import_job_id=${importJobId}`,
+      });
+    }
+    if (recoverable > 0) {
+      items.push({
+        tone: "neutral",
+        title: "Mesurer avant une 2e passe AI",
+        detail: `${recoverable} lead(s) semblent recuperables; review manuel d'abord pour voir si les sources suffisent.`,
+      });
+    }
+
+    return items.length > 0 ? items.slice(0, 4) : [{
+      tone: "neutral",
+      title: "Aucune action urgente",
+      detail: "La session ne montre pas de blocage evident pour le moment.",
+    }];
+  }, [data, importJobId, summary]);
 
   if (loading) {
     return (
@@ -281,6 +360,34 @@ export default function PhoneEnrichmentSessionClient({ importJobId }: { importJo
         <Stat label="A reviser" value={reviewCount} tone="amber" />
         <Stat label="Non trouves" value={unresolvedCount} tone="red" />
         <Stat label="Actions Codex" value={actionCount} />
+      </section>
+
+      <section className="crm-card" style={{ padding: "16px 18px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Rapport post-run</h2>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--crm-text3)" }}>
+              Priorise les candidats reviewables avant de depenser plus d&apos;AI.
+            </p>
+          </div>
+          <Link href={`/phone-review?import_job_id=${importJobId}` as never} className="crm-btn" style={{ fontSize: 12 }}>
+            Ouvrir la review triee
+          </Link>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 12 }}>
+          <MiniMetric label="Reviewables" value={data.quality.reviewable} />
+          <MiniMetric label="Signaux forts" value={data.quality.highSignalReviewable} tone="green" />
+          <MiniMetric label="Weak mais prometteurs" value={data.quality.weakHighSignal} tone="amber" />
+          <MiniMetric label="Needs review forts" value={data.quality.needsReviewHighSignal} tone="green" />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {nextActions.map((item) => (
+              <NextActionCard key={`${item.title}:${item.detail}`} item={item} />
+            ))}
+          </div>
+          <SourceQualityTable rows={data.quality.sourceStats} />
+        </div>
       </section>
 
       <section className="crm-card" style={{ padding: "16px 18px" }}>
@@ -446,6 +553,87 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "gr
     <div className="crm-card" style={{ padding: "14px 16px" }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, tone }: { label: string; value: number; tone?: "green" | "amber" | "red" }) {
+  const color = tone === "green" ? "var(--crm-green)" : tone === "amber" ? "var(--crm-amber)" : tone === "red" ? "var(--crm-red)" : "var(--crm-text)";
+  return (
+    <div style={{ background: "var(--crm-bg-alt)", border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "8px 10px" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--crm-text3)", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color }}>{value}</div>
+    </div>
+  );
+}
+
+function NextActionCard({ item }: { item: NextAction }) {
+  const color = item.tone === "green"
+    ? "var(--crm-green)"
+    : item.tone === "amber"
+      ? "var(--crm-amber)"
+      : item.tone === "red"
+        ? "var(--crm-red)"
+        : "var(--crm-text2)";
+  const body = (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: color, flex: "0 0 auto" }} />
+        <strong style={{ fontSize: 13, color: "var(--crm-text)" }}>{item.title}</strong>
+      </div>
+      <p style={{ margin: "4px 0 0 16px", fontSize: 12, color: "var(--crm-text3)", lineHeight: 1.4 }}>{item.detail}</p>
+    </>
+  );
+
+  if (!item.href) {
+    return (
+      <div style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "9px 10px" }}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href as never}
+      style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, padding: "9px 10px", textDecoration: "none", display: "block" }}
+    >
+      {body}
+    </Link>
+  );
+}
+
+function SourceQualityTable({ rows }: { rows: SessionData["quality"]["sourceStats"] }) {
+  if (rows.length === 0) {
+    return <p style={{ fontSize: 13, color: "var(--crm-text3)", margin: 0 }}>Aucun candidat source pour cette session.</p>;
+  }
+
+  return (
+    <div style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, overflowX: "auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) repeat(4, minmax(54px, 0.4fr))", gap: 0, background: "var(--crm-bg-alt)", padding: "7px 9px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", color: "var(--crm-text3)" }}>
+        <span>Source</span>
+        <span>Rev.</span>
+        <span>Signal</span>
+        <span>OK</span>
+        <span>Rej.</span>
+      </div>
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) repeat(4, minmax(54px, 0.4fr))", gap: 0, padding: "8px 9px", borderTop: "1px solid var(--crm-card-border)", fontSize: 12, alignItems: "center" }}
+        >
+          <span style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", color: "var(--crm-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</strong>
+            <span style={{ display: "block", color: "var(--crm-text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {row.sourceClass ?? "classe ?"} · avg {row.avgConfidence ?? "-"}%
+            </span>
+          </span>
+          <strong>{row.reviewable}</strong>
+          <strong style={{ color: row.highSignal > 0 ? "var(--crm-green)" : "var(--crm-text3)" }}>{row.highSignal}</strong>
+          <span>{row.approved}</span>
+          <span>{row.rejected}</span>
+        </div>
+      ))}
     </div>
   );
 }
