@@ -38,6 +38,155 @@ function isStaleJob(job: { status: string; created_at: string; started_at: strin
   return false;
 }
 
+type CandidateQualityRow = {
+  candidate_status: string;
+  initial_confidence: number | null;
+  source_label: string | null;
+  source_class: string | null;
+  matched_on: string | null;
+  openclaw_verdict: string | null;
+};
+
+type SourceQualityStat = {
+  key: string;
+  label: string;
+  sourceLabel: string | null;
+  sourceClass: string | null;
+  matchedOn: string | null;
+  total: number;
+  needsReview: number;
+  weak: number;
+  reviewable: number;
+  highSignal: number;
+  approved: number;
+  rejected: number;
+  avgConfidence: number | null;
+};
+
+const REVIEWABLE_STATUSES = new Set(["needs_anthony_review", "weak_review"]);
+const APPROVED_STATUSES = new Set(["approved_by_anthony", "approved_by_codex", "auto_attached"]);
+const REJECTED_STATUSES = new Set([
+  "rejected_by_openclaw",
+  "rejected_by_anthony",
+  "rejected_by_codex",
+  "pipeline_rejected",
+  "quarantined",
+]);
+const HIGH_SIGNAL_SOURCES = new Set([
+  "req_phone",
+  "req_address_lookup",
+  "name_postal_directory",
+  "company_website",
+  "pages_jaunes_business",
+]);
+const HIGH_SIGNAL_CLASSES = new Set(["directory_authoritative", "company_website"]);
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function qualityKey(row: CandidateQualityRow): string {
+  return [
+    row.source_label ?? "unknown_source",
+    row.source_class ?? "unknown_class",
+    row.matched_on ?? "unknown_match",
+  ].join("|");
+}
+
+function qualityLabel(row: CandidateQualityRow): string {
+  return row.source_label ?? row.source_class ?? row.matched_on ?? "source inconnue";
+}
+
+function isHighSignal(row: CandidateQualityRow): boolean {
+  const confidence = toFiniteNumber(row.initial_confidence) ?? 0;
+  return (
+    REVIEWABLE_STATUSES.has(row.candidate_status) &&
+    (
+      confidence >= 70 ||
+      HIGH_SIGNAL_SOURCES.has(row.source_label ?? "") ||
+      HIGH_SIGNAL_CLASSES.has(row.source_class ?? "") ||
+      row.openclaw_verdict === "likely_match"
+    )
+  );
+}
+
+function buildQualitySummary(candidates: CandidateQualityRow[]) {
+  const bySource = new Map<string, SourceQualityStat & { confidenceSum: number; confidenceCount: number }>();
+  let reviewable = 0;
+  let highSignalReviewable = 0;
+  let weakHighSignal = 0;
+  let needsReviewHighSignal = 0;
+
+  for (const candidate of candidates) {
+    const key = qualityKey(candidate);
+    const confidence = toFiniteNumber(candidate.initial_confidence);
+    const current = bySource.get(key) ?? {
+      key,
+      label: qualityLabel(candidate),
+      sourceLabel: candidate.source_label,
+      sourceClass: candidate.source_class,
+      matchedOn: candidate.matched_on,
+      total: 0,
+      needsReview: 0,
+      weak: 0,
+      reviewable: 0,
+      highSignal: 0,
+      approved: 0,
+      rejected: 0,
+      avgConfidence: null,
+      confidenceSum: 0,
+      confidenceCount: 0,
+    };
+
+    current.total++;
+    if (confidence !== null) {
+      current.confidenceSum += confidence;
+      current.confidenceCount++;
+    }
+    if (candidate.candidate_status === "needs_anthony_review") current.needsReview++;
+    if (candidate.candidate_status === "weak_review") current.weak++;
+    if (REVIEWABLE_STATUSES.has(candidate.candidate_status)) {
+      current.reviewable++;
+      reviewable++;
+    }
+    if (APPROVED_STATUSES.has(candidate.candidate_status)) current.approved++;
+    if (REJECTED_STATUSES.has(candidate.candidate_status)) current.rejected++;
+    if (isHighSignal(candidate)) {
+      current.highSignal++;
+      highSignalReviewable++;
+      if (candidate.candidate_status === "weak_review") weakHighSignal++;
+      if (candidate.candidate_status === "needs_anthony_review") needsReviewHighSignal++;
+    }
+    bySource.set(key, current);
+  }
+
+  const sourceStats = Array.from(bySource.values())
+    .map(({ confidenceSum: _confidenceSum, confidenceCount: _confidenceCount, ...row }) => ({
+      ...row,
+      avgConfidence: _confidenceCount > 0 ? Number((_confidenceSum / _confidenceCount).toFixed(1)) : null,
+    }))
+    .sort((a, b) =>
+      (b.reviewable - a.reviewable) ||
+      (b.highSignal - a.highSignal) ||
+      (b.total - a.total) ||
+      a.label.localeCompare(b.label),
+    )
+    .slice(0, 10);
+
+  return {
+    reviewable,
+    highSignalReviewable,
+    weakHighSignal,
+    needsReviewHighSignal,
+    sourceStats,
+  };
+}
+
 export async function GET(request: Request, ctx: RouteCtx) {
   const { importJobId } = await ctx.params;
   const auth = await requirePhoneEnrichmentOperator(request, importJobId);
@@ -120,13 +269,15 @@ export async function GET(request: Request, ctx: RouteCtx) {
           openclaw_verdict: string | null;
           initial_confidence: number | null;
           source_label: string | null;
+          source_class: string | null;
+          matched_on: string | null;
           source_url: string | null;
           review_reason: string | null;
           created_at: string;
         }>(leadIds, (chunk) =>
           sb
           .from("phone_candidates")
-          .select("id,lead_id,candidate_status,openclaw_verdict,initial_confidence,source_label,source_url,review_reason,created_at")
+          .select("id,lead_id,candidate_status,openclaw_verdict,initial_confidence,source_label,source_class,matched_on,source_url,review_reason,created_at")
           .in("lead_id", chunk)
           .order("created_at", { ascending: false })
           .limit(500),
@@ -149,6 +300,7 @@ export async function GET(request: Request, ctx: RouteCtx) {
   jobs.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const staleJobs = jobs.filter(isStaleJob).slice(0, 25);
+  const quality = buildQualitySummary(candidates);
 
   return NextResponse.json({
     ok: true,
@@ -172,6 +324,7 @@ export async function GET(request: Request, ctx: RouteCtx) {
       staleJobs,
       actions: actionsRes.data ?? [],
       recoverability,
+      quality,
     },
   });
 }
