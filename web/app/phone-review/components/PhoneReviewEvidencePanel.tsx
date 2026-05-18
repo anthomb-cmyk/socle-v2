@@ -102,6 +102,16 @@ function sourceHost(url: string | null): string | null {
   }
 }
 
+function sourceBadgeLabel(c: PhoneCandidate): string | null {
+  const key = sourceKey(c);
+  if (key === "req_address_lookup" || key === "req_phone") return "Lien REQ";
+  if (key === "name_postal_directory") return "Annuaire";
+  if (key === "company_website" || key === "pages_jaunes_business") return "Source web";
+  if (key === "cross_property") return "CRM interne";
+  if (key === "openclaw") return "OpenClaw legacy";
+  return c.source_label;
+}
+
 function getSourceInfo(c: PhoneCandidate): SourceInfo {
   const key = sourceKey(c);
   const url = c.source_url ?? "";
@@ -130,16 +140,18 @@ function getSourceInfo(c: PhoneCandidate): SourceInfo {
       : " Le lien vient surtout de l'adresse REQ; le nom du propriétaire peut ne pas être visible dans la page web.";
     return {
       key,
-      title: "Adresse postale → entreprise REQ → téléphone",
-      toolName: "Recherche REQ par adresse postale",
-      description: `Socle a pris l'adresse postale du propriétaire, a trouvé une entreprise inscrite au REQ à cette adresse, puis a cherché le téléphone public de cette entreprise.${reqMatchText}`,
+      title: "Lien REQ + source téléphone",
+      toolName: host ? `Lien REQ; téléphone via ${host}` : "Lien REQ; source téléphone absente",
+      description: host
+        ? `Le REQ confirme une entité ou une adresse liée. Le téléphone ne vient pas du REQ: il vient de ${host}.${reqMatchText}`
+        : `Le REQ confirme une entité ou une adresse liée, mais aucune source téléphone visible n'est attachée à ce candidat.${reqMatchText}`,
       searchStep: `Adresse postale du propriétaire comparée aux entreprises du REQ${c.search_query ? ", puis recherche web par entreprise" : ""}`,
-      foundStep: `Entreprise REQ à l'adresse postale${host ? `, puis source web ${host}` : ""}`,
+      foundStep: `Lien d'entité REQ${host ? `, puis téléphone trouvé via ${host}` : "; aucun hôte de téléphone visible"}`,
       proves: reqOwnerMatch
-        ? [`Adresse REQ concordante avec l'adresse postale.`, `Administrateur REQ « ${reqOwnerMatch} » correspond à un propriétaire lié.`]
-        : ["Adresse REQ concordante avec l'adresse postale du propriétaire."],
-      limits: ["Le téléphone peut être celui de l'entreprise, pas forcément le cellulaire personnel du propriétaire.", "À vérifier si le nom affiché dans la source ne correspond pas au propriétaire principal."],
-      action: "Approuver si l'entreprise REQ appartient bien au propriétaire ou à un co-propriétaire.",
+        ? [`Lien REQ concordant.`, `Administrateur REQ « ${reqOwnerMatch} » correspond à un propriétaire lié.`, host ? `La source téléphone visible est ${host}.` : "Aucune source téléphone visible dans l'URL."]
+        : ["Lien REQ avec l'entité ou l'adresse.", host ? `La source téléphone visible est ${host}.` : "Aucune source téléphone visible dans l'URL."],
+      limits: ["REQ confirme le lien propriétaire/entité, pas le téléphone.", "Le téléphone peut être celui de l'entreprise, d'un locataire ou d'un tiers.", "À vérifier si le nom affiché dans la source ne correspond pas au propriétaire principal."],
+      action: "Approuver seulement si le lien REQ et la source téléphone sont tous les deux clairs.",
       tone: reqOwnerMatch ? "success" : "warn",
     };
   }
@@ -207,15 +219,15 @@ function getSourceInfo(c: PhoneCandidate): SourceInfo {
   if (key === "req_phone") {
     return {
       key,
-      title: "Téléphone déclaré au REQ",
-      toolName: "REQ — Registraire des entreprises Québec",
-      description: "Le numéro vient d'une information déclarée au Registraire des entreprises du Québec pour l'entité liée.",
-      searchStep: "Lecture des informations officielles REQ",
-      foundStep: "Téléphone déclaré sur la fiche REQ",
-      proves: ["L'entreprise a déclaré ce téléphone dans une source officielle."],
-      limits: ["Le numéro peut être celui de l'entreprise plutôt qu'un numéro personnel.", "Il faut confirmer que l'entité REQ est bien celle du propriétaire."],
-      action: "Généralement approuvable si l'entité REQ correspond au propriétaire.",
-      tone: "success",
+      title: "Lien REQ à vérifier",
+      toolName: host ? `Lien REQ; téléphone via ${host}` : "Lien REQ; source téléphone à prouver",
+      description: "Ce vieux libellé indique un lien d'entité REQ, mais il ne doit pas être traité comme une source téléphone sans URL ou preuve visible.",
+      searchStep: "Lien d'entité REQ, puis validation de la source téléphone affichée",
+      foundStep: host ? `Téléphone trouvé via ${host}` : "Source téléphone non visible",
+      proves: ["Le candidat est lié à une entité REQ."],
+      limits: ["REQ ne doit pas être utilisé comme preuve téléphone par défaut.", "Il faut confirmer où le numéro apparaît réellement."],
+      action: "Garder en revue sauf si la source téléphone affichée prouve le numéro.",
+      tone: "warn",
     };
   }
 
@@ -741,8 +753,8 @@ export default function PhoneReviewEvidencePanel({
         <span className="pr-evidence__phone-num" style={{ fontFeatureSettings: '"tnum" 1' }}>
           {formatPhone(candidate.phone_e164 ?? candidate.phone_raw)}
         </span>
-        {candidate.source_label && (
-          <span className="pr-evidence__phone-source">{candidate.source_label}</span>
+        {sourceBadgeLabel(candidate) && (
+          <span className="pr-evidence__phone-source">{sourceBadgeLabel(candidate)}</span>
         )}
       </div>
 
@@ -1184,19 +1196,19 @@ function StagePill({ stage, sourceLabel }: { stage: string; sourceLabel?: string
   const ev = t.review.evidence;
   const sourceLabels: Record<string, string> = {
     cross_property: "CRM interne",
-    req_address_lookup: "REQ adresse",
+    req_address_lookup: "Lien REQ",
     name_postal_directory: "Nom + postal",
     reverse_address_lookup: "Adresse inverse",
     reverse_address: "Adresse inverse",
     pages_jaunes_business: "Pages Jaunes",
     company_website: "Site entreprise",
-    req_phone: "REQ téléphone",
+    req_phone: "Lien REQ",
     twilio_caller_name: "Twilio",
   };
   const labels: Record<string, string> = {
     address_search: ev.stageAddress,
     company_search: ev.stageCompany,
-    req_address_lookup: "REQ adresse",
+    req_address_lookup: "Lien REQ",
     name_postal_directory: "Nom + postal",
     reverse_address_lookup: "Adresse inverse",
     pages_jaunes_business: "Pages Jaunes",

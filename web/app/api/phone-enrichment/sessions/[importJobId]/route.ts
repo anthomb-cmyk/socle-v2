@@ -12,6 +12,14 @@ import {
   getOperatorEnabled,
   queryLeadIdChunks,
 } from "@/lib/phone-enrichment/session";
+import {
+  APPROVED_CANDIDATE_STATUSES,
+  classifyPhoneReviewTrust,
+  REJECTED_CANDIDATE_STATUSES,
+  REVIEWABLE_CANDIDATE_STATUSES,
+  reviewPriorityLabel,
+  type ReviewPriority,
+} from "@/lib/phone-enrichment/review-trust";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,97 +53,59 @@ type CandidateQualityRow = {
   source_class: string | null;
   matched_on: string | null;
   openclaw_verdict: string | null;
+  source_url: string | null;
+  snippet: string | null;
+  openclaw_evidence: string | null;
+  openclaw_reasoning: string | null;
+  review_reason: string | null;
 };
 
-type SourceQualityStat = {
+type TrustSourceStat = {
   key: string;
   label: string;
-  sourceLabel: string | null;
-  sourceClass: string | null;
-  matchedOn: string | null;
+  kind: string;
   total: number;
   needsReview: number;
   weak: number;
   reviewable: number;
-  highSignal: number;
+  priority: number;
+  judgment: number;
+  noisy: number;
   approved: number;
   rejected: number;
   avgConfidence: number | null;
 };
 
-const REVIEWABLE_STATUSES = new Set(["needs_anthony_review", "weak_review"]);
-const APPROVED_STATUSES = new Set(["approved_by_anthony", "approved_by_codex", "auto_attached"]);
-const REJECTED_STATUSES = new Set([
-  "rejected_by_openclaw",
-  "rejected_by_anthony",
-  "rejected_by_codex",
-  "pipeline_rejected",
-  "quarantined",
-]);
-const HIGH_SIGNAL_SOURCES = new Set([
-  "req_phone",
-  "req_address_lookup",
-  "name_postal_directory",
-  "company_website",
-  "pages_jaunes_business",
-]);
-const HIGH_SIGNAL_CLASSES = new Set(["directory_authoritative", "company_website"]);
-
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-function qualityKey(row: CandidateQualityRow): string {
-  return [
-    row.source_label ?? "unknown_source",
-    row.source_class ?? "unknown_class",
-    row.matched_on ?? "unknown_match",
-  ].join("|");
-}
-
-function qualityLabel(row: CandidateQualityRow): string {
-  return row.source_label ?? row.source_class ?? row.matched_on ?? "source inconnue";
-}
-
-function isHighSignal(row: CandidateQualityRow): boolean {
-  const confidence = toFiniteNumber(row.initial_confidence) ?? 0;
-  return (
-    REVIEWABLE_STATUSES.has(row.candidate_status) &&
-    (
-      confidence >= 70 ||
-      HIGH_SIGNAL_SOURCES.has(row.source_label ?? "") ||
-      HIGH_SIGNAL_CLASSES.has(row.source_class ?? "") ||
-      row.openclaw_verdict === "likely_match"
-    )
-  );
-}
-
 function buildQualitySummary(candidates: CandidateQualityRow[]) {
-  const bySource = new Map<string, SourceQualityStat & { confidenceSum: number; confidenceCount: number }>();
+  const byPhoneSource = new Map<string, TrustSourceStat & { confidenceSum: number; confidenceCount: number }>();
+  const byOwnerLink = new Map<string, TrustSourceStat & { confidenceSum: number; confidenceCount: number }>();
   let reviewable = 0;
-  let highSignalReviewable = 0;
-  let weakHighSignal = 0;
-  let needsReviewHighSignal = 0;
+  let priorityReviewable = 0;
+  let judgmentReviewable = 0;
+  let noisyReviewable = 0;
 
-  for (const candidate of candidates) {
-    const key = qualityKey(candidate);
-    const confidence = toFiniteNumber(candidate.initial_confidence);
-    const current = bySource.get(key) ?? {
+  function applyStat(
+    map: Map<string, TrustSourceStat & { confidenceSum: number; confidenceCount: number }>,
+    key: string,
+    label: string,
+    kind: string,
+    candidate: CandidateQualityRow,
+    priority: ReviewPriority,
+  ) {
+    const confidence = typeof candidate.initial_confidence === "number" && Number.isFinite(candidate.initial_confidence)
+      ? candidate.initial_confidence
+      : null;
+    const current = map.get(key) ?? {
       key,
-      label: qualityLabel(candidate),
-      sourceLabel: candidate.source_label,
-      sourceClass: candidate.source_class,
-      matchedOn: candidate.matched_on,
+      label,
+      kind,
       total: 0,
       needsReview: 0,
       weak: 0,
       reviewable: 0,
-      highSignal: 0,
+      priority: 0,
+      judgment: 0,
+      noisy: 0,
       approved: 0,
       rejected: 0,
       avgConfidence: null,
@@ -150,40 +120,83 @@ function buildQualitySummary(candidates: CandidateQualityRow[]) {
     }
     if (candidate.candidate_status === "needs_anthony_review") current.needsReview++;
     if (candidate.candidate_status === "weak_review") current.weak++;
-    if (REVIEWABLE_STATUSES.has(candidate.candidate_status)) {
+    if (REVIEWABLE_CANDIDATE_STATUSES.has(candidate.candidate_status)) {
       current.reviewable++;
-      reviewable++;
+      if (priority === "priority") current.priority++;
+      if (priority === "judgment") current.judgment++;
+      if (priority === "noisy") current.noisy++;
     }
-    if (APPROVED_STATUSES.has(candidate.candidate_status)) current.approved++;
-    if (REJECTED_STATUSES.has(candidate.candidate_status)) current.rejected++;
-    if (isHighSignal(candidate)) {
-      current.highSignal++;
-      highSignalReviewable++;
-      if (candidate.candidate_status === "weak_review") weakHighSignal++;
-      if (candidate.candidate_status === "needs_anthony_review") needsReviewHighSignal++;
-    }
-    bySource.set(key, current);
+    if (APPROVED_CANDIDATE_STATUSES.has(candidate.candidate_status)) current.approved++;
+    if (REJECTED_CANDIDATE_STATUSES.has(candidate.candidate_status)) current.rejected++;
+    map.set(key, current);
   }
 
-  const sourceStats = Array.from(bySource.values())
-    .map(({ confidenceSum: _confidenceSum, confidenceCount: _confidenceCount, ...row }) => ({
-      ...row,
-      avgConfidence: _confidenceCount > 0 ? Number((_confidenceSum / _confidenceCount).toFixed(1)) : null,
-    }))
-    .sort((a, b) =>
-      (b.reviewable - a.reviewable) ||
-      (b.highSignal - a.highSignal) ||
-      (b.total - a.total) ||
-      a.label.localeCompare(b.label),
-    )
-    .slice(0, 10);
+  for (const candidate of candidates) {
+    const classification = classifyPhoneReviewTrust(candidate);
+    if (REVIEWABLE_CANDIDATE_STATUSES.has(candidate.candidate_status)) {
+      reviewable++;
+      if (classification.reviewPriority === "priority") {
+        priorityReviewable++;
+      } else if (classification.reviewPriority === "noisy") {
+        noisyReviewable++;
+      } else {
+        judgmentReviewable++;
+      }
+    }
+
+    applyStat(
+      byPhoneSource,
+      classification.phoneEvidenceSource.key,
+      classification.phoneEvidenceSource.label,
+      classification.phoneEvidenceSource.kind,
+      candidate,
+      classification.reviewPriority,
+    );
+    applyStat(
+      byOwnerLink,
+      classification.ownerLinkSource.key,
+      classification.ownerLinkSource.label,
+      classification.ownerLinkSource.key,
+      candidate,
+      classification.reviewPriority,
+    );
+  }
+
+  function finalize(map: Map<string, TrustSourceStat & { confidenceSum: number; confidenceCount: number }>) {
+    return Array.from(map.values())
+      .map(({ confidenceSum: _confidenceSum, confidenceCount: _confidenceCount, ...row }) => ({
+        ...row,
+        avgConfidence: _confidenceCount > 0 ? Number((_confidenceSum / _confidenceCount).toFixed(1)) : null,
+      }))
+      .sort((a, b) =>
+        (b.reviewable - a.reviewable) ||
+        (b.priority - a.priority) ||
+        (b.total - a.total) ||
+        a.label.localeCompare(b.label),
+      )
+      .slice(0, 10);
+  }
+
+  const priorityCounts = {
+    priority: priorityReviewable,
+    judgment: judgmentReviewable,
+    noisy: noisyReviewable,
+  };
+  const priorityLabels = {
+    priority: reviewPriorityLabel("priority"),
+    judgment: reviewPriorityLabel("judgment"),
+    noisy: reviewPriorityLabel("noisy"),
+  };
 
   return {
     reviewable,
-    highSignalReviewable,
-    weakHighSignal,
-    needsReviewHighSignal,
-    sourceStats,
+    priorityReviewable,
+    judgmentReviewable,
+    noisyReviewable,
+    priorityCounts,
+    priorityLabels,
+    phoneSourceStats: finalize(byPhoneSource),
+    ownerLinkStats: finalize(byOwnerLink),
   };
 }
 
@@ -272,12 +285,15 @@ export async function GET(request: Request, ctx: RouteCtx) {
           source_class: string | null;
           matched_on: string | null;
           source_url: string | null;
+          snippet: string | null;
+          openclaw_evidence: string | null;
+          openclaw_reasoning: string | null;
           review_reason: string | null;
           created_at: string;
         }>(leadIds, (chunk) =>
           sb
           .from("phone_candidates")
-          .select("id,lead_id,candidate_status,openclaw_verdict,initial_confidence,source_label,source_class,matched_on,source_url,review_reason,created_at")
+          .select("id,lead_id,candidate_status,openclaw_verdict,initial_confidence,source_label,source_class,matched_on,source_url,snippet,openclaw_evidence,openclaw_reasoning,review_reason,created_at")
           .in("lead_id", chunk)
           .order("created_at", { ascending: false })
           .limit(500),

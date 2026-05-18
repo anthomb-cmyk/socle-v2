@@ -63,25 +63,30 @@ type SessionData = {
   };
   quality: {
     reviewable: number;
-    highSignalReviewable: number;
-    weakHighSignal: number;
-    needsReviewHighSignal: number;
-    sourceStats: Array<{
-      key: string;
-      label: string;
-      sourceLabel: string | null;
-      sourceClass: string | null;
-      matchedOn: string | null;
-      total: number;
-      needsReview: number;
-      weak: number;
-      reviewable: number;
-      highSignal: number;
-      approved: number;
-      rejected: number;
-      avgConfidence: number | null;
-    }>;
+    priorityReviewable: number;
+    judgmentReviewable: number;
+    noisyReviewable: number;
+    priorityCounts: Record<"priority" | "judgment" | "noisy", number>;
+    priorityLabels: Record<"priority" | "judgment" | "noisy", string>;
+    phoneSourceStats: Array<TrustStatRow>;
+    ownerLinkStats: Array<TrustStatRow>;
   };
+};
+
+type TrustStatRow = {
+  key: string;
+  label: string;
+  kind: string;
+  total: number;
+  needsReview: number;
+  weak: number;
+  reviewable: number;
+  priority: number;
+  judgment: number;
+  noisy: number;
+  approved: number;
+  rejected: number;
+  avgConfidence: number | null;
 };
 
 function money(n: number): string {
@@ -273,9 +278,9 @@ export default function PhoneEnrichmentSessionClient({ importJobId }: { importJo
     }
     if (data.quality.reviewable > 0) {
       items.push({
-        tone: data.quality.highSignalReviewable > 0 ? "green" : "amber",
-        title: "Reviser les meilleurs candidats",
-        detail: `${data.quality.highSignalReviewable} signal(s) fort(s) sur ${data.quality.reviewable} candidat(s) a juger.`,
+        tone: data.quality.priorityReviewable > 0 ? "green" : "amber",
+        title: "Reviser les sources prioritaires",
+        detail: `${data.quality.priorityReviewable} prioritaire(s), ${data.quality.judgmentReviewable} a juger, ${data.quality.noisyReviewable} bruit probable.`,
         href: `/phone-review?import_job_id=${importJobId}`,
       });
     }
@@ -376,9 +381,9 @@ export default function PhoneEnrichmentSessionClient({ importJobId }: { importJo
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 12 }}>
           <MiniMetric label="Reviewables" value={data.quality.reviewable} />
-          <MiniMetric label="Signaux forts" value={data.quality.highSignalReviewable} tone="green" />
-          <MiniMetric label="Weak mais prometteurs" value={data.quality.weakHighSignal} tone="amber" />
-          <MiniMetric label="Needs review forts" value={data.quality.needsReviewHighSignal} tone="green" />
+          <MiniMetric label="Prioritaires" value={data.quality.priorityReviewable} tone="green" />
+          <MiniMetric label="A juger" value={data.quality.judgmentReviewable} tone="amber" />
+          <MiniMetric label="Bruit probable" value={data.quality.noisyReviewable} tone="red" />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -386,7 +391,8 @@ export default function PhoneEnrichmentSessionClient({ importJobId }: { importJo
               <NextActionCard key={`${item.title}:${item.detail}`} item={item} />
             ))}
           </div>
-          <SourceQualityTable rows={data.quality.sourceStats} />
+          <TrustBreakdownTable title="Source telephone" rows={data.quality.phoneSourceStats} />
+          <TrustBreakdownTable title="Lien proprietaire" rows={data.quality.ownerLinkStats} />
         </div>
       </section>
 
@@ -603,17 +609,20 @@ function NextActionCard({ item }: { item: NextAction }) {
   );
 }
 
-function SourceQualityTable({ rows }: { rows: SessionData["quality"]["sourceStats"] }) {
+function TrustBreakdownTable({ title, rows }: { title: string; rows: TrustStatRow[] }) {
   if (rows.length === 0) {
     return <p style={{ fontSize: 13, color: "var(--crm-text3)", margin: 0 }}>Aucun candidat source pour cette session.</p>;
   }
 
   return (
     <div style={{ border: "1px solid var(--crm-card-border)", borderRadius: 8, overflowX: "auto" }}>
+      <div style={{ padding: "8px 9px", borderBottom: "1px solid var(--crm-card-border)", fontSize: 12, fontWeight: 800 }}>
+        {title}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) repeat(4, minmax(54px, 0.4fr))", gap: 0, background: "var(--crm-bg-alt)", padding: "7px 9px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", color: "var(--crm-text3)" }}>
         <span>Source</span>
         <span>Rev.</span>
-        <span>Signal</span>
+        <span>Prior.</span>
         <span>OK</span>
         <span>Rej.</span>
       </div>
@@ -625,11 +634,11 @@ function SourceQualityTable({ rows }: { rows: SessionData["quality"]["sourceStat
           <span style={{ minWidth: 0 }}>
             <strong style={{ display: "block", color: "var(--crm-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</strong>
             <span style={{ display: "block", color: "var(--crm-text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {row.sourceClass ?? "classe ?"} · avg {row.avgConfidence ?? "-"}%
+              {row.kind} · avg {row.avgConfidence ?? "-"}% · bruit {row.noisy}
             </span>
           </span>
           <strong>{row.reviewable}</strong>
-          <strong style={{ color: row.highSignal > 0 ? "var(--crm-green)" : "var(--crm-text3)" }}>{row.highSignal}</strong>
+          <strong style={{ color: row.priority > 0 ? "var(--crm-green)" : "var(--crm-text3)" }}>{row.priority}</strong>
           <span>{row.approved}</span>
           <span>{row.rejected}</span>
         </div>

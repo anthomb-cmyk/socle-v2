@@ -86,7 +86,7 @@ export default function PhoneReviewListItem({
           <span className={`so-confidence-badge so-confidence-badge--${confidenceVariant(candidate.initial_confidence)}`}>
             {candidate.initial_confidence}%
           </span>
-          <StagePill stage={candidate.stage} />
+          <StagePill stage={candidate.stage} sourceLabel={candidate.source_label} />
         </div>
       </button>
 
@@ -117,25 +117,27 @@ export default function PhoneReviewListItem({
   );
 }
 
-function StagePill({ stage }: { stage: string }) {
+function StagePill({ stage, sourceLabel }: { stage: string; sourceLabel?: string | null }) {
   const { t } = useLocale();
   const ev = t.review.evidence;
   const labels: Record<string, string> = {
     address_search: ev.stageAddress,
     company_search: ev.stageCompany,
-    req_address_lookup: "REQ adresse",
+    req_address_lookup: "Lien REQ",
     name_postal_directory: "Nom + postal",
     reverse_address_lookup: "Adresse inverse",
     pages_jaunes_business: "Pages Jaunes",
     company_website: "Site entreprise",
+    req_phone: "Lien REQ",
     openclaw:       "OpenClaw legacy",
   };
+  const key = sourceLabel || stage;
   const variant: string =
-    stage === "address_search" || stage === "req_address_lookup" || stage === "reverse_address_lookup" ? "address"
-    : stage === "company_search" || stage === "company_website" || stage === "pages_jaunes_business" ? "company"
-    : stage === "openclaw" ? "openclaw"
+    key === "address_search" || key === "req_address_lookup" || key === "reverse_address_lookup" ? "address"
+    : key === "company_search" || key === "company_website" || key === "pages_jaunes_business" || key === "req_phone" ? "company"
+    : key === "openclaw" ? "openclaw"
     : "via";
   return (
-    <span className={`crm-pill crm-pill-stage--${variant}`}>{labels[stage] ?? stage}</span>
+    <span className={`crm-pill crm-pill-stage--${variant}`}>{labels[key] ?? labels[stage] ?? key}</span>
   );
 }
