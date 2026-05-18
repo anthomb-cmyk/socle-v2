@@ -32,11 +32,13 @@ CHERCHE CES SIGNAUX EN PRIORITÉ (lis le snippet/preuve mot par mot):
 7. URL est un annuaire public (canada411, 411.ca, pagesjaunes, b2bhint, registre.ccq) → annuaire → ✓ si nom concorde, ? sinon
 8. URL semble commerciale/non-liée et nom proprio absent → tiers → ✗ ou ?
 9. Plusieurs numéros différents pour la même propriété → ambiguïté → ?
-10. source_label=req_address_lookup + administrateur REQ correspond à un co-propriétaire → adresse REQ + admin co-proprio → ?
-11. source_label=req_address_lookup sans admin co-proprio visible → adresse REQ liée, nom à recouper → ?
+10. source_label=req_address_lookup + administrateur REQ correspond à un co-propriétaire → lien REQ + admin; téléphone via URL/source affichée → ?
+11. source_label=req_address_lookup sans admin co-proprio visible → lien REQ entité/adresse; téléphone via URL/source affichée → ?
 12. source_label=company_website ou pages_jaunes_business → source entreprise: approuver seulement si l'entreprise appartient au proprio → ?
 
 INTERDICTIONS STRICTES:
+- ❌ JAMAIS dire que REQ est la source du téléphone sauf si l'URL/snippet prouve clairement que le numéro est listé là. REQ = lien propriétaire/entité.
+- ❌ JAMAIS dire "OpenClaw" pour openclaw_verdict/openclaw_reasoning; dans le pipeline actuel, appelle ça "juge IA".
 - ❌ JAMAIS "vérification nécessaire/requise" sans préciser le signal AVANT
 - ❌ JAMAIS "concordants" / "non concordants" sans préciser QUOI (nom? adresse? code postal?)
 - ❌ JAMAIS "numéro suspect" / "confiance faible/modérée" sans dire POURQUOI
@@ -52,8 +54,8 @@ Exemples bons (signal spécifique extrait des données):
 - "? Site corporate, aucun lien direct au proprio — vérifier"
 - "? Deux numéros différents pour cette propriété — comparer"
 - "? Source CRM déjà vue pour André Barnabe — comparer"
-- "? REQ: admin co-propriétaire lié — vérifier"
-- "? REQ: adresse entreprise liée, nom absent — vérifier"
+- "? Lien REQ admin; tél. via canada411.ca — vérifier"
+- "? Lien REQ entité; source tél. absente — vérifier"
 
 Exemples mauvais (à NE PAS reproduire):
 - "Numéros de téléphone différents, vérification nécessaire" (quel signal? lequel rejeter?)
@@ -112,10 +114,10 @@ export async function POST(request: Request) {
     if (c.sourceUrl) {
       try { parts.push(`URL: ${new URL(c.sourceUrl).hostname}`); } catch { /* ignore */ }
     }
-    if (c.openclawEvidence) parts.push(`Preuve OpenClaw: "${c.openclawEvidence.slice(0, 300)}"`);
+    if (c.openclawEvidence) parts.push(`Preuve juge IA: "${c.openclawEvidence.slice(0, 300)}"`);
     if (c.snippet)          parts.push(`Snippet: "${c.snippet.slice(0, 300)}"`);
-    if (c.openclawVerdict)  parts.push(`Verdict OpenClaw: ${c.openclawVerdict}`);
-    if (c.openclawReasoning) parts.push(`Raisonnement OpenClaw: "${c.openclawReasoning.slice(0, 200)}"`);
+    if (c.openclawVerdict)  parts.push(`Verdict juge IA: ${c.openclawVerdict}`);
+    if (c.openclawReasoning) parts.push(`Raisonnement juge IA: "${c.openclawReasoning.slice(0, 200)}"`);
     if (c.reviewReason)     parts.push(`Raison de revue: ${c.reviewReason}`);
     return parts.join(" | ");
   });

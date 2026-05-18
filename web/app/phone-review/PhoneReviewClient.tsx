@@ -15,6 +15,11 @@ import PhoneReviewCandidateList from "./components/PhoneReviewCandidateList";
 import PhoneReviewEvidencePanel from "./components/PhoneReviewEvidencePanel";
 import PhoneReviewBulkBar from "./components/PhoneReviewBulkBar";
 import PhoneReviewMobileSlideover from "./components/PhoneReviewMobileSlideover";
+import {
+  classifyPhoneReviewTrust,
+  reviewPriorityRank,
+  sourceHost,
+} from "@/lib/phone-enrichment/review-trust";
 
 type Campaign = { name: string } | null;
 type Property = { id?: string; address: string; city: string | null; num_units: number | null } | null;
@@ -76,7 +81,7 @@ export type PhoneCandidate = {
 
 // ── Confidence bucket helper ──────────────────────────────────────────────
 type ConfidenceBucket = Bucket;
-type FocusFilter = "all" | "high_signal" | "needs_review" | "weak" | "req" | "directory" | "address" | "company";
+type FocusFilter = "all" | "priority" | "owner_link" | "directory" | "web" | "noisy";
 
 function matchBucket(conf: number, b: ConfidenceBucket): boolean {
   if (b === "all") return true;
@@ -89,60 +94,40 @@ function matchBucket(conf: number, b: ConfidenceBucket): boolean {
 }
 
 const BUCKETS: ConfidenceBucket[] = ["all", "ge80", "70-79", "60-69", "50-59", "lt50"];
-const FOCUS_FILTERS: FocusFilter[] = ["all", "high_signal", "needs_review", "weak", "req", "directory", "address", "company"];
+const FOCUS_FILTERS: FocusFilter[] = ["all", "priority", "owner_link", "directory", "web", "noisy"];
 const BULK_CONCURRENCY = 10;
 
-const STRONG_SOURCE_LABELS = new Set([
-  "req_phone",
-  "req_address_lookup",
-  "name_postal_directory",
-  "company_website",
-  "pages_jaunes_business",
-]);
-const STRONG_SOURCE_CLASSES = new Set(["directory_authoritative", "company_website"]);
-
-function isHighSignalCandidate(c: PhoneCandidate): boolean {
-  return (
-    c.initial_confidence >= 70 ||
-    c.openclaw_verdict === "likely_match" ||
-    STRONG_SOURCE_LABELS.has(c.source_label ?? "") ||
-    STRONG_SOURCE_CLASSES.has(c.source_class ?? "")
-  );
-}
-
 function matchFocus(c: PhoneCandidate, focus: FocusFilter): boolean {
+  const trust = classifyPhoneReviewTrust(c);
   if (focus === "all") return true;
-  if (focus === "high_signal") return isHighSignalCandidate(c);
-  if (focus === "needs_review") return c.candidate_status === "needs_anthony_review";
-  if (focus === "weak") return c.candidate_status === "weak_review";
-  if (focus === "req") return (c.source_label ?? "").startsWith("req_") || c.matched_on === "director_name";
-  if (focus === "directory") return c.source_label === "name_postal_directory" || c.source_class === "directory_authoritative";
-  if (focus === "address") return c.source_label === "reverse_address_lookup" || c.source_label === "reverse_address" || c.matched_on === "property_address" || c.matched_on === "mailing_address";
-  if (focus === "company") return c.source_label === "company_website" || c.source_label === "pages_jaunes_business" || c.matched_on === "company_name";
+  if (focus === "priority") return trust.reviewPriority === "priority";
+  if (focus === "owner_link") return trust.ownerLinkSource.key === "req_address" || trust.ownerLinkSource.key === "req_entity";
+  if (focus === "directory") return trust.phoneEvidenceSource.kind === "directory";
+  if (focus === "web") return ["business_site", "web", "generic_web"].includes(trust.phoneEvidenceSource.kind);
+  if (focus === "noisy") return trust.reviewPriority === "noisy";
   return true;
 }
 
 function focusLabel(focus: FocusFilter, count: number): string {
   const labels: Record<FocusFilter, string> = {
     all: "Tous",
-    high_signal: "Signal fort",
-    needs_review: "A juger",
-    weak: "Weak",
-    req: "REQ",
+    priority: "Prioritaire",
+    owner_link: "Lien REQ",
     directory: "Annuaire",
-    address: "Adresse",
-    company: "Entreprise",
+    web: "Source web",
+    noisy: "Bruit probable",
   };
   return `${labels[focus]} (${count})`;
 }
 
 function candidatePriority(c: PhoneCandidate): number {
+  const trust = classifyPhoneReviewTrust(c);
   let score = c.initial_confidence;
   if (c.candidate_status === "needs_anthony_review") score += 300;
   if (c.candidate_status === "weak_review") score += 120;
-  if (isHighSignalCandidate(c)) score += 80;
-  if ((c.source_label ?? "").startsWith("req_")) score += 60;
-  if (c.source_label === "name_postal_directory" || c.source_class === "directory_authoritative") score += 35;
+  score += reviewPriorityRank(trust.reviewPriority) * 50;
+  if (trust.ownerLinkSource.key !== "none") score += 15;
+  if (trust.phoneEvidenceSource.kind === "directory") score += 35;
   if (c.openclaw_verdict === "likely_match") score += 25;
   if (c.openclaw_verdict === "unlikely_match") score -= 40;
   return score;
@@ -248,14 +233,20 @@ export default function PhoneReviewClient({
       if (c.openclaw_verdict === "unlikely_match" || c.initial_confidence < 25) return null;
 
       const source = c.source_label || c.stage;
+      const trust = classifyPhoneReviewTrust(c);
+      const host = sourceHost(c.source_url);
 
       if (source === "cross_property") {
         return { verdict: "?", reason: "Source CRM: déjà vu ailleurs — comparer" };
       }
+      if (trust.reviewPriority === "noisy" && trust.noisyReason) {
+        return { verdict: "✗", reason: `${trust.noisyReason} — bruit probable` };
+      }
       if (source === "req_address_lookup") {
+        const phoneSource = host ? `tél. via ${host}` : "source tél. absente";
         return hasReqOwnerMatch(c)
-          ? { verdict: "?", reason: "REQ: admin co-propriétaire lié — vérifier" }
-          : { verdict: "?", reason: "REQ: adresse entreprise liée — vérifier" };
+          ? { verdict: "?", reason: `Lien REQ admin lié; ${phoneSource}` }
+          : { verdict: "?", reason: `Lien REQ entité liée; ${phoneSource}` };
       }
       if (source === "name_postal_directory") {
         return { verdict: "?", reason: "Annuaire nom+postal — confirmer adresse" };
@@ -270,7 +261,7 @@ export default function PhoneReviewClient({
         return { verdict: "?", reason: "Annuaire entreprise — vérifier propriétaire" };
       }
       if (source === "req_phone") {
-        return { verdict: "✓", reason: "Téléphone déclaré au REQ — confirmer entité" };
+        return { verdict: "?", reason: host ? `Lien REQ; tél. via ${host}` : "Lien REQ; source tél. à prouver" };
       }
       if (source === "twilio_caller_name") {
         return { verdict: "?", reason: "Nom d'appelant Twilio — recouper" };
@@ -424,13 +415,11 @@ export default function PhoneReviewClient({
   const focusCounts = useMemo<Record<FocusFilter, number>>(() => {
     const counts: Record<FocusFilter, number> = {
       all: candidates.length,
-      high_signal: 0,
-      needs_review: 0,
-      weak: 0,
-      req: 0,
+      priority: 0,
+      owner_link: 0,
       directory: 0,
-      address: 0,
-      company: 0,
+      web: 0,
+      noisy: 0,
     };
     for (const c of candidates) {
       for (const focus of FOCUS_FILTERS) {
