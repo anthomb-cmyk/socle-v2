@@ -7,6 +7,7 @@
 
 import twilio from "twilio";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { notifyInboundSms } from "@/lib/notifications/phone";
 import { callTwilioApi, getAppUrl, normalizePhone, twimlResponse } from "@/lib/twilio";
 
 function paramsFromForm(form: FormData): Record<string, string> {
@@ -96,13 +97,26 @@ export async function POST(request: Request) {
     }
   }
 
-  const notification = await sendInternalSmsNotification({
+  const smsForwardNotification = await sendInternalSmsNotification({
     from,
     to,
     body,
     numMedia,
     senderLabel,
   });
+  const appUrl = (() => {
+    try { return getAppUrl(); } catch { return "https://socle-v2-production.up.railway.app"; }
+  })();
+  const appPushNotification = await notifyInboundSms({
+    from,
+    senderLabel,
+    body,
+    appUrl,
+  });
+  const notification = {
+    smsForward: smsForwardNotification,
+    appPush: appPushNotification,
+  };
 
   await sb.from("automation_events").insert({
     source:             "web_app",

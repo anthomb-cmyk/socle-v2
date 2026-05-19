@@ -5,6 +5,7 @@
 // call to an investor or seller contact when the caller number is known.
 
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { notifyInboundPhoneCall } from "@/lib/notifications/phone";
 import { escapeXml, getAppUrl, normalizePhone, twimlResponse } from "@/lib/twilio";
 
 export const runtime = "nodejs";
@@ -211,6 +212,36 @@ export async function POST(request: Request) {
       investorCallId = (investorCall?.id as string | undefined) ?? "";
     }
   }
+
+  let callerLabel = from || "numero inconnu";
+  if (match.contactId) {
+    const { data: contact } = await sb
+      .from("contacts")
+      .select("full_name, company_name")
+      .eq("id", match.contactId)
+      .maybeSingle();
+    callerLabel = [contact?.full_name, contact?.company_name].filter(Boolean).join(" - ") || callerLabel;
+  } else if (match.dealTitle) {
+    callerLabel = match.dealTitle;
+  }
+
+  const notification = await notifyInboundPhoneCall({
+    from,
+    to,
+    callerLabel,
+    matchType: match.matchType,
+    appUrl,
+  });
+
+  await sb.from("automation_events").insert({
+    source: "web_app",
+    event_type: "inbound_call_notification",
+    status: notification.ok ? "success" : "error",
+    related_lead_id: match.leadId,
+    related_contact_id: match.contactId,
+    payload: { callSid, from, to, matchType: match.matchType, callLogId, investorCallId: investorCallId || null },
+    result: notification,
+  });
 
   const statusCallbackUrl =
     `${appUrl}/api/twilio/voice/status?callLogId=${encodeURIComponent(callLogId)}`;

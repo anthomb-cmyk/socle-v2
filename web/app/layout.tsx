@@ -6,6 +6,7 @@ import ChatWidget from "@/components/chat-widget";
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 import { LocaleProvider } from "@/components/locale-provider";
 import { ToastProvider } from "@/components/toast-provider";
+import { PushNotificationProvider } from "@/components/push-notification-provider";
 
 export const metadata = {
   title: "Socle CRM",
@@ -122,6 +123,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body style={{ background: "var(--crm-bg)", color: "var(--crm-text)", margin: 0, padding: 0 }}>
         <LocaleProvider>
           <ToastProvider>
+            {userInfo ? <PushNotificationProvider /> : null}
             <a href="#main-content" className="crm-skip-link">
               Aller au contenu / Skip to content
             </a>

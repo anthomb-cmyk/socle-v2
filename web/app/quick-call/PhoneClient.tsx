@@ -8,29 +8,9 @@ import type { HistoryRow } from "@/app/calls/[leadId]/components/CallHistoryEntr
 import { normalizePhone } from "@/lib/twilio";
 import { useLocale } from "@/components/locale-provider";
 import { useToast } from "@/components/toast-provider";
+import type { RecentCall } from "@/lib/quick-call/recents";
 
 // ── Types ────────────────────────────────────────────────────────────────
-export type RecentCall = {
-  id: string;
-  direction: "inbound" | "outbound";
-  number: string;
-  name: string | null;
-  leadId: string | null;
-  contactId: string | null;
-  investorId: string | null;
-  dealId: string | null;
-  dealTitle: string | null;
-  address: string | null;
-  durationSec: number | null;
-  recordedAt: string | null;
-  notes: string | null;
-  transcript: string | null;
-  transcriptStatus: string | null;
-  summary: string | null;
-  outcome: string | null;
-  missed: boolean;
-};
-
 type View = "recents" | "dialer";
 type RecentsFilter = "all" | "missed" | "inbound" | "outbound";
 type Intent = "cold" | "warm" | "hot";
@@ -155,9 +135,11 @@ export default function PhoneClient({
   const { t } = useLocale();
   const { showToast } = useToast();
   const [view, setView] = useState<View>(initialTab === "recents" ? "recents" : "dialer");
+  const [recentCalls, setRecentCalls] = useState<RecentCall[]>(recents);
   const [recentsFilter, setRecentsFilter] = useState<RecentsFilter>("all");
   const [savedLeadId, setSavedLeadId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ first_name?: string; last_name?: string }>({});
+  const knownRecentIdsRef = useRef<Set<string>>(new Set(recents.map((call) => call.id)));
 
   // ── Keypad / call state (preserved) ──────────────────────────────────
   const [phoneRaw, setPhoneRaw] = useState("");
@@ -196,6 +178,71 @@ export default function PhoneClient({
     })();
     return () => controller.abort();
   }, [view]);
+
+  useEffect(() => {
+    setRecentCalls(recents);
+    knownRecentIdsRef.current = new Set(recents.map((call) => call.id));
+  }, [recents]);
+
+  const notifyNewInboundCall = useCallback((call: RecentCall) => {
+    if (call.direction !== "inbound") return;
+    const label = call.name ?? formatPhoneDisplay(call.number) ?? call.number ?? "Numéro inconnu";
+    const message = call.missed
+      ? `Appel manqué de ${label}`
+      : `Nouvel appel entrant de ${label}`;
+
+    showToast({
+      message,
+      tone: call.missed ? "error" : "info",
+      durationMs: 8000,
+      action: { label: "Récents", onClick: () => setView("recents") },
+    });
+
+    if (
+      typeof window !== "undefined"
+      && "Notification" in window
+      && Notification.permission === "granted"
+    ) {
+      const notification = new Notification("Socle - Appels", {
+        body: message,
+        tag: `socle-call-${call.id}`,
+      });
+      notification.onclick = () => {
+        window.focus();
+        setView("recents");
+        notification.close();
+      };
+    }
+  }, [showToast]);
+
+  const refreshRecents = useCallback(async (notify: boolean) => {
+    try {
+      const res = await fetch("/api/quick-call/recents", { cache: "no-store" });
+      const json = await res.json();
+      if (!json.ok || !Array.isArray(json.data)) return;
+      const next = json.data as RecentCall[];
+      const newCalls = next.filter((call) => !knownRecentIdsRef.current.has(call.id));
+      knownRecentIdsRef.current = new Set(next.map((call) => call.id));
+      setRecentCalls(next);
+      if (notify) {
+        for (const call of newCalls.slice().reverse()) notifyNewInboundCall(call);
+      }
+    } catch {
+      /* polling is best-effort */
+    }
+  }, [notifyNewInboundCall]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refreshRecents(true);
+    }, 15000);
+    const onFocus = () => void refreshRecents(true);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshRecents]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -337,18 +384,18 @@ export default function PhoneClient({
 
   // ── Recents counts & filtering ───────────────────────────────────────
   const counts = useMemo(() => ({
-    all: recents.length,
-    missed: recents.filter((r) => r.missed).length,
-    inbound: recents.filter((r) => r.direction === "inbound" && !r.missed).length,
-    outbound: recents.filter((r) => r.direction === "outbound").length,
-  }), [recents]);
+    all: recentCalls.length,
+    missed: recentCalls.filter((r) => r.missed).length,
+    inbound: recentCalls.filter((r) => r.direction === "inbound" && !r.missed).length,
+    outbound: recentCalls.filter((r) => r.direction === "outbound").length,
+  }), [recentCalls]);
 
   const filteredRecents = useMemo(() => {
-    if (recentsFilter === "missed") return recents.filter((r) => r.missed);
-    if (recentsFilter === "inbound") return recents.filter((r) => r.direction === "inbound" && !r.missed);
-    if (recentsFilter === "outbound") return recents.filter((r) => r.direction === "outbound");
-    return recents;
-  }, [recents, recentsFilter]);
+    if (recentsFilter === "missed") return recentCalls.filter((r) => r.missed);
+    if (recentsFilter === "inbound") return recentCalls.filter((r) => r.direction === "inbound" && !r.missed);
+    if (recentsFilter === "outbound") return recentCalls.filter((r) => r.direction === "outbound");
+    return recentCalls;
+  }, [recentCalls, recentsFilter]);
 
   const recentsByDay = useMemo(() => groupByDay(filteredRecents), [filteredRecents]);
 
@@ -361,7 +408,7 @@ export default function PhoneClient({
       const rd = r.number.replace(/\D/g, "");
       if (rd.endsWith(tail) || rd.includes(digits)) return r;
     }
-    for (const rc of recents) {
+    for (const rc of recentCalls) {
       const rd = rc.number.replace(/\D/g, "");
       if (rc.name && (rd.endsWith(tail) || rd.includes(digits))) {
         return {
@@ -377,7 +424,7 @@ export default function PhoneClient({
       }
     }
     return null;
-  }, [phoneRaw, recipients, recents]);
+  }, [phoneRaw, recipients, recentCalls]);
 
   // ── Search results in dialer (when query typed) ──────────────────────
   const searchResults = useMemo(() => {
@@ -426,8 +473,10 @@ export default function PhoneClient({
   return (
     <main className="ph-page">
       <header className="ph-head">
-        <h1 className="ph-head__title">Appels</h1>
-        <div className="ph-head__sub mono">Numéro Socle</div>
+        <div>
+          <h1 className="ph-head__title">Appels</h1>
+          <div className="ph-head__sub mono">Numéro Socle</div>
+        </div>
       </header>
 
       <div className="ph-vt" role="tablist" aria-label="Vue téléphone">
