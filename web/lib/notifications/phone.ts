@@ -52,3 +52,45 @@ export async function notifyInboundSms(opts: {
 
   return { ok: result.ok, appPush: result };
 }
+
+export async function notifyNewLead(opts: {
+  leadId: string;
+  ownerLabel: string | null;
+  propertyLabel: string | null;
+  source: string;
+}): Promise<{ ok: boolean; appPush?: unknown; error?: string }> {
+  const owner = opts.ownerLabel?.trim() || "Nouveau lead";
+  const property = opts.propertyLabel?.trim();
+  const result = await appPushNotifyAll({
+    title: "Socle - nouveau lead",
+    body: [
+      owner,
+      property ? `Propriete: ${property}` : "",
+      opts.source ? `Source: ${opts.source}` : "",
+    ].filter(Boolean).join("\n"),
+    url: `/leads/${opts.leadId}`,
+    tag: `new-lead-${opts.leadId}`,
+  });
+
+  return { ok: result.ok, appPush: result };
+}
+
+export async function notifyDueFollowUps(opts: {
+  count: number;
+  firstLabel: string | null;
+  firstDueAt: string | null;
+}): Promise<{ ok: boolean; appPush?: unknown; error?: string }> {
+  if (opts.count <= 0) return { ok: true, appPush: { skipped: "no due follow-ups" } };
+  const first = opts.firstLabel?.trim();
+  const result = await appPushNotifyAll({
+    title: opts.count === 1 ? "Socle - suivi du" : `Socle - ${opts.count} suivis dus`,
+    body: [
+      first ? `Premier: ${first}` : "Des suivis sont dus.",
+      opts.firstDueAt ? `Du: ${new Date(opts.firstDueAt).toLocaleString("fr-CA", { dateStyle: "short", timeStyle: "short" })}` : "",
+    ].filter(Boolean).join("\n"),
+    url: "/follow-ups?bucket=overdue",
+    tag: "due-follow-ups",
+  });
+
+  return { ok: result.ok, appPush: result };
+}

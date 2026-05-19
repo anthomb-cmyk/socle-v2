@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { notifyNewLead } from "@/lib/notifications/phone";
 import { extractPhonesFromValue, formatDisplay } from "@/lib/role-parser/phone-utils";
 import { normalizeCity } from "@/lib/cities";
 
@@ -201,6 +202,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   let leadId: string;
+  let createdLead = false;
   const leadInsert: Record<string, unknown> = {
     property_id: propertyId,
     contact_id: contactId,
@@ -224,7 +226,17 @@ export async function POST(request: Request) {
     const { data, error } = await sb.from("leads").insert(leadInsert).select("id").single();
     if (error) return NextResponse.json({ ok: false, error: `lead: ${error.message}` }, { status: 500 });
     leadId = (data as { id: string }).id;
+    createdLead = true;
   }
+
+  const leadNotification = createdLead
+    ? await notifyNewLead({
+        leadId,
+        ownerLabel: [body.contact.full_name, body.contact.company_name].filter(Boolean).join(" - ") || null,
+        propertyLabel: [body.property.address, cityNorm].filter(Boolean).join(", ") || null,
+        source: String(leadInsert.source ?? "manual"),
+      })
+    : null;
 
   // ── 6. Audit event ──────────────────────────────────────────────────────
   await sb.from("automation_events").insert({
@@ -240,6 +252,7 @@ export async function POST(request: Request) {
       secondary_contact_id: secondaryContactId,
       phones_added: phones.size,
     },
+    result: { leadNotification },
   });
 
   return NextResponse.json({

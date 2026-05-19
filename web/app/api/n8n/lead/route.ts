@@ -29,6 +29,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { notifyNewLead } from "@/lib/notifications/phone";
 import { extractPhonesFromValue, formatDisplay } from "@/lib/role-parser/phone-utils";
 import { sendTelegramAlert } from "@/lib/telegram";
 import { normalizeCity } from "@/lib/cities";
@@ -192,6 +193,7 @@ export async function POST(request: Request) {
     source: body.lead?.source ?? "n8n",
   };
   let leadId: string | null = null;
+  let createdLead = false;
   const { data: existingLead } = await sb.from("leads")
     .select("id").eq("property_id", propertyId).eq("contact_id", contactId)
     .maybeSingle();
@@ -203,6 +205,7 @@ export async function POST(request: Request) {
     const { data, error } = await sb.from("leads").insert(leadPayload).select("id").single();
     if (error) return NextResponse.json({ ok: false, error: `lead: ${error.message}` }, { status: 500 });
     leadId = (data as { id: string }).id;
+    createdLead = true;
     counts.leads_created++;
   }
 
@@ -228,6 +231,15 @@ ${body.lead?.notes ? body.lead.notes.slice(0, 200) : ""}`,
     }
   }
 
+  const leadNotification = createdLead && leadId
+    ? await notifyNewLead({
+        leadId,
+        ownerLabel: [body.contact.full_name, body.contact.company_name].filter(Boolean).join(" - ") || null,
+        propertyLabel: [body.property.address, cityNorm].filter(Boolean).join(", ") || null,
+        source: leadPayload.source,
+      })
+    : null;
+
   // 7. Audit
   await sb.from("automation_events").insert({
     source: "n8n",
@@ -237,7 +249,7 @@ ${body.lead?.notes ? body.lead.notes.slice(0, 200) : ""}`,
     related_contact_id: contactId,
     related_property_id: propertyId,
     payload: { input: body, counts },
-    result: { leadId, contactId, propertyId, telegramSent: !!telegramMessageId, telegramError },
+    result: { leadId, contactId, propertyId, telegramSent: !!telegramMessageId, telegramError, leadNotification },
     telegram_message_id: telegramMessageId,
     error_message: telegramError,
   });

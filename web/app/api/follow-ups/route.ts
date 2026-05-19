@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { notifyDueFollowUps } from "@/lib/notifications/phone";
 
 const Create = z.object({
   leadId: z.string().uuid().optional(),
@@ -108,14 +109,37 @@ export async function POST(request: Request) {
   }).select("id").single();
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
+  const followUpId = (data as { id: string }).id;
+  let dueNotification = null;
+  if (new Date(body.dueAt).getTime() <= Date.now()) {
+    dueNotification = await notifyDueFollowUps({
+      count: 1,
+      firstLabel: body.note,
+      firstDueAt: body.dueAt,
+    });
+  }
+
   await sb.from("automation_events").insert({
     source: "web_app",
     event_type: "follow_up_created",
     status: "success",
     related_lead_id: body.leadId ?? null,
     triggered_by: user.id,
-    payload: { followUpId: (data as { id: string }).id, source: body.source ?? "web_app", dueAt: body.dueAt },
+    payload: { followUpId, source: body.source ?? "web_app", dueAt: body.dueAt },
+    result: { dueNotification },
   });
 
-  return NextResponse.json({ ok: true, data: { id: (data as { id: string }).id } });
+  if (dueNotification) {
+    await sb.from("automation_events").insert({
+      source: "system",
+      event_type: "follow_up_due_push_sent",
+      status: dueNotification.ok ? "success" : "failed",
+      related_lead_id: body.leadId ?? null,
+      triggered_by: user.id,
+      payload: { followUpId, dueAt: body.dueAt, immediate: true },
+      result: dueNotification,
+    });
+  }
+
+  return NextResponse.json({ ok: true, data: { id: followUpId } });
 }
