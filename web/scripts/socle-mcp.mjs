@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createClient } from "@supabase/supabase-js";
+import webpush from "web-push";
 import * as z from "zod/v4";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,15 +30,19 @@ const APP_BASE_URL = stripTrailingSlash(
 );
 const DEFAULT_AUTH_EMAIL = process.env.SOCLE_MCP_AUTH_EMAIL ?? process.env.SOCLE_TEST_USER_EMAIL ?? "";
 const WRITES_ENABLED = ["1", "true", "yes"].includes((process.env.SOCLE_MCP_ALLOW_WRITES ?? "").toLowerCase());
+const MCP_ROLE = process.env.SOCLE_MCP_ROLE || (WRITES_ENABLED ? "admin" : "reader");
 const CODEX_OPERATOR_KEY = process.env.SOCLE_CODEX_OPERATOR_KEY ?? "";
 const CODEX_OPERATOR_ENABLED = ["1", "true", "yes"].includes((process.env.SOCLE_CODEX_OPERATOR_ENABLED ?? "").toLowerCase());
 const DIRECT_MCP_WRITES_ENABLED = ["1", "true", "yes"].includes((process.env.SOCLE_MCP_DIRECT_WRITES_ENABLED ?? "").toLowerCase());
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? "";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? `mailto:${DEFAULT_AUTH_EMAIL || "admin@socle.local"}`;
 
 let supabase = null;
 
 const server = new McpServer({
   name: "socle-crm",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
 // ── HEALTH & AUTH ─────────────────────────────────────────────────────────────
@@ -59,6 +64,9 @@ server.registerTool(
       codexOperatorEnabled: CODEX_OPERATOR_ENABLED,
       writesEnabled: WRITES_ENABLED,
       directMcpWritesEnabled: DIRECT_MCP_WRITES_ENABLED,
+      mcpRole: MCP_ROLE,
+      hasVapidPublicKey: Boolean(VAPID_PUBLIC_KEY),
+      hasVapidPrivateKey: Boolean(VAPID_PRIVATE_KEY),
       repoDir: REPO_DIR,
     };
     if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
@@ -125,6 +133,186 @@ server.registerTool(
     ]);
     assertOk(recentImports); assertOk(recentFailures); assertOk(urgentItems); assertOk(activeDeals);
     return { ok: true, counts: { openReviews, urgentReviews, newLeads, leadsToCall, overdueFollowUps, todayFollowUps }, urgentItems: urgentItems.data ?? [], recentImports: recentImports.data ?? [], recentFailures: recentFailures.data ?? [], activeDeals: activeDeals.data ?? [] };
+  }),
+);
+
+server.registerTool(
+  "daily_brief",
+  {
+    title: "Daily Socle brief",
+    description: "Build a morning operator brief: counts, urgent work, recent failures, missed calls and recommended next actions.",
+    inputSchema: {},
+  },
+  withTool(async () => {
+    const sb = getSupabase();
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
+    const dayAgo = new Date(now); dayAgo.setDate(dayAgo.getDate() - 1);
+    const [newLeads, overdueFollowUps, todayFollowUps, openReviews, activeDeals, missedCalls, failures, recentLeads] = await Promise.all([
+      countRows("leads", (q) => q.eq("status", "new")),
+      countRows("follow_ups", (q) => q.eq("status", "pending").lt("due_at", now.toISOString())),
+      countRows("follow_ups", (q) => q.eq("status", "pending").gte("due_at", todayStart.toISOString()).lt("due_at", todayEnd.toISOString())),
+      countRows("review_items", (q) => q.eq("status", "open")),
+      countRows("deals", (q) => q.not("stage", "in", '("cloture","abandonne")')),
+      countRows("call_logs", (q) => q.eq("direction", "inbound").eq("duration_sec", 0).gte("recorded_at", dayAgo.toISOString())),
+      sb.from("automation_events").select("id,source,event_type,error_message,occurred_at").eq("status", "failed").gte("occurred_at", dayAgo.toISOString()).order("occurred_at", { ascending: false }).limit(5),
+      sb.from("leads_view").select("lead_id,status,created_at,full_name,company_name,best_phone,address,city").order("created_at", { ascending: false }).limit(5),
+    ]);
+    assertOk(failures); assertOk(recentLeads);
+    const priorities = [];
+    if (overdueFollowUps > 0) priorities.push(`Traiter ${overdueFollowUps} follow-up(s) en retard.`);
+    if (missedCalls > 0) priorities.push(`Rappeler ${missedCalls} appel(s) manque(s) dans les dernieres 24h.`);
+    if (newLeads > 0) priorities.push(`Qualifier ${newLeads} nouveau(x) lead(s).`);
+    if ((failures.data?.length ?? 0) > 0) priorities.push(`Verifier ${failures.data.length} erreur(s) d'automatisation recentes.`);
+    if (priorities.length === 0) priorities.push("Aucune urgence evidente; avancer le pipeline actif.");
+    return {
+      ok: true,
+      generatedAt: now.toISOString(),
+      counts: { newLeads, overdueFollowUps, todayFollowUps, openReviews, activeDeals, missedCalls24h: missedCalls },
+      priorities,
+      recentLeads: recentLeads.data ?? [],
+      recentFailures: failures.data ?? [],
+    };
+  }),
+);
+
+server.registerTool(
+  "get_action_inbox",
+  {
+    title: "Get action inbox",
+    description: "Return the work queue across review items, due follow-ups, missed calls, new leads and pending proposed actions.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(50).default(15),
+    },
+  },
+  withTool(async ({ limit = 15 }) => {
+    const sb = getSupabase();
+    const now = new Date().toISOString();
+    const [reviews, followUps, calls, leads, proposedActions] = await Promise.all([
+      sb.from("review_items").select("id,title,summary,urgency,lead_id,contact_id,created_at").eq("status", "open").order("created_at", { ascending: false }).limit(limit),
+      sb.from("follow_ups").select("id,due_at,note,lead_id,contact_id,assigned_to,created_at").eq("status", "pending").lte("due_at", now).order("due_at", { ascending: true }).limit(limit),
+      sb.from("call_logs").select("id,lead_id,contact_id,direction,duration_sec,recorded_at,raw,summary,notes").eq("direction", "inbound").eq("duration_sec", 0).order("recorded_at", { ascending: false }).limit(limit),
+      sb.from("leads_view").select("lead_id,status,created_at,full_name,company_name,best_phone,address,city").eq("status", "new").order("created_at", { ascending: false }).limit(limit),
+      maybeSelect(() => sb.from("proposed_actions").select("*").in("status", ["pending", "open"]).order("created_at", { ascending: false }).limit(limit)),
+    ]);
+    assertOk(reviews); assertOk(followUps); assertOk(calls); assertOk(leads);
+    const items = [
+      ...(reviews.data ?? []).map((item) => ({ type: "review_item", priority: item.urgency === "urgent" ? 100 : item.urgency === "high" ? 80 : 50, at: item.created_at, item })),
+      ...(followUps.data ?? []).map((item) => ({ type: "due_follow_up", priority: 90, at: item.due_at, item })),
+      ...(calls.data ?? []).map((item) => ({ type: "missed_call", priority: 85, at: item.recorded_at, item })),
+      ...(leads.data ?? []).map((item) => ({ type: "new_lead", priority: 70, at: item.created_at, item })),
+      ...(proposedActions.data ?? []).map((item) => ({ type: "proposed_action", priority: 60, at: item.created_at ?? item.updated_at ?? null, item })),
+    ].sort((a, b) => (b.priority - a.priority) || (Date.parse(b.at ?? "") - Date.parse(a.at ?? ""))).slice(0, limit);
+    return { ok: true, count: items.length, items, unavailable: proposedActions.error ? { proposed_actions: proposedActions.error } : undefined };
+  }),
+);
+
+server.registerTool(
+  "search_crm",
+  {
+    title: "Search CRM globally",
+    description: "Search leads, contacts, deals, properties and automation events from one query.",
+    inputSchema: {
+      q: z.string().min(1),
+      limit: z.number().int().min(1).max(25).default(10),
+    },
+  },
+  withTool(async ({ q, limit = 10 }) => {
+    const sb = getSupabase();
+    const term = `%${escapeLike(q.trim())}%`;
+    const [leads, contacts, deals, properties, events] = await Promise.all([
+      sb.from("leads_view").select("lead_id,status,full_name,company_name,best_phone,address,city,updated_at").or(`full_name.ilike.${term},company_name.ilike.${term},best_phone.ilike.${term},address.ilike.${term},city.ilike.${term}`).order("updated_at", { ascending: false }).limit(limit),
+      sb.from("contacts").select("id,full_name,company_name,primary_email,created_at,updated_at").or(`full_name.ilike.${term},company_name.ilike.${term},primary_email.ilike.${term}`).order("updated_at", { ascending: false }).limit(limit),
+      sb.from("deals").select("id,title,stage,address,contact_name,contact_phone,updated_at").or(`title.ilike.${term},address.ilike.${term},contact_name.ilike.${term},contact_phone.ilike.${term}`).order("updated_at", { ascending: false }).limit(limit),
+      maybeSelect(() => sb.from("properties").select("id,address,city,property_type,created_at,updated_at").or(`address.ilike.${term},city.ilike.${term}`).order("updated_at", { ascending: false }).limit(limit)),
+      sb.from("automation_events").select("id,source,event_type,status,error_message,related_lead_id,related_contact_id,occurred_at").or(`event_type.ilike.${term},error_message.ilike.${term},source.ilike.${term}`).order("occurred_at", { ascending: false }).limit(limit),
+    ]);
+    assertOk(leads); assertOk(contacts); assertOk(deals); assertOk(events);
+    return {
+      ok: true,
+      q,
+      results: {
+        leads: leads.data ?? [],
+        contacts: contacts.data ?? [],
+        deals: deals.data ?? [],
+        properties: properties.data ?? [],
+        automationEvents: events.data ?? [],
+      },
+      unavailable: properties.error ? { properties: properties.error } : undefined,
+    };
+  }),
+);
+
+server.registerTool(
+  "lead_action_plan",
+  {
+    title: "Lead action plan",
+    description: "Read a lead's context and return a practical next-action plan.",
+    inputSchema: {
+      lead_id: z.string().uuid(),
+    },
+  },
+  withTool(async ({ lead_id }) => {
+    const sb = getSupabase();
+    const [lead, followUps, calls, sms, events] = await Promise.all([
+      sb.from("leads_view").select("*").eq("lead_id", lead_id).single(),
+      sb.from("follow_ups").select("id,status,due_at,note,priority,created_at").eq("lead_id", lead_id).order("due_at", { ascending: true }).limit(20),
+      sb.from("call_logs").select("id,direction,duration_sec,recorded_at,summary,outcome,notes,raw").eq("lead_id", lead_id).order("recorded_at", { ascending: false }).limit(10),
+      sb.from("automation_events").select("id,event_type,payload,occurred_at").eq("related_lead_id", lead_id).in("event_type", ["sms_received", "sms_sent"]).order("occurred_at", { ascending: false }).limit(10),
+      sb.from("automation_events").select("id,source,event_type,status,error_message,occurred_at").eq("related_lead_id", lead_id).order("occurred_at", { ascending: false }).limit(10),
+    ]);
+    assertOk(lead); assertOk(followUps); assertOk(calls); assertOk(sms); assertOk(events);
+    const now = Date.now();
+    const pending = (followUps.data ?? []).filter((f) => f.status === "pending");
+    const overdue = pending.filter((f) => Date.parse(f.due_at) <= now);
+    const hasPhone = Boolean(lead.data?.best_phone);
+    const hasRecentInboundSms = (sms.data ?? []).some((e) => e.event_type === "sms_received");
+    const recommendations = [];
+    if (overdue.length > 0) recommendations.push({ action: "complete_or_reschedule_follow_up", reason: `${overdue.length} follow-up(s) du(s).`, followUpId: overdue[0]?.id });
+    if (hasRecentInboundSms) recommendations.push({ action: "reply_to_texto", reason: "Le lead a envoye un texto recent." });
+    if (hasPhone && (calls.data ?? []).length === 0) recommendations.push({ action: "call_lead", reason: "Numero disponible et aucun appel recent dans le dossier." });
+    if (!hasPhone) recommendations.push({ action: "enrich_phone", reason: "Aucun meilleur numero trouve sur leads_view." });
+    if (recommendations.length === 0) recommendations.push({ action: "review_context", reason: "Pas d'action urgente evidente; verifier statut et dernier evenement." });
+    return { ok: true, lead: lead.data, recommendations, followUps: followUps.data ?? [], recentCalls: calls.data ?? [], recentSms: sms.data ?? [], recentEvents: events.data ?? [] };
+  }),
+);
+
+server.registerTool(
+  "production_diagnostics",
+  {
+    title: "Production diagnostics",
+    description: "Check production-facing CRM health: env flags, push subscriptions, failed events, table counts and phone queues.",
+    inputSchema: {},
+  },
+  withTool(async () => {
+    const now = new Date();
+    const dayAgo = new Date(now); dayAgo.setDate(dayAgo.getDate() - 1);
+    const [leadCount, pushCount, failedEvents, pendingSms, missedCalls, dueFollowUps] = await Promise.all([
+      countRows("leads"),
+      countRows("push_subscriptions").catch((error) => ({ error: serializeError(error) })),
+      getSupabase().from("automation_events").select("id,source,event_type,error_message,occurred_at").eq("status", "failed").gte("occurred_at", dayAgo.toISOString()).order("occurred_at", { ascending: false }).limit(10),
+      countRows("automation_events", (q) => q.eq("event_type", "sms_send_requested").in("status", ["pending", "started"])).catch((error) => ({ error: serializeError(error) })),
+      countRows("call_logs", (q) => q.eq("direction", "inbound").eq("duration_sec", 0).gte("recorded_at", dayAgo.toISOString())),
+      countRows("follow_ups", (q) => q.eq("status", "pending").lte("due_at", now.toISOString())),
+    ]);
+    assertOk(failedEvents);
+    return {
+      ok: true,
+      appBaseUrl: APP_BASE_URL,
+      env: {
+        hasSupabaseUrl: Boolean(SUPABASE_URL),
+        hasServiceRoleKey: Boolean(SERVICE_ROLE_KEY),
+        hasVapidPublicKey: Boolean(VAPID_PUBLIC_KEY),
+        hasVapidPrivateKey: Boolean(VAPID_PRIVATE_KEY),
+        hasCodexOperatorKey: Boolean(CODEX_OPERATOR_KEY),
+        writesEnabled: WRITES_ENABLED,
+        directMcpWritesEnabled: DIRECT_MCP_WRITES_ENABLED,
+        mcpRole: MCP_ROLE,
+      },
+      counts: { leads: leadCount, pushSubscriptions: pushCount, pendingSms, missedCalls24h: missedCalls, dueFollowUps },
+      recentFailedEvents: failedEvents.data ?? [],
+    };
   }),
 );
 
@@ -397,6 +585,274 @@ server.registerTool(
     if (error) throw error;
     return { ok: true, count: data?.length ?? 0, items: data ?? [] };
   }),
+);
+
+// ── NOTIFICATIONS & PHONE OPS ────────────────────────────────────────────────
+
+server.registerTool(
+  "send_push_notification",
+  {
+    title: "Send iPhone/Web push notification",
+    description: "Send a push notification to Socle app subscribers. Defaults to dry_run and requires confirmation for real sends.",
+    inputSchema: {
+      title: z.string().min(1).max(120),
+      body: z.string().min(1).max(500),
+      url: z.string().default("/"),
+      tag: z.string().max(80).optional(),
+      user_id: z.string().uuid().optional(),
+      dry_run: z.boolean().default(true),
+      confirm: z.literal("write to socle").optional(),
+    },
+  },
+  withTool(async ({ title, body, url = "/", tag, user_id, dry_run = true, confirm }) => {
+    const subscriptions = await getPushSubscriptions(user_id);
+    const payload = buildPushPayload({ title, body, url, tag: tag ?? "socle-mcp" });
+    if (dry_run) return { ok: true, dryRun: true, targetCount: subscriptions.length, payload };
+    requireGovernedWrites(confirm);
+    const result = await sendWebPushToRows(subscriptions, payload);
+    return { ok: true, dryRun: false, targetCount: subscriptions.length, ...result };
+  }),
+);
+
+server.registerTool(
+  "notify_new_lead",
+  {
+    title: "Notify new lead",
+    description: "Send the same type of push notification Socle uses for a new lead. Defaults to dry_run.",
+    inputSchema: {
+      lead_id: z.string().uuid(),
+      dry_run: z.boolean().default(true),
+      confirm: z.literal("write to socle").optional(),
+    },
+  },
+  withTool(async ({ lead_id, dry_run = true, confirm }) => {
+    const { data: lead, error } = await getSupabase()
+      .from("leads_view")
+      .select("lead_id,full_name,company_name,best_phone,address,city,status")
+      .eq("lead_id", lead_id)
+      .single();
+    if (error) throw error;
+    const name = lead.full_name || lead.company_name || "Nouveau lead";
+    const location = [lead.address, lead.city].filter(Boolean).join(", ");
+    const payload = buildPushPayload({
+      title: "Nouveau lead",
+      body: location ? `${name} - ${location}` : name,
+      url: `/leads/${lead_id}`,
+      tag: `lead-${lead_id}`,
+    });
+    const subscriptions = await getPushSubscriptions();
+    if (dry_run) return { ok: true, dryRun: true, targetCount: subscriptions.length, lead, payload };
+    requireGovernedWrites(confirm);
+    const result = await sendWebPushToRows(subscriptions, payload);
+    return { ok: true, dryRun: false, lead, targetCount: subscriptions.length, ...result };
+  }),
+);
+
+server.registerTool(
+  "notify_due_followups",
+  {
+    title: "Notify due follow-ups",
+    description: "Send a summary push notification for pending due follow-ups. Defaults to dry_run.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(50).default(20),
+      dry_run: z.boolean().default(true),
+      confirm: z.literal("write to socle").optional(),
+    },
+  },
+  withTool(async ({ limit = 20, dry_run = true, confirm }) => {
+    const now = new Date().toISOString();
+    const { data, error } = await getSupabase()
+      .from("follow_ups")
+      .select("id,due_at,note,lead_id,contact_id,assigned_to")
+      .eq("status", "pending")
+      .lte("due_at", now)
+      .order("due_at", { ascending: true })
+      .limit(limit);
+    if (error) throw error;
+    const followUps = data ?? [];
+    const body = followUps.length === 1
+      ? (followUps[0].note || "Un follow-up est du maintenant.")
+      : `${followUps.length} follow-ups sont dus maintenant.`;
+    const payload = buildPushPayload({ title: "Follow-ups dus", body, url: "/follow-ups", tag: "due-follow-ups" });
+    const subscriptions = await getPushSubscriptions();
+    if (dry_run) return { ok: true, dryRun: true, dueCount: followUps.length, targetCount: subscriptions.length, followUps, payload };
+    requireGovernedWrites(confirm);
+    const result = await sendWebPushToRows(subscriptions, payload);
+    return { ok: true, dryRun: false, dueCount: followUps.length, targetCount: subscriptions.length, followUps, ...result };
+  }),
+);
+
+server.registerTool(
+  "recent_calls",
+  {
+    title: "Recent calls",
+    description: "List recent inbound and outbound phone calls from call_logs.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).default(30),
+      direction: z.enum(["inbound", "outbound", "all"]).default("all"),
+    },
+  },
+  withTool(async ({ limit = 30, direction = "all" }) => {
+    let query = getSupabase()
+      .from("call_logs")
+      .select("id,lead_id,contact_id,direction,duration_sec,recorded_at,summary,outcome,notes,raw,transcript_status")
+      .order("recorded_at", { ascending: false })
+      .limit(limit);
+    if (direction !== "all") query = query.eq("direction", direction);
+    const { data, error } = await query;
+    if (error) throw error;
+    return { ok: true, count: data?.length ?? 0, calls: (data ?? []).map(toCallSummary) };
+  }),
+);
+
+server.registerTool(
+  "missed_calls",
+  {
+    title: "Missed calls",
+    description: "List missed inbound calls: inbound call_logs with zero duration.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).default(30),
+      since_hours: z.number().int().min(1).max(720).default(72),
+    },
+  },
+  withTool(async ({ limit = 30, since_hours = 72 }) => {
+    const since = new Date(); since.setHours(since.getHours() - since_hours);
+    const { data, error } = await getSupabase()
+      .from("call_logs")
+      .select("id,lead_id,contact_id,direction,duration_sec,recorded_at,summary,outcome,notes,raw,transcript_status")
+      .eq("direction", "inbound")
+      .eq("duration_sec", 0)
+      .gte("recorded_at", since.toISOString())
+      .order("recorded_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return { ok: true, count: data?.length ?? 0, calls: (data ?? []).map(toCallSummary) };
+  }),
+);
+
+server.registerTool(
+  "unlinked_inbound_calls",
+  {
+    title: "Unlinked inbound calls",
+    description: "List inbound calls that are not attached to a lead or contact.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).default(30),
+    },
+  },
+  withTool(async ({ limit = 30 }) => {
+    const { data, error } = await getSupabase()
+      .from("call_logs")
+      .select("id,lead_id,contact_id,direction,duration_sec,recorded_at,summary,outcome,notes,raw,transcript_status")
+      .eq("direction", "inbound")
+      .is("lead_id", null)
+      .is("contact_id", null)
+      .order("recorded_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return { ok: true, count: data?.length ?? 0, calls: (data ?? []).map(toCallSummary) };
+  }),
+);
+
+server.registerTool(
+  "summarize_call",
+  {
+    title: "Summarize call",
+    description: "Return a compact call summary, transcript, notes and suggested follow-up action.",
+    inputSchema: {
+      call_id: z.string().uuid(),
+    },
+  },
+  withTool(async ({ call_id }) => {
+    const { data, error } = await getSupabase()
+      .from("call_logs")
+      .select("id,lead_id,contact_id,direction,duration_sec,recorded_at,summary,outcome,notes,transcript,raw,transcript_status")
+      .eq("id", call_id)
+      .single();
+    if (error) throw error;
+    const suggestedAction = data.outcome === "callback" || /rappel|callback|follow/i.test(`${data.summary ?? ""} ${data.notes ?? ""}`)
+      ? "create_follow_up"
+      : data.direction === "inbound" && (data.duration_sec ?? 0) === 0
+        ? "call_back"
+        : "review";
+    return { ok: true, call: toCallSummary(data), transcript: data.transcript ?? null, suggestedAction };
+  }),
+);
+
+server.registerTool(
+  "attach_call_to_lead",
+  {
+    title: "Attach call to lead",
+    description: "Attach a call_log row to a lead/contact. Defaults to dry_run and requires confirmation for the update.",
+    inputSchema: {
+      call_id: z.string().uuid(),
+      lead_id: z.string().uuid().optional(),
+      contact_id: z.string().uuid().optional(),
+      dry_run: z.boolean().default(true),
+      confirm: z.literal("write to socle").optional(),
+    },
+  },
+  withTool(async ({ call_id, lead_id, contact_id, dry_run = true, confirm }) => {
+    if (!lead_id && !contact_id) throw new Error("Provide lead_id or contact_id.");
+    const sb = getSupabase();
+    const { data: existing, error: readError } = await sb.from("call_logs").select("id,lead_id,contact_id,raw,recorded_at").eq("id", call_id).single();
+    if (readError) throw readError;
+    const update = { lead_id: lead_id ?? existing.lead_id, contact_id: contact_id ?? existing.contact_id };
+    if (dry_run) return { ok: true, dryRun: true, existing, proposedUpdate: update };
+    requireWrites(confirm);
+    const { data, error } = await sb.from("call_logs").update(update).eq("id", call_id).select("id,lead_id,contact_id,recorded_at").single();
+    if (error) throw error;
+    await sb.from("automation_events").insert({ source: "socle_mcp", event_type: "call_attached_to_lead", status: "success", related_lead_id: lead_id ?? null, related_contact_id: contact_id ?? null, payload: { callId: call_id }, occurred_at: new Date().toISOString() });
+    return { ok: true, dryRun: false, call: data };
+  }),
+);
+
+server.registerTool(
+  "snooze_follow_up",
+  {
+    title: "Snooze follow-up",
+    description: "Move a pending follow-up to a later due_at. Defaults to dry_run and requires confirmation for the update.",
+    inputSchema: {
+      id: z.string().uuid(),
+      due_at: z.string().describe("New ISO 8601 datetime."),
+      note: z.string().max(500).optional(),
+      dry_run: z.boolean().default(true),
+      confirm: z.literal("write to socle").optional(),
+    },
+  },
+  withTool(async ({ id, due_at, note, dry_run = true, confirm }) => {
+    const sb = getSupabase();
+    const { data: existing, error: readError } = await sb.from("follow_ups").select("*").eq("id", id).single();
+    if (readError) throw readError;
+    const update = { due_at, updated_at: new Date().toISOString() };
+    if (note?.trim()) {
+      const previous = typeof existing.note === "string" ? existing.note : "";
+      update.note = [previous, `[${new Date().toISOString()}] snoozed via MCP: ${note.trim()}`].filter(Boolean).join("\n\n");
+    }
+    if (dry_run) return { ok: true, dryRun: true, existing, proposedUpdate: update };
+    requireWrites(confirm);
+    const { data, error } = await sb.from("follow_ups").update(update).eq("id", id).eq("status", "pending").select("id,status,due_at,note,lead_id,contact_id,updated_at").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("Follow-up not found or not pending.");
+    return { ok: true, dryRun: false, followUp: data };
+  }),
+);
+
+server.registerTool(
+  "mcp_permissions",
+  {
+    title: "MCP permissions",
+    description: "Show effective MCP role and write/send capabilities without exposing secrets.",
+    inputSchema: {},
+  },
+  withTool(async () => ({
+    ok: true,
+    role: MCP_ROLE,
+    canRead: true,
+    canSendGovernedEffects: WRITES_ENABLED && ["admin", "operator"].includes(MCP_ROLE),
+    canDirectWrite: WRITES_ENABLED && ["admin", "operator"].includes(MCP_ROLE) && (!CODEX_OPERATOR_ENABLED || DIRECT_MCP_WRITES_ENABLED),
+    confirmationRequired: 'confirm: "write to socle"',
+    dryRunDefault: true,
+  })),
 );
 
 // ── CRM WRITE TOOLS ───────────────────────────────────────────────────────────
@@ -1298,6 +1754,85 @@ function serializeError(error) {
   return String(error);
 }
 
+async function maybeSelect(fn) {
+  try {
+    const { data, error } = await fn();
+    if (error) return { data: [], error: serializeError(error) };
+    return { data: data ?? [], error: null };
+  } catch (error) {
+    return { data: [], error: serializeError(error) };
+  }
+}
+
+async function getPushSubscriptions(userId) {
+  let query = getSupabase()
+    .from("push_subscriptions")
+    .select("id,user_id,endpoint,p256dh,auth,expiration_time,user_agent,last_seen_at")
+    .order("last_seen_at", { ascending: false });
+  if (userId) query = query.eq("user_id", userId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}
+
+function buildPushPayload({ title, body, url = "/", tag = "socle" }) {
+  return {
+    title,
+    body,
+    url: safeRelativePath(url, "/"),
+    tag,
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    sentAt: new Date().toISOString(),
+  };
+}
+
+async function sendWebPushToRows(rows, payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    throw new Error("Missing VAPID keys. Set NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in the MCP env.");
+  }
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  const results = await Promise.allSettled(rows.map((row) => {
+    const subscription = {
+      endpoint: row.endpoint,
+      expirationTime: row.expiration_time ?? null,
+      keys: { p256dh: row.p256dh, auth: row.auth },
+    };
+    return webpush.sendNotification(subscription, JSON.stringify(payload));
+  }));
+  const sent = [];
+  const failed = [];
+  results.forEach((result, index) => {
+    const row = rows[index];
+    if (result.status === "fulfilled") sent.push({ id: row.id, user_id: row.user_id });
+    else failed.push({ id: row.id, user_id: row.user_id, error: serializeError(result.reason), statusCode: result.reason?.statusCode ?? null });
+  });
+  return { sentCount: sent.length, failedCount: failed.length, sent, failed };
+}
+
+function toCallSummary(call) {
+  const raw = call.raw ?? {};
+  const direction = call.direction === "inbound" ? "inbound" : "outbound";
+  const number = direction === "inbound"
+    ? (raw.from ?? raw.lead_phone ?? raw.phone_e164 ?? "")
+    : (raw.to ?? raw.lead_phone ?? raw.phone_e164 ?? "");
+  return {
+    id: call.id,
+    leadId: call.lead_id ?? null,
+    contactId: call.contact_id ?? null,
+    direction,
+    number: normalizePhone(String(number ?? "")) || String(number ?? ""),
+    durationSec: call.duration_sec ?? null,
+    missed: direction === "inbound" && (call.duration_sec ?? 0) === 0,
+    recordedAt: call.recorded_at ?? null,
+    outcome: call.outcome ?? null,
+    summary: call.summary ?? null,
+    notes: call.notes ?? null,
+    transcriptStatus: call.transcript_status ?? null,
+    raw,
+  };
+}
+
 async function fetchSmsEvents(limit) {
   const { data, error } = await getSupabase()
     .from("automation_events")
@@ -1356,8 +1891,13 @@ function requireWrites(confirm) {
 }
 
 function requireGovernedWrites(confirm) {
+  requireRole(["admin", "operator"]);
   if (!WRITES_ENABLED) throw new Error("Writes are disabled. Set SOCLE_MCP_ALLOW_WRITES=true in the MCP client env to enable write tools.");
   if (confirm !== "write to socle") throw new Error('Write tools require confirm: "write to socle".');
+}
+
+function requireRole(roles) {
+  if (!roles.includes(MCP_ROLE)) throw new Error(`MCP role "${MCP_ROLE}" is not allowed for this operation. Allowed roles: ${roles.join(", ")}.`);
 }
 
 async function callCodexOperatorEndpoint(pathname, { method = "GET", body, sessionToken } = {}) {
